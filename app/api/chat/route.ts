@@ -1,25 +1,32 @@
-import type { ModelMessage, UIMessage } from "ai";
+import type { LanguageModelUsage, ModelMessage, UIMessage } from "ai";
 import {
   createUIMessageStreamResponse,
   streamText,
   toUIMessageStream,
 } from "ai";
+import { startSession } from "@/lib/agents";
 import { auth } from "@/lib/auth";
 import {
+  findUserById,
   getConversationForUser,
   maybeSetTitle,
+  quotaState,
+  recordUsage,
   saveAssistantMessage,
   setConversationModel,
   syncTranscript,
 } from "@/lib/db/queries";
-import { findInstalled, getChatModel, getInventory, resolveModel } from "@/lib/ollama";
+import { findBlockedKeyword } from "@/lib/moderation";
+import { findInstalled, getChatModel, getUserInventory, resolveModel } from "@/lib/ollama";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
+import { getSettings } from "@/lib/settings";
 import { textFromParts } from "@/lib/text";
 import { chatRequestSchema } from "@/lib/validators";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
+const AGENT_ID = "ollama";
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const MODEL_CONTEXT_MESSAGES = 40;
 
@@ -27,13 +34,27 @@ const INSTRUCTIONS = `You are Harbor, a local assistant running through Ollama.
 Answer clearly and directly. When you write code, keep it complete enough to run.
 If you are unsure, say so.`;
 
+/** Ollama sometimes omits usage; fall back to roughly four characters per token. */
+function estimateTokens(characters: number) {
+  return Math.ceil(characters / 4);
+}
+
 export async function POST(request: Request) {
   const session = await auth();
   if (!session?.user?.id) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const user = findUserById(session.user.id);
+  if (!user || user.suspended) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
-  const limited = rateLimit(`chat:${session.user.id}`, 30, 60 * 1000);
+  const limited = rateLimit(
+    `chat:${user.id}`,
+    getSettings().chatRateLimitPerMinute,
+    60 * 1000,
+    { endpoint: "chat", userId: user.id },
+  );
   if (!limited.ok) return tooManyRequests(limited.retryAfter);
 
   const declaredLength = Number(request.headers.get("content-length") ?? 0);
@@ -60,10 +81,7 @@ export async function POST(request: Request) {
     return Response.json({ error: "Invalid chat request." }, { status: 400 });
   }
 
-  const conversation = getConversationForUser(
-    parsed.data.conversationId,
-    session.user.id,
-  );
+  const conversation = getConversationForUser(parsed.data.conversationId, user.id);
   if (!conversation) {
     return Response.json({ error: "Conversation not found" }, { status: 404 });
   }
@@ -90,26 +108,68 @@ export async function POST(request: Request) {
     );
   }
 
-  // Reject a bad model before touching history; an outage below still saves the message.
-  const inventory = await getInventory();
+  // Everything below that can reject runs before history is touched, so a
+  // refused request never rewrites the stored conversation.
+  const inventory = await getUserInventory();
   const requested = parsed.data.model;
   if (inventory.ok && requested && !findInstalled(inventory.models, requested)) {
     return Response.json(
-      { error: `Model "${requested}" is not installed. Pick another model.` },
+      { error: `Model "${requested}" is not available. Pick another model.` },
       { status: 400 },
     );
+  }
+  const modelName = inventory.ok
+    ? resolveModel(inventory.models, requested, conversation.model)
+    : null;
+
+  if (findBlockedKeyword(latestUser.content)) {
+    recordUsage({
+      userId: user.id,
+      conversationId: conversation.id,
+      agentId: AGENT_ID,
+      model: modelName ?? "none",
+      inputTokens: 0,
+      outputTokens: 0,
+      durationMs: 0,
+      status: "blocked",
+    });
+    return Response.json(
+      { error: "This message contains content that is not allowed on this server." },
+      { status: 400 },
+    );
+  }
+
+  const quota = quotaState(user.id);
+  if (quota?.exceeded) {
+    return Response.json(
+      {
+        error: `You have used your monthly allowance of ${quota.limit?.toLocaleString("en-US")} tokens. Ask an admin to raise it.`,
+      },
+      { status: 429 },
+    );
+  }
+
+  const agent = startSession(
+    {
+      agentId: AGENT_ID,
+      userId: user.id,
+      userEmail: user.email,
+      conversationId: conversation.id,
+      model: modelName ?? "unknown",
+    },
+    request.signal,
+  );
+  if (!agent.ok) {
+    return Response.json({ error: agent.error }, { status: agent.status });
   }
 
   syncTranscript(conversation.id, transcript);
   maybeSetTitle(conversation.id, conversation.title, latestUser.content);
 
-  if (!inventory.ok) {
-    return Response.json({ error: inventory.error }, { status: 503 });
-  }
-  const modelName = resolveModel(inventory.models, requested, conversation.model);
-  if (!modelName) {
+  if (!inventory.ok || !modelName) {
+    agent.end();
     return Response.json(
-      { error: "No chat models are installed. Ask an admin to add one." },
+      { error: inventory.ok ? "No chat models are available. Ask an admin to enable one." : inventory.error },
       { status: 503 },
     );
   }
@@ -123,16 +183,25 @@ export async function POST(request: Request) {
     parts: [{ type: "text", text: message.content }],
   }));
 
-  const modelMessages: ModelMessage[] = transcript
-    .slice(-MODEL_CONTEXT_MESSAGES)
-    .map((message) => ({ role: message.role, content: message.content }));
+  const context = transcript.slice(-MODEL_CONTEXT_MESSAGES);
+  const modelMessages: ModelMessage[] = context.map((message) => ({
+    role: message.role,
+    content: message.content,
+  }));
+
+  const startedAt = Date.now();
+  let usage: LanguageModelUsage | undefined;
+  let failed = false;
 
   const result = streamText({
     model: getChatModel(modelName),
     instructions: INSTRUCTIONS,
     messages: modelMessages,
     maxOutputTokens: 4096,
-    abortSignal: request.signal,
+    abortSignal: agent.signal,
+    onFinish: (event) => {
+      usage = event.totalUsage;
+    },
   });
 
   return createUIMessageStreamResponse({
@@ -141,26 +210,44 @@ export async function POST(request: Request) {
       originalMessages: cleanMessages,
       generateMessageId: () => crypto.randomUUID(),
       onError: (error) => {
+        failed = true;
+        agent.end();
         console.error("Ollama stream failed", error);
         return `${modelName} stopped responding. Check that Ollama is running, or pick a smaller model.`;
       },
-      onFinish: async ({ responseMessage }) => {
+      onFinish: async ({ responseMessage, isAborted }) => {
+        agent.end();
+        const content = textFromParts(
+          responseMessage.parts.map((part) => ({
+            type: part.type,
+            text:
+              "text" in part && typeof part.text === "string"
+                ? part.text
+                : undefined,
+          })),
+        );
         try {
-          const content = textFromParts(
-            responseMessage.parts.map((part) => ({
-              type: part.type,
-              text:
-                "text" in part && typeof part.text === "string"
-                  ? part.text
-                  : undefined,
-            })),
-          );
           saveAssistantMessage(conversation.id, {
             id: responseMessage.id || crypto.randomUUID(),
             content,
           });
         } catch (error) {
           console.error("Failed to save the assistant reply", error);
+        }
+        try {
+          const promptChars = INSTRUCTIONS.length + context.reduce((sum, m) => sum + m.content.length, 0);
+          recordUsage({
+            userId: user.id,
+            conversationId: conversation.id,
+            agentId: AGENT_ID,
+            model: modelName,
+            inputTokens: usage?.inputTokens ?? estimateTokens(promptChars),
+            outputTokens: usage?.outputTokens ?? estimateTokens(content.length),
+            durationMs: Date.now() - startedAt,
+            status: failed ? "error" : isAborted ? "aborted" : "ok",
+          });
+        } catch (error) {
+          console.error("Failed to record usage", error);
         }
       },
     }),

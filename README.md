@@ -49,7 +49,7 @@ openssl rand -base64 32         # paste into AUTH_SECRET
 | `AUTH_URL` | behind a proxy | none | Public URL, for example `https://chat.example.com`. Leave unset for local and LAN use. |
 | `OLLAMA_BASE_URL` | no | `http://127.0.0.1:11434` | Ollama host, without `/v1` |
 | `OLLAMA_MODEL` | no | `qwen2.5-coder:14b` | Default for new chats when it is installed |
-| `ADMIN_EMAILS` | no | first account | Comma-separated emails that can download and remove models. Without it, the oldest account on the server is the admin. |
+| `ADMIN_EMAILS` | no | none | Comma-separated emails that are promoted to admin on startup. Without it, the first account created on the server is the admin, and admins can promote others from `/admin/users`. |
 | `DATA_DIR` | no | `./data` | Where `harbor.db` lives |
 
 ## Use it from a phone or another computer
@@ -63,7 +63,32 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Create an account, then send a message. The first request creates `data/harbor.db` and the tables in `lib/db/schema.ts`.
+Open [http://localhost:3000](http://localhost:3000). Create an account, then send a message. The first account on a fresh server becomes the admin.
+
+The database lives in `data/harbor.db`. Migrations in `lib/db/migrate.ts` run automatically on startup, each one once, tracked by SQLite's `user_version`. Add a schema change by appending a function to `MIGRATIONS` and updating `lib/db/schema.ts` to match.
+
+To create a starter admin and a test user:
+
+```bash
+npm run seed
+```
+
+It creates `admin@harbor.local` (admin) and `test@harbor.local` (user) if they do not exist, and prints a random password for each. Set `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`, `SEED_USER_EMAIL`, and `SEED_USER_PASSWORD` to choose them. Existing accounts are never changed.
+
+## Admin panel
+
+Admins see an **Admin panel** link in the chat sidebar, or open `/admin` directly. Everyone else is sent back to `/chat`. The proxy checks the role on every request and the admin layout and actions check it again in the database, so promotions, demotions, and suspensions take effect immediately.
+
+| Route | What it does |
+| --- | --- |
+| `/admin` | Totals for users, tokens, active sessions, and recent admin actions |
+| `/admin/users` | Search and page through users (20 per page) with role, last active, plan, quota, and total tokens. Change role, reset a password (shows a one-time temporary password and signs the user out), suspend or reactivate, and set a plan and monthly token quota. |
+| `/admin/usage` | Tokens per user and per model by day, week, or month, plus a log of rate-limit hits |
+| `/admin/agents` | Turn agents on or off, set each agent's concurrency limit, watch running sessions and stop them, and enable or disable individual Ollama models |
+| `/admin/settings` | Chat rate limit per user per minute, open or closed registration, a moderation keyword blocklist, and the audit log |
+| `/admin/conversations` | Find conversations by user email or keyword, read the full history, and flag or delete messages |
+
+Every admin change is written to the audit log with who made it and when. The Claude, Codex, and Gemini entries on the agents page are placeholders for ACP adapters; they show "no adapter connected" until one is wired in `lib/agents.ts`.
 
 ## 4. Production on one machine
 
@@ -93,6 +118,7 @@ The app stores its database in the `harbor-data` volume and models live in `olla
 
 - `GET /api/health` returns `200` with `{ ok, database, ollama, model, models }` when the database is up and at least one chat model is installed, and `503` otherwise. Point uptime checks and load balancers at it.
 - `npm run smoke` runs an end-to-end check against a running server: health, register, sign in, list models, a streamed reply, a reply after switching models, saved history, and cleanup. Set `SMOKE_URL` to test another host and `SMOKE_MODEL` to pick the first model. It deletes its test account at the end, so it never becomes the first-account admin.
+- `npm run e2e:admin` drives the admin panel in headless Chrome against a running server. It seeds a throwaway admin and user, exercises every admin page and action (models, agents, killing a session, quota, blocklist, rate limit, flag and delete, suspend, password reset, role changes, audit log), restores the settings, and deletes both accounts. Set `CHROME_PATH` if Chrome is not in `/Applications`, and `E2E_URL` for another host. Screenshots go to `/tmp/harbor-e2e`.
 - `DELETE /api/account` with `{ "password": "…" }` deletes the signed-in account and all of its conversations.
 - Choosing a model in the picker preloads it for 30 minutes, so the first reply does not wait for a cold start.
 - `npm run check` runs typecheck, lint, and the production build.
@@ -100,7 +126,7 @@ The app stores its database in the `harbor-data` volume and models live in `olla
 ## Security
 
 - Passwords are hashed with bcrypt (cost 12). Sign-in takes the same time whether or not the email exists.
-- Rate limits: registration 10 per hour per IP, sign-in 30 per 15 minutes per IP and 10 per email, chat 30 per minute per user. Per-IP limits apply only behind a reverse proxy that sets `X-Forwarded-For`; without one, every visitor looks the same, so registration falls back to a server-wide cap of 200 per hour and sign-in relies on the per-email limit.
+- Rate limits: registration 10 per hour per IP, sign-in 30 per 15 minutes per IP and 10 per email, chat 30 per minute per user (adjustable in `/admin/settings`). Per-IP limits apply only behind a reverse proxy that sets `X-Forwarded-For`; without one, every visitor looks the same, so registration falls back to a server-wide cap of 200 per hour and sign-in relies on the per-email limit.
 - Only admins can download or remove models.
 - Responses carry a Content Security Policy, `X-Frame-Options: DENY`, `nosniff`, a strict referrer policy, and HSTS in production.
 - Chat requests are capped at 2 MB, 200 messages, and 32,000 characters per message. Replies are capped at 4,096 tokens.
@@ -121,10 +147,12 @@ Rate limits are kept in memory. That is correct for one server process. If you r
 | `app/chat/models` | Models page and library |
 | `lib/model-catalog.ts` | The 1B to 70B model library |
 | `app/api/auth/[...nextauth]/route.ts` | Auth.js handlers |
-| `lib/auth.config.ts` | Session settings shared with the proxy, no database access |
-| `lib/auth.ts` | Credentials provider |
-| `lib/db/schema.ts` | Users, conversations, messages |
-| `proxy.ts` | Sends anonymous visitors away from `/chat` |
-| `scripts/` | Standalone build prep, production start, smoke test |
-
-`npm run db:push` applies later schema edits with Drizzle Kit. The app also creates the current tables on startup, so a fresh checkout does not need that command.
+| `lib/auth.config.ts` | Session settings with no database access |
+| `lib/auth.ts` | Credentials provider and the database-checked session |
+| `lib/db/schema.ts` | Tables: users, conversations, messages, usage, audit log, agent and model config, settings |
+| `lib/db/migrate.ts` | Ordered migrations, run on startup |
+| `app/admin` | Admin panel pages and server actions |
+| `lib/agents.ts` | Agent registry, concurrency limits, running sessions |
+| `lib/settings.ts`, `lib/moderation.ts` | System settings and the keyword blocklist |
+| `proxy.ts` | Sends anonymous visitors away from `/chat` and non-admins away from `/admin` |
+| `scripts/` | Standalone build prep, production start, seed, smoke and admin tests |

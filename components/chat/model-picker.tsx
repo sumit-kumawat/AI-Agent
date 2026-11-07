@@ -14,6 +14,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { formatBytes } from "@/lib/format";
 import type { InstalledModel } from "@/lib/ollama";
 
 export type ModelOption = Pick<InstalledModel, "name" | "parameterSize" | "size">;
@@ -75,12 +76,6 @@ export function useWarmModel(name: string | null) {
       body: JSON.stringify({ name }),
     }).catch(() => undefined);
   }, [name]);
-}
-
-export function formatBytes(bytes: number) {
-  if (!bytes) return "";
-  const gb = bytes / 1e9;
-  return gb >= 1 ? `${gb.toFixed(1)} GB` : `${Math.round(bytes / 1e6)} MB`;
 }
 
 export function ModelPicker({

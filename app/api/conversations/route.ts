@@ -3,7 +3,7 @@ import {
   createConversation,
   listConversations,
 } from "@/lib/db/queries";
-import { findInstalled, getInventory } from "@/lib/ollama";
+import { findInstalled, getUserInventory } from "@/lib/ollama";
 import { modelNameSchema } from "@/lib/validators";
 
 export const runtime = "nodejs";
@@ -27,7 +27,7 @@ export async function POST(request: Request) {
   const requested = modelNameSchema.safeParse(body?.model);
   let model: string | null = null;
   if (requested.success) {
-    const inventory = await getInventory();
+    const inventory = await getUserInventory();
     model = inventory.ok ? (findInstalled(inventory.models, requested.data)?.name ?? null) : null;
   }
   const conversation = createConversation(session.user.id, model);

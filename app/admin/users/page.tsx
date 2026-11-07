@@ -1,0 +1,117 @@
+import { UserActions } from "@/components/admin/user-actions";
+import {
+  Empty,
+  PageHeader,
+  Pagination,
+  SearchForm,
+  TableCard,
+  pageParam,
+  stringParam,
+} from "@/components/admin/ui";
+import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { requireAdmin } from "@/lib/admin";
+import { listUsers } from "@/lib/db/admin-queries";
+import { formatAgo, formatCompact, formatDate, formatNumber } from "@/lib/format";
+
+export const metadata = { title: "Users" };
+
+export default async function AdminUsersPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const admin = await requireAdmin();
+  const params = await searchParams;
+  const q = stringParam(params.q);
+  const page = pageParam(params.page);
+  const { rows, total } = listUsers({ q, page });
+
+  return (
+    <>
+      <PageHeader
+        title="Users"
+        description={`${formatNumber(total)} account${total === 1 ? "" : "s"}${q ? ` matching "${q}"` : ""}.`}
+        actions={<SearchForm fields={[{ name: "q", placeholder: "Search email or name", value: q }]} />}
+      />
+      <TableCard>
+        {rows.length === 0 ? (
+          <Empty>No users found.</Empty>
+        ) : (
+          <Table className="min-w-[56rem]">
+            <TableHeader>
+              <TableRow>
+                <TableHead className="pl-4">User</TableHead>
+                <TableHead>Role</TableHead>
+                <TableHead>Created</TableHead>
+                <TableHead>Last active</TableHead>
+                <TableHead>Plan / quota (this month)</TableHead>
+                <TableHead className="text-right">Total tokens</TableHead>
+                <TableHead className="pr-4 text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((user) => {
+                const percent = user.quotaTokens ? Math.min(100, Math.round((user.quotaUsed / user.quotaTokens) * 100)) : null;
+                return (
+                  <TableRow key={user.id} className={user.suspended ? "opacity-60" : undefined}>
+                    <TableCell className="max-w-64 pl-4">
+                      <p className="truncate font-medium">{user.email}</p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {user.name} · {user.conversations} chat{user.conversations === 1 ? "" : "s"}
+                      </p>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        <Badge variant={user.role === "admin" ? "default" : "secondary"}>{user.role}</Badge>
+                        {user.suspended ? <Badge variant="destructive">suspended</Badge> : null}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">{formatDate(user.createdAt)}</TableCell>
+                    <TableCell className="text-muted-foreground">{formatAgo(user.lastActiveAt)}</TableCell>
+                    <TableCell>
+                      <p className="capitalize">{user.plan}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatCompact(user.quotaUsed)} / {user.quotaTokens === null ? "unlimited" : formatCompact(user.quotaTokens)}
+                      </p>
+                      {percent !== null ? (
+                        <div className="mt-1 h-1 w-28 overflow-hidden rounded-full bg-muted">
+                          <div
+                            className={`h-full ${percent >= 100 ? "bg-destructive" : "bg-primary"}`}
+                            style={{ width: `${percent}%` }}
+                          />
+                        </div>
+                      ) : null}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">{formatNumber(user.tokensTotal)}</TableCell>
+                    <TableCell className="pr-4">
+                      <UserActions
+                        user={{
+                          id: user.id,
+                          email: user.email,
+                          role: user.role,
+                          suspended: Boolean(user.suspended),
+                          plan: user.plan,
+                          quotaTokens: user.quotaTokens,
+                          self: user.id === admin.id,
+                        }}
+                      />
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        )}
+      </TableCard>
+      <Pagination page={page} total={total} basePath="/admin/users" params={{ q }} />
+    </>
+  );
+}

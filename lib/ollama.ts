@@ -1,4 +1,5 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { disabledModelNames } from "@/lib/db/queries";
 import { env } from "@/lib/env";
 
 export function ollamaRoot() {
@@ -13,6 +14,7 @@ export const ollama = createOpenAICompatible({
   name: "ollama",
   baseURL: `${ollamaRoot()}/v1`,
   apiKey: process.env.OLLAMA_API_KEY ?? "ollama",
+  includeUsage: true,
 });
 
 export function getChatModel(name: string) {
@@ -117,6 +119,14 @@ export function invalidateInventory() {
   cache.harborInventory = undefined;
 }
 
+/** Installed models minus the ones an admin has disabled. */
+export async function getUserInventory(): Promise<Inventory> {
+  const inventory = await getInventory();
+  if (!inventory.ok) return inventory;
+  const disabled = disabledModelNames();
+  return { ok: true, models: inventory.models.filter((model) => !disabled.has(model.name)) };
+}
+
 function sameModel(installed: string, wanted: string) {
   return (
     installed === wanted ||
@@ -142,12 +152,12 @@ export function resolveModel(models: InstalledModel[], ...preferred: (string | n
 type OllamaStatus = { ok: true } | { ok: false; error: string };
 
 export async function checkOllama(): Promise<OllamaStatus> {
-  const inventory = await getInventory();
+  const inventory = await getUserInventory();
   if (!inventory.ok) return inventory;
   if (inventory.models.length === 0) {
     return {
       ok: false,
-      error: `No chat models are installed. From a terminal, run: ollama pull ${getModelName()}`,
+      error: "No chat models are available. An admin can install or enable one under Models.",
     };
   }
   return { ok: true };

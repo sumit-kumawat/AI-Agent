@@ -1,4 +1,13 @@
-type Bucket = { count: number; resetAt: number };
+import { db } from "@/lib/db";
+import { rateLimitEvents } from "@/lib/db/schema";
+
+type Bucket = { count: number; resetAt: number; logged: boolean };
+
+export type LimitContext = {
+  endpoint: string;
+  userId?: string | null;
+  ip?: string | null;
+};
 
 const store = globalThis as typeof globalThis & {
   harborRateLimits?: Map<string, Bucket>;
@@ -13,19 +22,45 @@ function sweep(now: number) {
   }
 }
 
+function logHit(key: string, context: LimitContext) {
+  try {
+    db.insert(rateLimitEvents)
+      .values({
+        userId: context.userId ?? null,
+        ip: context.ip ?? null,
+        endpoint: context.endpoint,
+        limitKey: key,
+        createdAt: Date.now(),
+      })
+      .run();
+  } catch (error) {
+    console.error("Failed to record a rate-limit hit", error);
+  }
+}
+
 /**
  * Fixed-window limiter held in process memory. It is correct for a single
  * Node process; run several instances and each keeps its own counts.
+ * The first rejection in each window is written to the rate-limit log.
  */
-export function rateLimit(key: string, limit: number, windowMs: number) {
+export function rateLimit(
+  key: string,
+  limit: number,
+  windowMs: number,
+  context?: LimitContext,
+) {
   const now = Date.now();
   sweep(now);
   const bucket = buckets.get(key);
   if (!bucket || bucket.resetAt <= now) {
-    buckets.set(key, { count: 1, resetAt: now + windowMs });
+    buckets.set(key, { count: 1, resetAt: now + windowMs, logged: false });
     return { ok: true as const };
   }
   if (bucket.count >= limit) {
+    if (context && !bucket.logged) {
+      bucket.logged = true;
+      logHit(key, context);
+    }
     return {
       ok: false as const,
       retryAfter: Math.ceil((bucket.resetAt - now) / 1000),

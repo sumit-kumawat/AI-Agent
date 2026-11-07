@@ -1,6 +1,7 @@
 import { hash } from "bcryptjs";
-import { createUser, findUserByEmail } from "@/lib/db/queries";
+import { adminCount, createUser, findUserByEmail } from "@/lib/db/queries";
 import { clientIp, rateLimit, tooManyRequests } from "@/lib/rate-limit";
+import { getSettings } from "@/lib/settings";
 import { registerSchema } from "@/lib/validators";
 
 export const runtime = "nodejs";
@@ -8,6 +9,15 @@ export const runtime = "nodejs";
 const HOUR = 60 * 60 * 1000;
 
 export async function POST(request: Request) {
+  // A server with no admin yet always accepts the first account, which becomes the admin.
+  const bootstrap = adminCount() === 0;
+  if (!bootstrap && !getSettings().registrationEnabled) {
+    return Response.json(
+      { error: "Registration is closed on this server. Ask an admin for an account." },
+      { status: 403 },
+    );
+  }
+
   let body: unknown;
   try {
     body = await request.json();
@@ -41,9 +51,10 @@ export async function POST(request: Request) {
 
   // Only requests that reach bcrypt are counted; typos and invalid forms are cheap.
   const ip = clientIp(request.headers);
+  const context = { endpoint: "register", ip };
   const limited = ip
-    ? rateLimit(`register:ip:${ip}`, 10, HOUR)
-    : rateLimit("register:direct", 200, HOUR);
+    ? rateLimit(`register:ip:${ip}`, 10, HOUR, context)
+    : rateLimit("register:direct", 200, HOUR, context);
   if (!limited.ok) return tooManyRequests(limited.retryAfter);
 
   if (findUserByEmail(parsed.data.email)) {
@@ -60,6 +71,7 @@ export async function POST(request: Request) {
       name: parsed.data.name,
       email: parsed.data.email,
       passwordHash,
+      role: bootstrap ? "admin" : "user",
     });
   } catch (error) {
     const code =

@@ -1,8 +1,10 @@
 import { isAdmin } from "@/lib/admin";
+import { audit } from "@/lib/audit";
 import { auth } from "@/lib/auth";
 import {
   getInventory,
   getModelName,
+  getUserInventory,
   invalidateInventory,
   ollamaRoot,
 } from "@/lib/ollama";
@@ -23,14 +25,15 @@ export async function GET() {
   if (!session?.user?.id) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const inventory = await getInventory();
+  const admin = isAdmin(session.user);
+  const inventory = admin ? await getInventory() : await getUserInventory();
   return Response.json(
     {
       ok: inventory.ok,
       error: inventory.ok ? null : inventory.error,
       models: inventory.ok ? inventory.models : [],
       defaultModel: getModelName(),
-      admin: isAdmin(session.user),
+      admin,
     },
     { headers: { "Cache-Control": "no-store" } },
   );
@@ -45,13 +48,22 @@ export async function POST(request: Request) {
   if (!isAdmin(session.user)) {
     return Response.json({ error: "Only an admin can download models." }, { status: 403 });
   }
-  const limited = rateLimit(`models:pull:${session.user.id}`, 20, 60 * 60 * 1000);
+  const limited = rateLimit(`models:pull:${session.user.id}`, 20, 60 * 60 * 1000, {
+    endpoint: "models.pull",
+    userId: session.user.id,
+  });
   if (!limited.ok) return tooManyRequests(limited.retryAfter);
 
   const name = await readModelName(request);
   if (!name.success) {
     return Response.json({ error: "Enter a model name such as llama3.2:3b." }, { status: 400 });
   }
+
+  audit(
+    { id: session.user.id, email: session.user.email ?? "unknown" },
+    "model.download",
+    { type: "model", id: name.data },
+  );
 
   let upstream: Response;
   try {
@@ -107,6 +119,13 @@ export async function DELETE(request: Request) {
       body: JSON.stringify({ model: name.data }),
     });
     invalidateInventory();
+    if (response.ok) {
+      audit(
+        { id: session.user.id, email: session.user.email ?? "unknown" },
+        "model.remove",
+        { type: "model", id: name.data },
+      );
+    }
     if (response.status === 404) {
       return Response.json({ error: "That model is not installed." }, { status: 404 });
     }

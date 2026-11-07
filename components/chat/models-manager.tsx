@@ -4,11 +4,8 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { Check, Download, Search, Trash } from "lucide-react";
 import { ChatTopBar } from "@/components/chat/chat-shell";
-import {
-  formatBytes,
-  setPreferredModel,
-  usePreferredModel,
-} from "@/components/chat/model-picker";
+import { setPreferredModel, usePreferredModel } from "@/components/chat/model-picker";
+import { formatBytes } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

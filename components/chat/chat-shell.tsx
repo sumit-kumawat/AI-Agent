@@ -10,7 +10,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { Boxes, LogOut, Menu, Plus, Trash } from "lucide-react";
+import { Boxes, LogOut, Menu, Plus, Shield, Trash } from "lucide-react";
 import { Mark } from "@/components/brand";
 import {
   pickModel,
@@ -215,6 +215,15 @@ function SidebarBody({
           <Boxes className="size-4" />
           {admin ? "Manage models" : "Models"}
         </Link>
+        {admin ? (
+          <Link
+            href="/admin"
+            className="flex h-9 items-center gap-2 rounded-lg px-2.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <Shield className="size-4" />
+            Admin panel
+          </Link>
+        ) : null}
       </div>
       <div className="mt-4 min-h-0 flex-1 overflow-y-auto overscroll-contain px-2">
         <ConversationList conversations={conversations} onNavigate={onNavigate} />

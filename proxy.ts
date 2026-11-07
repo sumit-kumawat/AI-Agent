@@ -1,19 +1,23 @@
-import NextAuth from "next-auth";
 import { NextResponse } from "next/server";
-import { authConfig } from "@/lib/auth.config";
+import { auth } from "@/lib/auth";
 
-const { auth } = NextAuth(authConfig);
-
+// Uses the database-backed auth so the role is current on every request:
+// promotions apply at once and suspended users are signed out here too.
 export default auth((req) => {
   const isLoggedIn = Boolean(req.auth?.user?.id);
   const { pathname } = req.nextUrl;
   const isAuthPage = pathname === "/login" || pathname === "/register";
-  const isProtected = pathname.startsWith("/chat");
+  const isAdminPage = pathname === "/admin" || pathname.startsWith("/admin/");
+  const isProtected = pathname.startsWith("/chat") || isAdminPage;
 
   if (isProtected && !isLoggedIn) {
     const url = new URL("/login", req.nextUrl);
     url.searchParams.set("callbackUrl", pathname);
     return NextResponse.redirect(url);
+  }
+
+  if (isAdminPage && req.auth?.user?.role !== "admin") {
+    return NextResponse.redirect(new URL("/chat", req.nextUrl));
   }
 
   if (isAuthPage && isLoggedIn) {
@@ -24,5 +28,5 @@ export default auth((req) => {
 });
 
 export const config = {
-  matcher: ["/chat/:path*", "/login", "/register"],
+  matcher: ["/chat/:path*", "/admin/:path*", "/admin", "/login", "/register"],
 };

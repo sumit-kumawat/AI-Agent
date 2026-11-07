@@ -1,6 +1,6 @@
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "./index";
-import { conversations, messages, users } from "./schema";
+import { conversations, messages, modelConfig, usageEvents, users } from "./schema";
 
 const MAX_STORED_CHARS = 200_000;
 
@@ -32,6 +32,7 @@ export function createUser(input: {
   name: string;
   email: string;
   passwordHash: string;
+  role?: "admin" | "user";
 }) {
   const id = crypto.randomUUID();
   db.insert(users)
@@ -40,10 +41,91 @@ export function createUser(input: {
       name: input.name,
       email: input.email,
       passwordHash: input.passwordHash,
+      role: input.role ?? "user",
       createdAt: Date.now(),
     })
     .run();
   return { id, name: input.name, email: input.email };
+}
+
+export function adminCount() {
+  return (
+    db
+      .select({ count: sql<number>`count(*)` })
+      .from(users)
+      .where(eq(users.role, "admin"))
+      .get()?.count ?? 0
+  );
+}
+
+export function currentQuotaPeriod(now = new Date()) {
+  return now.toISOString().slice(0, 7);
+}
+
+/** Returns the user's monthly allowance state, rolling usage over when the month changes. */
+export function quotaState(userId: string) {
+  const user = findUserById(userId);
+  if (!user) return null;
+  const period = currentQuotaPeriod();
+  const used = user.quotaPeriod === period ? user.quotaUsed : 0;
+  return {
+    limit: user.quotaTokens,
+    used,
+    exceeded: user.quotaTokens !== null && used >= user.quotaTokens,
+  };
+}
+
+export function touchUser(userId: string) {
+  db.update(users).set({ lastActiveAt: Date.now() }).where(eq(users.id, userId)).run();
+}
+
+export function recordUsage(event: {
+  userId: string;
+  conversationId: string | null;
+  agentId: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  durationMs: number;
+  status: "ok" | "aborted" | "error" | "blocked";
+}) {
+  const total = event.inputTokens + event.outputTokens;
+  const now = Date.now();
+  const period = currentQuotaPeriod();
+  db.transaction((tx) => {
+    tx.insert(usageEvents)
+      .values({ ...event, totalTokens: total, createdAt: now })
+      .run();
+    tx.update(users)
+      .set({
+        tokensTotal: sql`${users.tokensTotal} + ${total}`,
+        quotaUsed: sql`CASE WHEN ${users.quotaPeriod} = ${period} THEN ${users.quotaUsed} + ${total} ELSE ${total} END`,
+        quotaPeriod: period,
+        lastActiveAt: now,
+      })
+      .where(eq(users.id, event.userId))
+      .run();
+  });
+}
+
+export function disabledModelNames() {
+  return new Set(
+    db
+      .select({ name: modelConfig.name })
+      .from(modelConfig)
+      .where(eq(modelConfig.enabled, false))
+      .all()
+      .map((row) => row.name),
+  );
+}
+
+export function renameConversation(id: string, userId: string, title: string) {
+  const result = db
+    .update(conversations)
+    .set({ title, updatedAt: Date.now() })
+    .where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
+    .run();
+  return result.changes > 0;
 }
 
 export function listConversations(userId: string): ConversationListItem[] {
@@ -88,15 +170,6 @@ export function setConversationModel(id: string, model: string) {
     .set({ model })
     .where(eq(conversations.id, id))
     .run();
-}
-
-export function firstUserId() {
-  return db
-    .select({ id: users.id })
-    .from(users)
-    .orderBy(asc(users.createdAt), asc(users.id))
-    .limit(1)
-    .get()?.id;
 }
 
 export function deleteConversation(id: string, userId: string) {

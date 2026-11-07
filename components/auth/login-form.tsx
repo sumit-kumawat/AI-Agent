@@ -29,7 +29,9 @@ export function LoginForm({ callbackUrl }: { callbackUrl: string }) {
         setError(
           result.code === "rate_limited"
             ? "Too many sign-in attempts. Wait 15 minutes and try again."
-            : "Email or password is incorrect.",
+            : result.code === "suspended"
+              ? "This account is suspended. Contact an administrator."
+              : "Email or password is incorrect.",
         );
         setPending(false);
         return;

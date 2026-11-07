@@ -2,7 +2,7 @@ import NextAuth, { CredentialsSignin } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { compare } from "bcryptjs";
 import { authConfig } from "@/lib/auth.config";
-import { findUserByEmail } from "@/lib/db/queries";
+import { findUserByEmail, findUserById, touchUser } from "@/lib/db/queries";
 import { env } from "@/lib/env";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
 import { credentialsSchema } from "@/lib/validators";
@@ -17,9 +17,28 @@ class RateLimited extends CredentialsSignin {
   code = "rate_limited";
 }
 
+class Suspended extends CredentialsSignin {
+  code = "suspended";
+}
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
   secret: env.AUTH_SECRET,
+  callbacks: {
+    ...authConfig.callbacks,
+    // Runs on every server-side auth() call. Role changes apply immediately, and
+    // suspension or a password reset (session_version bump) ends existing sessions.
+    jwt(params) {
+      const token = authConfig.callbacks.jwt(params);
+      if (params.user || typeof token.id !== "string") return token;
+      const user = findUserById(token.id);
+      if (!user || user.suspended || user.sessionVersion !== (token.sv ?? 0)) {
+        return null;
+      }
+      token.role = user.role;
+      return token;
+    },
+  },
   providers: [
     Credentials({
       name: "Email and password",
@@ -38,8 +57,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (!parsed.success) return null;
 
         const ip = clientIp(request.headers);
-        const byIp = ip ? rateLimit(`login:ip:${ip}`, 30, WINDOW) : { ok: true };
-        const byEmail = rateLimit(`login:email:${parsed.data.email}`, 10, WINDOW);
+        const context = { endpoint: "sign-in", ip };
+        const byIp = ip ? rateLimit(`login:ip:${ip}`, 30, WINDOW, context) : { ok: true };
+        const byEmail = rateLimit(`login:email:${parsed.data.email}`, 10, WINDOW, context);
         if (!byIp.ok || !byEmail.ok) throw new RateLimited();
 
         const user = findUserByEmail(parsed.data.email);
@@ -48,8 +68,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           user?.passwordHash ?? DUMMY_HASH,
         );
         if (!user || !passwordMatches) return null;
+        if (user.suspended) throw new Suspended();
 
-        return { id: user.id, name: user.name, email: user.email };
+        touchUser(user.id);
+        return {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          sessionVersion: user.sessionVersion,
+        };
       },
     }),
   ],

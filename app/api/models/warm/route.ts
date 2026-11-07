@@ -1,5 +1,5 @@
 import { auth } from "@/lib/auth";
-import { findInstalled, getInventory, ollamaRoot } from "@/lib/ollama";
+import { findInstalled, getUserInventory, ollamaRoot } from "@/lib/ollama";
 import { rateLimit } from "@/lib/rate-limit";
 import { modelNameSchema } from "@/lib/validators";
 
@@ -21,7 +21,7 @@ export async function POST(request: Request) {
   const name = modelNameSchema.safeParse(body?.name);
   if (!name.success) return Response.json({ error: "Invalid model." }, { status: 400 });
 
-  const inventory = await getInventory();
+  const inventory = await getUserInventory();
   const model = inventory.ok ? findInstalled(inventory.models, name.data) : undefined;
   if (!model) return Response.json({ error: "Model is not installed." }, { status: 404 });
 
