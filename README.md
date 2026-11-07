@@ -49,7 +49,7 @@ openssl rand -base64 32         # paste into AUTH_SECRET
 | `AUTH_URL` | behind a proxy | none | Public URL, for example `https://chat.example.com`. Leave unset for local and LAN use. |
 | `OLLAMA_BASE_URL` | no | `http://127.0.0.1:11434` | Ollama host, without `/v1` |
 | `OLLAMA_MODEL` | no | `qwen2.5-coder:14b` | Default for new chats when it is installed |
-| `ADMIN_EMAILS` | no | first account | Comma-separated emails that can download and remove models |
+| `ADMIN_EMAILS` | no | first account | Comma-separated emails that can download and remove models. Without it, the oldest account on the server is the admin. |
 | `DATA_DIR` | no | `./data` | Where `harbor.db` lives |
 
 ## Use it from a phone or another computer
@@ -92,7 +92,8 @@ The app stores its database in the `harbor-data` volume and models live in `olla
 ## Operations
 
 - `GET /api/health` returns `200` with `{ ok, database, ollama, model, models }` when the database is up and at least one chat model is installed, and `503` otherwise. Point uptime checks and load balancers at it.
-- `npm run smoke` runs an end-to-end check against a running server: health, register, sign in, list models, a streamed reply, a reply after switching models, saved history, and cleanup. Set `SMOKE_URL` to test another host and `SMOKE_MODEL` to pick the first model. It leaves one `smoke-*@example.com` account behind.
+- `npm run smoke` runs an end-to-end check against a running server: health, register, sign in, list models, a streamed reply, a reply after switching models, saved history, and cleanup. Set `SMOKE_URL` to test another host and `SMOKE_MODEL` to pick the first model. It deletes its test account at the end, so it never becomes the first-account admin.
+- `DELETE /api/account` with `{ "password": "…" }` deletes the signed-in account and all of its conversations.
 - Choosing a model in the picker preloads it for 30 minutes, so the first reply does not wait for a cold start.
 - `npm run check` runs typecheck, lint, and the production build.
 

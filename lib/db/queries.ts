@@ -20,6 +20,14 @@ export function findUserByEmail(email: string) {
   return db.select().from(users).where(eq(users.email, email)).get();
 }
 
+export function findUserById(id: string) {
+  return db.select().from(users).where(eq(users.id, id)).get();
+}
+
+export function deleteUser(id: string) {
+  db.delete(users).where(eq(users.id, id)).run();
+}
+
 export function createUser(input: {
   name: string;
   email: string;

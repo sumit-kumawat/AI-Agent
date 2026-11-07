@@ -167,4 +167,11 @@ check(saved.title !== "New chat", `title set ("${saved.title}")`);
 const deleted = await call(`/api/conversations/${id}`, { method: "DELETE" });
 check(deleted.status === 204, "delete conversation");
 
-console.log(`\nSmoke test passed. Test account left behind: ${email}`);
+const removed = await call("/api/account", {
+  method: "DELETE",
+  headers: json,
+  body: JSON.stringify({ password }),
+});
+check(removed.status === 204, "delete test account");
+
+console.log("\nSmoke test passed.");
