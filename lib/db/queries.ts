@@ -59,7 +59,7 @@ export function getConversationForUser(id: string, userId: string) {
     .get();
 }
 
-export function createConversation(userId: string) {
+export function createConversation(userId: string, model: string | null = null) {
   const now = Date.now();
   const id = crypto.randomUUID();
   db.insert(conversations)
@@ -67,11 +67,28 @@ export function createConversation(userId: string) {
       id,
       userId,
       title: "New chat",
+      model,
       createdAt: now,
       updatedAt: now,
     })
     .run();
-  return { id, title: "New chat", updatedAt: now };
+  return { id, title: "New chat", model, updatedAt: now };
+}
+
+export function setConversationModel(id: string, model: string) {
+  db.update(conversations)
+    .set({ model })
+    .where(eq(conversations.id, id))
+    .run();
+}
+
+export function firstUserId() {
+  return db
+    .select({ id: users.id })
+    .from(users)
+    .orderBy(asc(users.createdAt), asc(users.id))
+    .limit(1)
+    .get()?.id;
 }
 
 export function deleteConversation(id: string, userId: string) {

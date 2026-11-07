@@ -3,7 +3,6 @@ import type { UIMessage } from "ai";
 import { notFound } from "next/navigation";
 import { ChatPanel } from "@/components/chat/chat-panel";
 import { getConversationForUser, listMessages } from "@/lib/db/queries";
-import { getModelName } from "@/lib/ollama";
 import { requireUser } from "@/lib/session";
 
 export const metadata: Metadata = { title: "Chat" };
@@ -31,7 +30,7 @@ export default async function ConversationPage({
       key={conversation.id}
       conversationId={conversation.id}
       title={conversation.title}
-      model={getModelName()}
+      conversationModel={conversation.model}
       initialMessages={initialMessages}
     />
   );

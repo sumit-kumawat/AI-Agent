@@ -16,6 +16,7 @@ export const conversations = sqliteTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     title: text("title").notNull(),
+    model: text("model"),
     createdAt: integer("created_at", { mode: "number" }).notNull(),
     updatedAt: integer("updated_at", { mode: "number" }).notNull(),
   },
@@ -56,6 +57,7 @@ CREATE TABLE IF NOT EXISTS conversations (
   id TEXT PRIMARY KEY NOT NULL,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
+  model TEXT,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
@@ -74,3 +76,8 @@ CREATE TABLE IF NOT EXISTS messages (
 CREATE INDEX IF NOT EXISTS messages_conversation_created_idx
   ON messages (conversation_id, created_at);
 `;
+
+/** Columns added after the first release, applied to existing databases on boot. */
+export const ADDED_COLUMNS = [
+  { table: "conversations", column: "model", definition: "TEXT" },
+] as const;

@@ -9,12 +9,12 @@ export async function SiteHeader() {
 
   return (
     <header className="sticky top-0 z-20 border-b border-border/80 bg-background/90 backdrop-blur">
-      <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-6">
+      <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between gap-2 px-4 sm:px-6">
         <Link href="/" className="flex items-center gap-2 text-sm font-medium">
           <Mark className="size-7 text-primary" />
           Harbor
         </Link>
-        <nav className="flex items-center gap-2 text-sm">
+        <nav className="flex items-center gap-1 text-sm sm:gap-2">
           <Link
             href="/#pricing"
             className="hidden px-2 text-muted-foreground hover:text-foreground sm:inline"
@@ -31,7 +31,10 @@ export async function SiteHeader() {
                 <Link href="/login">Sign in</Link>
               </Button>
               <Button asChild>
-                <Link href="/register">Create account</Link>
+                <Link href="/register">
+                  <span className="sm:hidden">Sign up</span>
+                  <span className="hidden sm:inline">Create account</span>
+                </Link>
               </Button>
             </>
           )}

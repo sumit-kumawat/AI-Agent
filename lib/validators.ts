@@ -25,8 +25,16 @@ const messagePartSchema = z.looseObject({
   text: z.string().max(MAX_MESSAGE_CHARS).optional(),
 });
 
+export const modelNameSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(200)
+  .regex(/^[a-z0-9][a-z0-9._\-/]*(:[a-z0-9._\-]+)?$/i, "Not a valid model name.");
+
 export const chatRequestSchema = z.object({
   conversationId: z.uuid(),
+  model: modelNameSchema.optional(),
   messages: z
     .array(
       z.looseObject({

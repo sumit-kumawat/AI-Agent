@@ -35,10 +35,14 @@ export function rateLimit(key: string, limit: number, windowMs: number) {
   return { ok: true as const };
 }
 
+/**
+ * Returns the caller's address as reported by a reverse proxy, or null when
+ * the app is reached directly. Without a proxy every request looks the same,
+ * so per-IP limits would turn into one global limit shared by all users.
+ */
 export function clientIp(headers: Headers) {
-  const forwarded = headers.get("x-forwarded-for");
-  if (forwarded) return forwarded.split(",")[0]?.trim() || "unknown";
-  return headers.get("x-real-ip") ?? "local";
+  const forwarded = headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+  return forwarded || headers.get("x-real-ip")?.trim() || null;
 }
 
 export function tooManyRequests(retryAfter: number) {

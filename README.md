@@ -7,7 +7,9 @@ This phase includes:
 - A landing page with placeholder pricing
 - Email and password registration and sign-in
 - Streaming chat with Ollama, rendered as Markdown
-- Conversation history stored in SQLite
+- A model picker per chat, plus a Models page to download any open model from 1B to 70B parameters
+- Conversation history stored in SQLite, including which model each chat uses
+- Layouts that work on phones, tablets, and desktops, reachable from any device on your network
 
 Image generation, video, and deep research are not part of this build.
 
@@ -25,6 +27,15 @@ ollama pull qwen2.5-coder:14b
 
 On Linux, use the installer from [ollama.com](https://ollama.com), which sets up a systemd service.
 
+Small models reply fastest. A good starter set:
+
+```bash
+ollama pull llama3.2:1b    # 1.3 GB, near-instant replies
+ollama pull llama3.2:3b    # 2.0 GB, better quality, still quick
+```
+
+You can also download models from the app. Open **Models** in the chat sidebar while signed in as an admin. The library lists Llama, Qwen, Gemma, DeepSeek R1, Mistral, Phi, and Granite builds from 1B to 70B, and accepts any other Ollama model name. Models smaller than about one billion parameters, and embedding models, are hidden from the chat picker.
+
 ## 2. Configure environment
 
 ```bash
@@ -35,10 +46,15 @@ openssl rand -base64 32         # paste into AUTH_SECRET
 | Variable | Required | Default | Notes |
 | --- | --- | --- | --- |
 | `AUTH_SECRET` | yes | none | 32+ characters. Production refuses to boot with the placeholder. |
-| `AUTH_URL` | behind a proxy | none | Public URL, for example `https://chat.example.com` |
+| `AUTH_URL` | behind a proxy | none | Public URL, for example `https://chat.example.com`. Leave unset for local and LAN use. |
 | `OLLAMA_BASE_URL` | no | `http://127.0.0.1:11434` | Ollama host, without `/v1` |
-| `OLLAMA_MODEL` | no | `qwen2.5-coder:14b` | Any model you have pulled |
+| `OLLAMA_MODEL` | no | `qwen2.5-coder:14b` | Default for new chats when it is installed |
+| `ADMIN_EMAILS` | no | first account | Comma-separated emails that can download and remove models |
 | `DATA_DIR` | no | `./data` | Where `harbor.db` lives |
+
+## Use it from a phone or another computer
+
+The server listens on every network interface. Find this machine's address with `ipconfig getifaddr en0` (macOS) or `hostname -I` (Linux), then open `http://<that-address>:3000` on any device on the same Wi-Fi. Leave `AUTH_URL` unset so sign-in works on whichever address each device uses.
 
 ## 3. Development
 
@@ -75,14 +91,16 @@ The app stores its database in the `harbor-data` volume and models live in `olla
 
 ## Operations
 
-- `GET /api/health` returns `200` with `{ ok, database, ollama, model }` when the database and model are ready, and `503` otherwise. Point uptime checks and load balancers at it.
-- `npm run smoke` runs an end-to-end check against a running server: health, register, sign in, a streamed reply, saved history, and cleanup. Set `SMOKE_URL` to test another host. It leaves one `smoke-*@example.com` account behind.
+- `GET /api/health` returns `200` with `{ ok, database, ollama, model, models }` when the database is up and at least one chat model is installed, and `503` otherwise. Point uptime checks and load balancers at it.
+- `npm run smoke` runs an end-to-end check against a running server: health, register, sign in, list models, a streamed reply, a reply after switching models, saved history, and cleanup. Set `SMOKE_URL` to test another host and `SMOKE_MODEL` to pick the first model. It leaves one `smoke-*@example.com` account behind.
+- Choosing a model in the picker preloads it for 30 minutes, so the first reply does not wait for a cold start.
 - `npm run check` runs typecheck, lint, and the production build.
 
 ## Security
 
 - Passwords are hashed with bcrypt (cost 12). Sign-in takes the same time whether or not the email exists.
-- Rate limits: registration 10 per hour per IP, sign-in 30 per 15 minutes per IP and 10 per email, chat 30 per minute per user.
+- Rate limits: registration 10 per hour per IP, sign-in 30 per 15 minutes per IP and 10 per email, chat 30 per minute per user. Per-IP limits apply only behind a reverse proxy that sets `X-Forwarded-For`; without one, every visitor looks the same, so registration falls back to a server-wide cap of 200 per hour and sign-in relies on the per-email limit.
+- Only admins can download or remove models.
 - Responses carry a Content Security Policy, `X-Frame-Options: DENY`, `nosniff`, a strict referrer policy, and HSTS in production.
 - Chat requests are capped at 2 MB, 200 messages, and 32,000 characters per message. Replies are capped at 4,096 tokens.
 
@@ -98,6 +116,9 @@ Rate limits are kept in memory. That is correct for one server process. If you r
 | `app/api/chat/route.ts` | Streams a reply from Ollama and saves it |
 | `app/api/register/route.ts` | Creates a user |
 | `app/api/health/route.ts` | Health check |
+| `app/api/models` | List, download, remove, and preload models |
+| `app/chat/models` | Models page and library |
+| `lib/model-catalog.ts` | The 1B to 70B model library |
 | `app/api/auth/[...nextauth]/route.ts` | Auth.js handlers |
 | `lib/auth.config.ts` | Session settings shared with the proxy, no database access |
 | `lib/auth.ts` | Credentials provider |

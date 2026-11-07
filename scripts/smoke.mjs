@@ -1,5 +1,6 @@
-// End-to-end check against a running server: register, sign in, chat with the
-// model, confirm both messages were saved, then delete the test conversation.
+// End-to-end check against a running server: register, sign in, list models,
+// chat with one model, switch to another, confirm history and the stored model,
+// then delete the test conversation.
 const base = (process.env.SMOKE_URL ?? "http://localhost:3000").replace(/\/$/, "");
 const email = `smoke-${Date.now()}@example.com`;
 const password = "smoke-test-password";
@@ -35,16 +36,72 @@ function check(condition, label) {
   console.log(`ok   ${label}`);
 }
 
+const json = { "content-type": "application/json" };
+
+async function chat(conversationId, messages, model) {
+  const started = Date.now();
+  const response = await call("/api/chat", {
+    method: "POST",
+    headers: json,
+    body: JSON.stringify({
+      conversationId,
+      id: conversationId,
+      trigger: "submit-message",
+      messages,
+      ...(model ? { model } : {}),
+    }),
+  });
+  check(response.status === 200, `chat request accepted${model ? ` (${model})` : ""}`);
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let text = "";
+  let chunks = 0;
+  let firstTokenMs = null;
+  let assistantId = null;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) continue;
+      const payload = line.slice(6).trim();
+      if (payload === "[DONE]") continue;
+      const part = JSON.parse(payload);
+      if (part.type === "start" && part.messageId) assistantId = part.messageId;
+      if (part.type === "text-delta" && typeof part.delta === "string") {
+        firstTokenMs ??= Date.now() - started;
+        text += part.delta;
+        chunks += 1;
+      }
+      if (part.type === "error") check(false, `stream error: ${part.errorText}`);
+    }
+  }
+  check(chunks > 0, `streamed ${chunks} chunks, first token after ${firstTokenMs} ms`);
+  console.log(`     reply: ${text.trim().replace(/\s+/g, " ").slice(0, 100)}`);
+  return { id: assistantId ?? crypto.randomUUID(), text };
+}
+
 const health = await call("/api/health");
 const healthBody = await health.json();
-check(health.status === 200, `health (${JSON.stringify(healthBody)})`);
+check(health.status === 200, `health (${healthBody.models?.length ?? 0} models)`);
 
 const registered = await call("/api/register", {
   method: "POST",
-  headers: { "content-type": "application/json" },
+  headers: json,
   body: JSON.stringify({ name: "Smoke Test", email, password }),
 });
 check(registered.status === 201, "register");
+
+const duplicate = await call("/api/register", {
+  method: "POST",
+  headers: json,
+  body: JSON.stringify({ name: "Smoke Test", email, password }),
+});
+check(duplicate.status === 409, "duplicate email rejected");
 
 const csrf = await (await call("/api/auth/csrf")).json();
 const login = await call("/api/auth/callback/credentials", {
@@ -62,67 +119,49 @@ check(
   "sign in",
 );
 
-const created = await call("/api/conversations", { method: "POST" });
-check(created.status === 201, "create conversation");
-const { id } = await created.json();
+const modelsResponse = await call("/api/models");
+const { models } = await modelsResponse.json();
+check(modelsResponse.status === 200 && models.length > 0, `list models (${models.map((m) => m.name).join(", ")})`);
+const bySize = [...models].sort((a, b) => a.size - b.size);
+const first = process.env.SMOKE_MODEL ?? bySize[0].name;
+const second = bySize.find((model) => model.name !== first)?.name ?? first;
 
-const userMessageId = crypto.randomUUID();
-const started = Date.now();
-const chat = await call("/api/chat", {
+const created = await call("/api/conversations", {
   method: "POST",
-  headers: { "content-type": "application/json" },
-  body: JSON.stringify({
-    conversationId: id,
-    id,
-    trigger: "submit-message",
-    messages: [
-      {
-        id: userMessageId,
-        role: "user",
-        parts: [{ type: "text", text: "Reply with exactly: harbor smoke ok" }],
-      },
-    ],
-  }),
+  headers: json,
+  body: JSON.stringify({ model: first }),
 });
-check(chat.status === 200, "chat request accepted");
+check(created.status === 201, "create conversation");
+const { id, model: createdModel } = await created.json();
+check(createdModel === first, `conversation stores model (${createdModel})`);
 
-const reader = chat.body.getReader();
-const decoder = new TextDecoder();
-let streamed = "";
-let chunks = 0;
-let firstTokenMs = null;
-for (;;) {
-  const { done, value } = await reader.read();
-  if (done) break;
-  for (const line of decoder.decode(value, { stream: true }).split("\n")) {
-    if (!line.startsWith("data: ")) continue;
-    const payload = line.slice(6).trim();
-    if (payload === "[DONE]") continue;
-    try {
-      const part = JSON.parse(payload);
-      if (part.type === "text-delta" && typeof part.delta === "string") {
-        firstTokenMs ??= Date.now() - started;
-        streamed += part.delta;
-        chunks += 1;
-      }
-      if (part.type === "error") check(false, `stream error: ${part.errorText}`);
-    } catch {
-      // partial line split across reads
-    }
-  }
-}
-check(chunks > 1, `streamed ${chunks} chunks, first token after ${firstTokenMs} ms`);
-console.log(`     reply: ${streamed.trim().slice(0, 120)}`);
+const userOne = { id: crypto.randomUUID(), role: "user", parts: [{ type: "text", text: "Reply with exactly: harbor smoke ok" }] };
+const replyOne = await chat(id, [userOne]);
+
+const userTwo = { id: crypto.randomUUID(), role: "user", parts: [{ type: "text", text: "Now say: switched" }] };
+await chat(
+  id,
+  [userOne, { id: replyOne.id, role: "assistant", parts: [{ type: "text", text: replyOne.text }] }, userTwo],
+  second,
+);
+
+const missing = await call("/api/chat", {
+  method: "POST",
+  headers: json,
+  body: JSON.stringify({ conversationId: id, messages: [userOne], model: "not-installed:1b" }),
+});
+check(missing.status === 400, "unknown model rejected");
 
 await new Promise((resolve) => setTimeout(resolve, 300));
 const saved = await (await call(`/api/conversations/${id}`)).json();
 check(
-  saved.messages.length === 2 &&
-    saved.messages[0].id === userMessageId &&
-    saved.messages[1].role === "assistant" &&
-    saved.messages[1].content.length > 0,
-  "both messages saved in order",
+  saved.messages.length === 4 &&
+    saved.messages[0].id === userOne.id &&
+    saved.messages[2].id === userTwo.id &&
+    saved.messages[3].role === "assistant",
+  "all four messages saved in order",
 );
+check(saved.model === second, `conversation switched to ${saved.model}`);
 check(saved.title !== "New chat", `title set ("${saved.title}")`);
 
 const deleted = await call(`/api/conversations/${id}`, { method: "DELETE" });

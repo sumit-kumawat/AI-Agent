@@ -25,6 +25,7 @@ export async function GET(
   return Response.json({
     id: conversation.id,
     title: conversation.title,
+    model: conversation.model,
     messages: listMessages(conversation.id).map((message) => ({
       id: message.id,
       role: message.role,

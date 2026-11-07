@@ -1,4 +1,4 @@
-import NextAuth from "next-auth";
+import NextAuth, { CredentialsSignin } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { compare } from "bcryptjs";
 import { authConfig } from "@/lib/auth.config";
@@ -10,6 +10,12 @@ import { credentialsSchema } from "@/lib/validators";
 // Compared against when the email is unknown, so a miss costs as much as a hit.
 const DUMMY_HASH =
   "$2b$12$.ym6CxekPDYGqLE5Uc22jO0USrCHEyuNmBqxEnMeorcDfOF4avEzm";
+
+const WINDOW = 15 * 60 * 1000;
+
+class RateLimited extends CredentialsSignin {
+  code = "rate_limited";
+}
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
@@ -32,13 +38,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (!parsed.success) return null;
 
         const ip = clientIp(request.headers);
-        const byIp = rateLimit(`login:ip:${ip}`, 30, 15 * 60 * 1000);
-        const byEmail = rateLimit(
-          `login:email:${parsed.data.email}`,
-          10,
-          15 * 60 * 1000,
-        );
-        if (!byIp.ok || !byEmail.ok) return null;
+        const byIp = ip ? rateLimit(`login:ip:${ip}`, 30, WINDOW) : { ok: true };
+        const byEmail = rateLimit(`login:email:${parsed.data.email}`, 10, WINDOW);
+        if (!byIp.ok || !byEmail.ok) throw new RateLimited();
 
         const user = findUserByEmail(parsed.data.email);
         const passwordMatches = await compare(

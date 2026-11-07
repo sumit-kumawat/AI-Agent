@@ -5,14 +5,9 @@ import { registerSchema } from "@/lib/validators";
 
 export const runtime = "nodejs";
 
-export async function POST(request: Request) {
-  const limited = rateLimit(
-    `register:${clientIp(request.headers)}`,
-    10,
-    60 * 60 * 1000,
-  );
-  if (!limited.ok) return tooManyRequests(limited.retryAfter);
+const HOUR = 60 * 60 * 1000;
 
+export async function POST(request: Request) {
   let body: unknown;
   try {
     body = await request.json();
@@ -43,6 +38,13 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
+
+  // Only requests that reach bcrypt are counted; typos and invalid forms are cheap.
+  const ip = clientIp(request.headers);
+  const limited = ip
+    ? rateLimit(`register:ip:${ip}`, 10, HOUR)
+    : rateLimit("register:direct", 200, HOUR);
+  if (!limited.ok) return tooManyRequests(limited.retryAfter);
 
   if (findUserByEmail(parsed.data.email)) {
     return Response.json(

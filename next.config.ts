@@ -38,6 +38,8 @@ const nextConfig: NextConfig = {
   agentRules: false,
   output: "standalone",
   poweredByHeader: false,
+  // Lets phones and other machines on the local network use `npm run dev`.
+  allowedDevOrigins: ["192.168.*.*", "10.*.*.*", "172.*.*.*", "*.local"],
   serverExternalPackages: ["better-sqlite3"],
   outputFileTracingExcludes: {
     "*": ["./data/**", "./.env*", "./scripts/**", "./drizzle/**"],

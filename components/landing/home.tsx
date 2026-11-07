@@ -21,7 +21,7 @@ const phases = [
   {
     step: "02",
     title: "Streaming chat",
-    body: "Messages stream from a local Ollama model. The default is qwen2.5-coder:14b, which is Apache-2.0.",
+    body: "Replies stream from a local Ollama model. Pick from Llama, Qwen, Gemma, DeepSeek, Mistral, Phi, and more, from 1B to 70B parameters.",
   },
   {
     step: "03",
@@ -78,15 +78,15 @@ export function HomePage({ signedIn }: { signedIn: boolean }) {
       <main>
         <section className="relative overflow-hidden">
           <div className="pointer-events-none absolute inset-x-0 top-0 h-80 bg-[radial-gradient(ellipse_at_top,oklch(0.9_0.045_175/0.55),transparent_68%)]" />
-          <div className="relative mx-auto grid max-w-6xl gap-12 px-6 py-20 lg:grid-cols-[1.3fr_0.7fr] lg:py-28">
+          <div className="relative mx-auto grid max-w-6xl gap-10 px-5 py-14 sm:gap-12 sm:px-6 sm:py-20 lg:grid-cols-[1.3fr_0.7fr] lg:py-28">
             <div className="max-w-2xl">
               <p className="text-sm font-medium tracking-wide text-primary uppercase">
                 Self-hosted agent platform
               </p>
-              <h1 className="mt-4 font-heading text-5xl leading-[1.05] text-balance sm:text-6xl">
+              <h1 className="mt-4 font-heading text-4xl leading-[1.05] text-balance sm:text-6xl">
                 A private chat that stays on your machine.
               </h1>
-              <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground">
+              <p className="mt-6 max-w-xl text-base leading-relaxed text-muted-foreground sm:text-lg">
                 Harbor is the first slice of a product you can host yourself.
                 Sign in, talk to a local model, and keep the thread in SQLite.
               </p>
@@ -114,9 +114,9 @@ export function HomePage({ signedIn }: { signedIn: boolean }) {
                 {"  "}data/harbor.db
               </pre>
               <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
-                Swap the model with the <code>OLLAMA_MODEL</code> environment
-                variable. A smaller build such as{" "}
-                <code>qwen2.5-coder:7b</code> works the same way.
+                Switch models per chat. Small ones like{" "}
+                <code>llama3.2:1b</code> answer almost instantly; larger ones
+                like <code>qwen2.5-coder:14b</code> answer better.
               </p>
             </div>
           </div>

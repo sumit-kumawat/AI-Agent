@@ -6,11 +6,17 @@ import { signOut } from "next-auth/react";
 import {
   createContext,
   useContext,
+  useMemo,
   useState,
   type ReactNode,
 } from "react";
-import { LogOut, Menu, Plus, Trash } from "lucide-react";
+import { Boxes, LogOut, Menu, Plus, Trash } from "lucide-react";
 import { Mark } from "@/components/brand";
+import {
+  pickModel,
+  usePreferredModel,
+  type ModelOption,
+} from "@/components/chat/model-picker";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -20,7 +26,12 @@ import {
 } from "@/components/ui/sheet";
 import type { ConversationListItem } from "@/lib/db/queries";
 
-type Chrome = { openMenu: () => void };
+type Chrome = {
+  openMenu: () => void;
+  models: ModelOption[];
+  defaultModel: string | null;
+  admin: boolean;
+};
 
 const ChatChromeContext = createContext<Chrome | null>(null);
 
@@ -49,6 +60,8 @@ export function NewChatButton({
   label?: string;
 }) {
   const router = useRouter();
+  const { models, defaultModel } = useChatChrome();
+  const preferred = usePreferredModel();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -56,7 +69,11 @@ export function NewChatButton({
     setPending(true);
     setError(null);
     try {
-      const response = await fetch("/api/conversations", { method: "POST" });
+      const response = await fetch("/api/conversations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: pickModel(models, preferred, defaultModel) }),
+      });
       if (!response.ok) {
         setError("Could not start a chat.");
         return;
@@ -133,7 +150,7 @@ function ConversationList({
             <Link
               href={`/chat/${conversation.id}`}
               onClick={onNavigate}
-              className="min-w-0 flex-1 px-2.5 py-2"
+              className="min-w-0 flex-1 px-2.5 py-2.5 md:py-2"
             >
               <span className="block truncate text-sm">{conversation.title}</span>
               <span
@@ -164,30 +181,45 @@ function ConversationList({
 function SidebarBody({
   conversations,
   user,
-  model,
   onNavigate,
 }: {
   conversations: ConversationListItem[];
   user: { name?: string | null; email?: string | null };
-  model: string;
   onNavigate?: () => void;
 }) {
+  const { models, admin } = useChatChrome();
+  const pathname = usePathname();
+  const count = models.length;
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-2 px-4 py-4">
         <Mark className="size-7 text-primary" />
-        <div>
+        <div className="min-w-0">
           <p className="text-sm font-medium">Harbor</p>
-          <p className="text-xs text-muted-foreground">{model}</p>
+          <p className="truncate text-xs text-muted-foreground">
+            {count === 1 ? "1 model installed" : `${count} models installed`}
+          </p>
         </div>
       </div>
-      <div className="px-3">
+      <div className="space-y-1 px-3">
         <NewChatButton />
+        <Link
+          href="/chat/models"
+          onClick={onNavigate}
+          className={`flex h-9 items-center gap-2 rounded-lg px-2.5 text-sm ${
+            pathname === "/chat/models"
+              ? "bg-accent text-accent-foreground"
+              : "text-muted-foreground hover:bg-muted hover:text-foreground"
+          }`}
+        >
+          <Boxes className="size-4" />
+          {admin ? "Manage models" : "Models"}
+        </Link>
       </div>
-      <div className="mt-4 min-h-0 flex-1 overflow-y-auto px-2">
+      <div className="mt-4 min-h-0 flex-1 overflow-y-auto overscroll-contain px-2">
         <ConversationList conversations={conversations} onNavigate={onNavigate} />
       </div>
-      <div className="border-t p-3">
+      <div className="border-t p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         <p className="truncate text-sm font-medium">
           {user.name || "Signed in"}
         </p>
@@ -210,36 +242,39 @@ export function ChatShell({
   children,
   conversations,
   user,
-  model,
+  models,
+  defaultModel,
+  admin,
   ollamaMessage,
 }: {
   children: ReactNode;
   conversations: ConversationListItem[];
   user: { name?: string | null; email?: string | null };
-  model: string;
+  models: ModelOption[];
+  defaultModel: string | null;
+  admin: boolean;
   ollamaMessage: string | null;
 }) {
   const [open, setOpen] = useState(false);
+  const chrome = useMemo(
+    () => ({ openMenu: () => setOpen(true), models, defaultModel, admin }),
+    [models, defaultModel, admin],
+  );
 
   return (
-    <ChatChromeContext.Provider value={{ openMenu: () => setOpen(true) }}>
+    <ChatChromeContext.Provider value={chrome}>
       <div className="fixed inset-0 flex overflow-hidden bg-background">
-        <aside className="hidden w-72 shrink-0 border-r md:flex">
-          <SidebarBody
-            conversations={conversations}
-            user={user}
-            model={model}
-          />
+        <aside className="hidden w-72 shrink-0 border-r md:flex lg:w-80">
+          <SidebarBody conversations={conversations} user={user} />
         </aside>
         <Sheet open={open} onOpenChange={setOpen}>
-          <SheetContent side="left" className="w-80 p-0 sm:max-w-80">
+          <SheetContent side="left" className="w-[85vw] max-w-80 p-0 sm:max-w-80">
             <SheetHeader className="sr-only">
               <SheetTitle>Conversations</SheetTitle>
             </SheetHeader>
             <SidebarBody
               conversations={conversations}
               user={user}
-              model={model}
               onNavigate={() => setOpen(false)}
             />
           </SheetContent>
@@ -260,13 +295,15 @@ export function ChatShell({
 export function ChatTopBar({
   title,
   detail,
+  actions,
 }: {
   title: string;
   detail?: string;
+  actions?: ReactNode;
 }) {
   const { openMenu } = useChatChrome();
   return (
-    <div className="flex items-center gap-2 border-b px-3 py-3 md:px-5">
+    <div className="flex min-h-14 items-center gap-2 border-b px-2 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] sm:px-3 md:px-5">
       <Button
         type="button"
         variant="ghost"
@@ -277,12 +314,13 @@ export function ChatTopBar({
       >
         <Menu />
       </Button>
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <h1 className="truncate text-sm font-medium">{title}</h1>
         {detail ? (
           <p className="truncate text-xs text-muted-foreground">{detail}</p>
         ) : null}
       </div>
+      {actions}
     </div>
   );
 }

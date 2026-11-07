@@ -15,30 +15,64 @@ export const ollama = createOpenAICompatible({
   apiKey: process.env.OLLAMA_API_KEY ?? "ollama",
 });
 
-export function getChatModel() {
-  return ollama.chatModel(getModelName());
+export function getChatModel(name: string) {
+  return ollama.chatModel(name);
 }
 
-function modelIsInstalled(names: string[], wanted: string) {
-  return names.some(
-    (name) =>
-      name === wanted ||
-      name.startsWith(`${wanted}:`) ||
-      wanted.startsWith(`${name}:`),
-  );
-}
-
-type OllamaStatus = { ok: true } | { ok: false; error: string };
-
-const ollamaCache = globalThis as typeof globalThis & {
-  harborOllamaCheck?: { at: number; value: OllamaStatus };
+export type InstalledModel = {
+  name: string;
+  size: number;
+  parameterSize: string | null;
+  family: string | null;
+  quantization: string | null;
 };
 
-async function checkOllamaNow(): Promise<OllamaStatus> {
-  const model = getModelName();
+type Inventory =
+  | { ok: true; models: InstalledModel[] }
+  | { ok: false; error: string };
+
+type TagsResponse = {
+  models?: {
+    name: string;
+    size?: number;
+    details?: {
+      family?: string;
+      families?: string[] | null;
+      parameter_size?: string;
+      quantization_level?: string;
+    };
+  }[];
+};
+
+/** "7.6B" -> 7.6e9, "567M" -> 5.67e8. Unknown sizes return null. */
+function parseParameterCount(value: string | undefined) {
+  const match = value?.trim().match(/^([\d.]+)\s*([KMBT])?$/i);
+  if (!match) return null;
+  const scale = { K: 1e3, M: 1e6, B: 1e9, T: 1e12 }[
+    (match[2] ?? "").toUpperCase() as "K" | "M" | "B" | "T"
+  ];
+  return Number(match[1]) * (scale ?? 1);
+}
+
+const EMBEDDING_FAMILIES = new Set(["bert", "nomic-bert", "jina-bert"]);
+
+// gemma3:1b reports 999.89M, so the floor sits just under one billion.
+const MIN_PARAMETERS = 0.9e9;
+
+function isChatModel(model: NonNullable<TagsResponse["models"]>[number]) {
+  if (/embed|rerank/i.test(model.name)) return false;
+  const families = [model.details?.family, ...(model.details?.families ?? [])];
+  if (families.some((family) => family && EMBEDDING_FAMILIES.has(family))) {
+    return false;
+  }
+  const count = parseParameterCount(model.details?.parameter_size);
+  return count === null || count >= MIN_PARAMETERS;
+}
+
+async function fetchInventory(): Promise<Inventory> {
   try {
     const response = await fetch(`${ollamaRoot()}/api/tags`, {
-      signal: AbortSignal.timeout(1500),
+      signal: AbortSignal.timeout(2000),
       cache: "no-store",
     });
     if (!response.ok) {
@@ -47,15 +81,18 @@ async function checkOllamaNow(): Promise<OllamaStatus> {
         error: "Ollama is running but rejected the model list request.",
       };
     }
-    const data = (await response.json()) as { models?: { name: string }[] };
-    const names = data.models?.map((item) => item.name) ?? [];
-    if (!modelIsInstalled(names, model)) {
-      return {
-        ok: false,
-        error: `Model "${model}" is not installed. From a terminal, run: ollama pull ${model}`,
-      };
-    }
-    return { ok: true };
+    const data = (await response.json()) as TagsResponse;
+    const models = (data.models ?? [])
+      .filter(isChatModel)
+      .map((model) => ({
+        name: model.name,
+        size: model.size ?? 0,
+        parameterSize: model.details?.parameter_size ?? null,
+        family: model.details?.family ?? null,
+        quantization: model.details?.quantization_level ?? null,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    return { ok: true, models };
   } catch {
     return {
       ok: false,
@@ -64,10 +101,54 @@ async function checkOllamaNow(): Promise<OllamaStatus> {
   }
 }
 
-export async function checkOllama() {
-  const cached = ollamaCache.harborOllamaCheck;
+const cache = globalThis as typeof globalThis & {
+  harborInventory?: { at: number; value: Inventory };
+};
+
+export async function getInventory() {
+  const cached = cache.harborInventory;
   if (cached && Date.now() - cached.at < 5000) return cached.value;
-  const value = await checkOllamaNow();
-  ollamaCache.harborOllamaCheck = { at: Date.now(), value };
+  const value = await fetchInventory();
+  cache.harborInventory = { at: Date.now(), value };
   return value;
+}
+
+export function invalidateInventory() {
+  cache.harborInventory = undefined;
+}
+
+function sameModel(installed: string, wanted: string) {
+  return (
+    installed === wanted ||
+    installed === `${wanted}:latest` ||
+    wanted === `${installed}:latest`
+  );
+}
+
+export function findInstalled(models: InstalledModel[], wanted: string | null | undefined) {
+  if (!wanted) return undefined;
+  return models.find((model) => sameModel(model.name, wanted));
+}
+
+/** Picks the requested model, then the server default, then any installed chat model. */
+export function resolveModel(models: InstalledModel[], ...preferred: (string | null | undefined)[]) {
+  for (const wanted of [...preferred, getModelName()]) {
+    const match = findInstalled(models, wanted);
+    if (match) return match.name;
+  }
+  return models[0]?.name ?? null;
+}
+
+type OllamaStatus = { ok: true } | { ok: false; error: string };
+
+export async function checkOllama(): Promise<OllamaStatus> {
+  const inventory = await getInventory();
+  if (!inventory.ok) return inventory;
+  if (inventory.models.length === 0) {
+    return {
+      ok: false,
+      error: `No chat models are installed. From a terminal, run: ollama pull ${getModelName()}`,
+    };
+  }
+  return { ok: true };
 }

@@ -18,19 +18,28 @@ export function LoginForm({ callbackUrl }: { callbackUrl: string }) {
     const form = new FormData(event.currentTarget);
     setPending(true);
     setError(null);
-    const result = await signIn("credentials", {
-      email: String(form.get("email") ?? ""),
-      password: String(form.get("password") ?? ""),
-      redirect: false,
-      callbackUrl,
-    });
-    if (result?.error) {
-      setError("Email or password is incorrect.");
+    try {
+      const result = await signIn("credentials", {
+        email: String(form.get("email") ?? "").trim(),
+        password: String(form.get("password") ?? ""),
+        redirect: false,
+        callbackUrl,
+      });
+      if (result?.error) {
+        setError(
+          result.code === "rate_limited"
+            ? "Too many sign-in attempts. Wait 15 minutes and try again."
+            : "Email or password is incorrect.",
+        );
+        setPending(false);
+        return;
+      }
+      router.replace(callbackUrl);
+      router.refresh();
+    } catch {
+      setError("Could not reach the server. Check your connection.");
       setPending(false);
-      return;
     }
-    router.push(callbackUrl);
-    router.refresh();
   }
 
   return (

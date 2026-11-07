@@ -1,0 +1,9 @@
+---
+description: Push every finished update or fix to GitHub
+alwaysApply: true
+---
+
+After any update or fix is finished and verified (typecheck, lint, build, and `npm run smoke` when the server is running), commit it and push to `origin main` at https://github.com/sumit-kumawat/AI-Agent.
+
+- Never commit `.env*` files other than `.env.example`, or anything in `data/`.
+- Keep the existing color theme in `app/globals.css` unchanged unless the user asks.

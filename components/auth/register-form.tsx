@@ -16,42 +16,48 @@ export function RegisterForm() {
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const name = String(form.get("name") ?? "");
-    const email = String(form.get("email") ?? "");
+    const name = String(form.get("name") ?? "").trim();
+    const email = String(form.get("email") ?? "").trim();
     const password = String(form.get("password") ?? "");
     setPending(true);
     setError(null);
 
-    const response = await fetch("/api/register", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, email, password }),
-    });
-    const payload = (await response.json().catch(() => null)) as {
-      error?: string;
-    } | null;
+    try {
+      const response = await fetch("/api/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, email, password }),
+      });
+      const payload = (await response.json().catch(() => null)) as {
+        error?: string;
+      } | null;
 
-    if (!response.ok) {
-      setError(payload?.error ?? "Could not create the account.");
-      setPending(false);
-      return;
-    }
+      if (!response.ok) {
+        setError(payload?.error ?? "Could not create the account.");
+        setPending(false);
+        return;
+      }
 
-    const result = await signIn("credentials", {
-      email,
-      password,
-      redirect: false,
-      callbackUrl: "/chat",
-    });
+      const result = await signIn("credentials", {
+        email,
+        password,
+        redirect: false,
+        callbackUrl: "/chat",
+      });
 
-    if (result?.error) {
-      router.push("/login");
+      if (result?.error) {
+        setError("Account created, but sign-in failed. Sign in to continue.");
+        setPending(false);
+        router.push("/login");
+        return;
+      }
+
+      router.replace("/chat");
       router.refresh();
-      return;
+    } catch {
+      setError("Could not reach the server. Check your connection.");
+      setPending(false);
     }
-
-    router.push("/chat");
-    router.refresh();
   }
 
   return (

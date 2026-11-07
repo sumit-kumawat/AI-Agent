@@ -9,9 +9,10 @@ import {
   getConversationForUser,
   maybeSetTitle,
   saveAssistantMessage,
+  setConversationModel,
   syncTranscript,
 } from "@/lib/db/queries";
-import { checkOllama, getChatModel } from "@/lib/ollama";
+import { findInstalled, getChatModel, getInventory, resolveModel } from "@/lib/ollama";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
 import { textFromParts } from "@/lib/text";
 import { chatRequestSchema } from "@/lib/validators";
@@ -89,12 +90,31 @@ export async function POST(request: Request) {
     );
   }
 
+  // Reject a bad model before touching history; an outage below still saves the message.
+  const inventory = await getInventory();
+  const requested = parsed.data.model;
+  if (inventory.ok && requested && !findInstalled(inventory.models, requested)) {
+    return Response.json(
+      { error: `Model "${requested}" is not installed. Pick another model.` },
+      { status: 400 },
+    );
+  }
+
   syncTranscript(conversation.id, transcript);
   maybeSetTitle(conversation.id, conversation.title, latestUser.content);
 
-  const ollamaStatus = await checkOllama();
-  if (!ollamaStatus.ok) {
-    return Response.json({ error: ollamaStatus.error }, { status: 503 });
+  if (!inventory.ok) {
+    return Response.json({ error: inventory.error }, { status: 503 });
+  }
+  const modelName = resolveModel(inventory.models, requested, conversation.model);
+  if (!modelName) {
+    return Response.json(
+      { error: "No chat models are installed. Ask an admin to add one." },
+      { status: 503 },
+    );
+  }
+  if (modelName !== conversation.model) {
+    setConversationModel(conversation.id, modelName);
   }
 
   const cleanMessages: UIMessage[] = transcript.map((message) => ({
@@ -108,7 +128,7 @@ export async function POST(request: Request) {
     .map((message) => ({ role: message.role, content: message.content }));
 
   const result = streamText({
-    model: getChatModel(),
+    model: getChatModel(modelName),
     instructions: INSTRUCTIONS,
     messages: modelMessages,
     maxOutputTokens: 4096,
@@ -122,7 +142,7 @@ export async function POST(request: Request) {
       generateMessageId: () => crypto.randomUUID(),
       onError: (error) => {
         console.error("Ollama stream failed", error);
-        return "The local model stopped responding. Check that Ollama is running and the model is pulled.";
+        return `${modelName} stopped responding. Check that Ollama is running, or pick a smaller model.`;
       },
       onFinish: async ({ responseMessage }) => {
         try {
