@@ -1,0 +1,42 @@
+import Link from "next/link";
+import { auth } from "@/lib/auth";
+import { Mark } from "@/components/brand";
+import { Button } from "@/components/ui/button";
+
+export async function SiteHeader() {
+  const session = await auth();
+  const signedIn = Boolean(session?.user?.id);
+
+  return (
+    <header className="sticky top-0 z-20 border-b border-border/80 bg-background/90 backdrop-blur">
+      <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-6">
+        <Link href="/" className="flex items-center gap-2 text-sm font-medium">
+          <Mark className="size-7 text-primary" />
+          Harbor
+        </Link>
+        <nav className="flex items-center gap-2 text-sm">
+          <Link
+            href="/#pricing"
+            className="hidden px-2 text-muted-foreground hover:text-foreground sm:inline"
+          >
+            Pricing
+          </Link>
+          {signedIn ? (
+            <Button asChild>
+              <Link href="/chat">Open chat</Link>
+            </Button>
+          ) : (
+            <>
+              <Button asChild variant="ghost">
+                <Link href="/login">Sign in</Link>
+              </Button>
+              <Button asChild>
+                <Link href="/register">Create account</Link>
+              </Button>
+            </>
+          )}
+        </nav>
+      </div>
+    </header>
+  );
+}
