@@ -75,6 +75,16 @@ npm run seed
 
 It creates `admin@harbor.local` (admin) and `test@harbor.local` (user) if they do not exist, and prints a random password for each. Set `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`, `SEED_USER_EMAIL`, and `SEED_USER_PASSWORD` to choose them. Existing accounts are never changed.
 
+## Chat
+
+- The sidebar lists conversations newest first, grouped by day, with **New chat** at the top. Each one can be renamed or deleted from its menu. On desktop the sidebar collapses; on phones it opens from the menu button.
+- Replies stream token by token with a blinking caret and render as markdown, with syntax-highlighted code blocks (with a copy button), tables, and lists. Rendering uses [Streamdown](https://streamdown.ai).
+- Enter sends and Shift+Enter adds a line. The composer grows with the text, and the model selector sits at its left.
+- Hover a message to copy it. Use **Regenerate** under the last reply, and **Stop** while a reply is streaming; a stopped reply keeps what was written so far.
+- The view follows a streaming reply until you scroll up, then a button jumps back to the latest message.
+- Each chat is named from its first message. Click the title in the top bar to rename it.
+- The sun and moon button in the sidebar footer switches between light and dark mode.
+
 ## Admin panel
 
 Admins see an **Admin panel** link in the chat sidebar, or open `/admin` directly. Everyone else is sent back to `/chat`. The proxy checks the role on every request and the admin layout and actions check it again in the database, so promotions, demotions, and suspensions take effect immediately.
@@ -119,6 +129,7 @@ The app stores its database in the `harbor-data` volume and models live in `olla
 - `GET /api/health` returns `200` with `{ ok, database, ollama, model, models }` when the database is up and at least one chat model is installed, and `503` otherwise. Point uptime checks and load balancers at it.
 - `npm run smoke` runs an end-to-end check against a running server: health, register, sign in, list models, a streamed reply, a reply after switching models, saved history, and cleanup. Set `SMOKE_URL` to test another host and `SMOKE_MODEL` to pick the first model. It deletes its test account at the end, so it never becomes the first-account admin.
 - `npm run e2e:admin` drives the admin panel in headless Chrome against a running server. It seeds a throwaway admin and user, exercises every admin page and action (models, agents, killing a session, quota, blocklist, rate limit, flag and delete, suspend, password reset, role changes, audit log), restores the settings, and deletes both accounts. Set `CHROME_PATH` if Chrome is not in `/Applications`, and `E2E_URL` for another host. Screenshots go to `/tmp/harbor-e2e`.
+- `npm run e2e:chat` drives the chat UI in headless Chrome at desktop and phone sizes: streaming, markdown and code highlighting, copy, regenerate, stop, auto-scroll, rename, dark mode, and the sidebar. It uses `llama3.2:1b` by default; set `E2E_MODEL` to change it. It deletes its test account at the end.
 - `DELETE /api/account` with `{ "password": "…" }` deletes the signed-in account and all of its conversations.
 - Choosing a model in the picker preloads it for 30 minutes, so the first reply does not wait for a cold start.
 - `npm run check` runs typecheck, lint, and the production build.
@@ -139,7 +150,8 @@ Rate limits are kept in memory. That is correct for one server process. If you r
 | --- | --- |
 | `app/page.tsx` | Landing page |
 | `app/login`, `app/register` | Auth screens |
-| `app/chat` | Conversation list and composer |
+| `app/chat` | Chat pages |
+| `components/chat` | Sidebar, messages, composer, markdown, model picker |
 | `app/api/chat/route.ts` | Streams a reply from Ollama and saves it |
 | `app/api/register/route.ts` | Creates a user |
 | `app/api/health/route.ts` | Health check |

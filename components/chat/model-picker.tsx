@@ -83,15 +83,23 @@ export function ModelPicker({
   value,
   onChange,
   disabled,
+  compact = false,
 }: {
   models: ModelOption[];
   value: string | null;
   onChange: (name: string) => void;
   disabled?: boolean;
+  /** Borderless trigger that opens upward, for use inside the composer. */
+  compact?: boolean;
 }) {
   if (models.length === 0) {
     return (
-      <Button asChild variant="outline" size="sm" className="h-9 shrink-0 md:h-8">
+      <Button
+        asChild
+        variant={compact ? "ghost" : "outline"}
+        size="sm"
+        className={compact ? "h-8 shrink-0 rounded-full px-2.5 text-muted-foreground" : "h-9 shrink-0 md:h-8"}
+      >
         <Link href="/chat/models">
           <Boxes />
           Add a model
@@ -105,16 +113,24 @@ export function ModelPicker({
       <DropdownMenuTrigger asChild disabled={disabled}>
         <Button
           type="button"
-          variant="outline"
+          variant={compact ? "ghost" : "outline"}
           size="sm"
-          className="h-9 max-w-[10.5rem] shrink-0 sm:max-w-[16rem] md:h-8"
+          className={
+            compact
+              ? "h-8 max-w-[11rem] shrink-0 rounded-full px-2.5 text-muted-foreground sm:max-w-[16rem]"
+              : "h-9 max-w-[10.5rem] shrink-0 sm:max-w-[16rem] md:h-8"
+          }
           aria-label="Choose model"
         >
           <span className="truncate">{value ?? "Choose model"}</span>
           <ChevronDown className="opacity-60" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-72 max-w-[calc(100vw-1.5rem)]">
+      <DropdownMenuContent
+        align={compact ? "start" : "end"}
+        side={compact ? "top" : "bottom"}
+        className="w-72 max-w-[calc(100vw-1.5rem)]"
+      >
         <DropdownMenuLabel className="text-xs text-muted-foreground">
           Installed models
         </DropdownMenuLabel>

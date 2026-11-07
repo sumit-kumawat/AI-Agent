@@ -2,17 +2,38 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { ArrowUp } from "lucide-react";
-import { ChatTopBar, NewChatButton, useChatChrome } from "@/components/chat/chat-shell";
-import {
-  ModelPicker,
-  pickModel,
-  usePreferredModel,
-  useWarmModel,
-} from "@/components/chat/model-picker";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import { ChatTopBar, useChatChrome } from "@/components/chat/chat-shell";
+import { Composer } from "@/components/chat/composer";
+import { pickModel, usePreferredModel, useWarmModel } from "@/components/chat/model-picker";
 
+const SUGGESTIONS = [
+  "Explain how SQLite WAL mode works",
+  "Write a TypeScript function that retries fetch",
+  "Draft a short changelog for a chat app",
+  "Compare REST and GraphQL in a table",
+];
+
+export function Greeting({ onPick }: { onPick: (text: string) => void }) {
+  return (
+    <div className="flex flex-col items-center px-2 text-center">
+      <h2 className="font-heading text-3xl text-balance sm:text-4xl">What can I help with?</h2>
+      <div className="mt-6 grid w-full max-w-2xl grid-cols-1 gap-2 sm:grid-cols-2">
+        {SUGGESTIONS.map((suggestion) => (
+          <button
+            key={suggestion}
+            type="button"
+            className="rounded-2xl border px-4 py-3 text-left text-sm text-muted-foreground hover:bg-muted hover:text-foreground active:bg-muted"
+            onClick={() => onPick(suggestion)}
+          >
+            {suggestion}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** A blank chat. The conversation is created when the first message is sent. */
 export function StartChat() {
   const router = useRouter();
   const { models, defaultModel } = useChatChrome();
@@ -26,7 +47,7 @@ export function StartChat() {
 
   async function start(text: string) {
     const trimmed = text.trim();
-    if (!trimmed || pending) return;
+    if (!trimmed || pending || !model) return;
     setPending(true);
     setError(null);
     try {
@@ -39,6 +60,7 @@ export function StartChat() {
       const conversation = (await response.json()) as { id: string };
       sessionStorage.setItem(`harbor-draft:${conversation.id}`, trimmed);
       router.push(`/chat/${conversation.id}`);
+      router.refresh();
     } catch {
       setError("Could not start a chat. Check your connection and try again.");
       setPending(false);
@@ -47,64 +69,24 @@ export function StartChat() {
 
   return (
     <div className="flex h-full flex-col">
-      <ChatTopBar
-        title="Harbor"
-        actions={<ModelPicker models={models} value={model} onChange={setPicked} />}
-      />
-      <div className="flex flex-1 flex-col items-center justify-center overflow-y-auto px-6 py-8 text-center">
-        <h2 className="font-heading text-3xl text-balance sm:text-4xl">
-          Start a conversation
-        </h2>
-        <p className="mt-3 max-w-md text-sm leading-relaxed text-muted-foreground">
-          Your message is saved to this account and streamed from{" "}
-          {model ? <span className="font-medium text-foreground">{model}</span> : "a local model"}{" "}
-          running on this server.
-        </p>
-        <div className="mt-6">
-          <NewChatButton label="Empty chat" className="w-48" />
+      <ChatTopBar title="New chat" />
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:justify-center">
+        <div className="flex flex-1 items-center justify-center py-6 md:mb-8 md:flex-none">
+          <Greeting onPick={(text) => void start(text)} />
+        </div>
+        <div className="md:pb-[12vh]">
+          <Composer
+            value={input}
+            onChange={setInput}
+            onSubmit={(text) => void start(text)}
+            pending={pending}
+            models={models}
+            model={model}
+            onModelChange={setPicked}
+            error={error}
+          />
         </div>
       </div>
-      <form
-        className="border-t bg-background"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void start(input);
-        }}
-      >
-        <div className="mx-auto flex w-full max-w-3xl items-end gap-2 px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-4 sm:py-4">
-          <Textarea
-            value={input}
-            onChange={(event) => setInput(event.target.value)}
-            onKeyDown={(event) => {
-              if (
-                event.key === "Enter" &&
-                !event.shiftKey &&
-                !event.nativeEvent.isComposing
-              ) {
-                event.preventDefault();
-                void start(input);
-              }
-            }}
-            placeholder="Message Harbor"
-            aria-label="Message"
-            enterKeyHint="send"
-            rows={1}
-            className="max-h-40 min-h-11 resize-none py-3 sm:max-h-48"
-          />
-          <Button
-            type="submit"
-            size="icon-lg"
-            className="size-11 shrink-0"
-            disabled={pending || !input.trim() || !model}
-            aria-label={pending ? "Starting chat" : "Send message"}
-          >
-            <ArrowUp />
-          </Button>
-        </div>
-        {error ? (
-          <p className="px-4 pb-4 text-center text-sm text-destructive">{error}</p>
-        ) : null}
-      </form>
     </div>
   );
 }
