@@ -15,6 +15,7 @@ import {
 } from "react";
 import {
   Boxes,
+  Code,
   KeyRound,
   LogOut,
   Menu,
@@ -337,6 +338,12 @@ function SidebarBody({
           <Link href="/admin" className={navLink(false)}>
             <Shield className="size-4" />
             Admin panel
+          </Link>
+        ) : null}
+        {admin ? (
+          <Link href="/ide" className={navLink(false)}>
+            <Code className="size-4" />
+            IDE
           </Link>
         ) : null}
       </div>

@@ -157,6 +157,20 @@ const MIGRATIONS: ((sqlite: Sqlite) => void)[] = [
   (sqlite) => {
     addColumn(sqlite, "users", "first_login", "INTEGER NOT NULL DEFAULT 0");
   },
+
+  // 4: IDE workspaces. Each row owns one folder under WORKSPACES_ROOT.
+  (sqlite) => {
+    sqlite.exec(`
+      CREATE TABLE IF NOT EXISTS workspaces (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        folder TEXT NOT NULL UNIQUE,
+        created_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+        created_at INTEGER NOT NULL,
+        opened_at INTEGER
+      );
+    `);
+  },
 ];
 
 function version(sqlite: Sqlite) {

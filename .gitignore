@@ -34,9 +34,13 @@ yarn-error.log*
 .env*
 !.env.example
 
-# local sqlite database
+# local sqlite database and IDE workspaces
 /data/*.db
 /data/*.db-*
+/data/workspaces/
+
+# copied from node_modules by scripts/copy-monaco.mjs
+/public/monaco/
 
 # vercel
 .vercel

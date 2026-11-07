@@ -114,6 +114,16 @@ export const modelConfig = sqliteTable("model_config", {
   updatedAt: integer("updated_at").notNull(),
 });
 
+export const workspaces = sqliteTable("workspaces", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  /** Folder name under WORKSPACES_ROOT; never a path. */
+  folder: text("folder").notNull().unique(),
+  createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: integer("created_at").notNull(),
+  openedAt: integer("opened_at"),
+});
+
 export const settings = sqliteTable("settings", {
   key: text("key").primaryKey(),
   value: text("value").notNull(),

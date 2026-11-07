@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Vendored Monaco bundle copied by scripts/copy-monaco.mjs.
+    "public/monaco/**",
+    // IDE workspaces are user projects, not this app's source.
+    "data/**",
   ]),
 ]);
 

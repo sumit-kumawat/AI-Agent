@@ -7,6 +7,8 @@ const schema = z.object({
   OLLAMA_BASE_URL: z.url().default("http://127.0.0.1:11434"),
   OLLAMA_MODEL: z.string().min(1).default("qwen2.5-coder:14b"),
   DATA_DIR: z.string().min(1).optional(),
+  /** Where IDE workspace folders live. Defaults to DATA_DIR/workspaces. */
+  WORKSPACES_ROOT: z.string().min(1).optional(),
   ADMIN_EMAIL: z
     .string()
     .optional()

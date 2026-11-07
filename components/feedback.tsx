@@ -142,7 +142,19 @@ function FeedbackDialog({ entry, onClose }: { entry: Entry; onClose: (result: bo
         if (!open) onClose(entry.kind === "notify" ? true : null);
       }}
     >
-      <AlertDialogContent className="rounded-2xl p-5 sm:max-w-md data-[size=default]:max-w-[calc(100vw-2rem)] data-[size=default]:sm:max-w-md">
+      <AlertDialogContent
+        className="rounded-2xl p-5 sm:max-w-md data-[size=default]:max-w-[calc(100vw-2rem)] data-[size=default]:sm:max-w-md"
+        onOpenAutoFocus={(event) => {
+          // Prompts focus their field with the text selected; destructive confirms keep focus on Cancel.
+          if (destructive && entry.kind === "confirm") return;
+          const content = event.currentTarget as HTMLElement;
+          const target = content.querySelector<HTMLElement>(entry.kind === "prompt" ? "input" : "button[type=submit]");
+          if (!target) return;
+          event.preventDefault();
+          target.focus();
+          if (target instanceof HTMLInputElement) target.select();
+        }}
+      >
         <form
           className="grid gap-4"
           onSubmit={(event) => {
@@ -164,6 +176,7 @@ function FeedbackDialog({ entry, onClose }: { entry: Entry; onClose: (result: bo
               {entry.options.label ? <span className="font-medium">{entry.options.label}</span> : null}
               <Input
                 autoFocus
+                onFocus={(event) => event.currentTarget.select()}
                 value={text}
                 maxLength={entry.options.maxLength ?? 500}
                 placeholder={entry.options.placeholder}

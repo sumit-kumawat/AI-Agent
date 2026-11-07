@@ -14,7 +14,8 @@ ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 # Build-time placeholder only; the real secret is supplied at runtime.
-RUN AUTH_SECRET=build-time-placeholder-secret-not-used-at-runtime npx next build \
+RUN node scripts/copy-monaco.mjs \
+  && AUTH_SECRET=build-time-placeholder-secret-not-used-at-runtime npx next build \
   && node scripts/prepare-standalone.mjs
 
 FROM node:22-bookworm-slim AS runtime
@@ -24,7 +25,11 @@ ENV NODE_ENV=production \
     PORT=3000 \
     HOSTNAME=0.0.0.0 \
     DATA_DIR=/data
-RUN groupadd --system harbor && useradd --system --gid harbor harbor \
+# git clones repositories into IDE workspaces; bash is the IDE terminal's shell.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends git bash ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+RUN groupadd --system harbor && useradd --system --gid harbor --shell /bin/bash harbor \
   && mkdir -p /data && chown harbor:harbor /data
 COPY --from=build --chown=harbor:harbor /app/.next/standalone ./
 USER harbor

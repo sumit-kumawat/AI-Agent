@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   Activity,
   Bot,
+  Code,
   LayoutDashboard,
   MessagesSquare,
   Settings,
@@ -18,6 +19,7 @@ const LINKS = [
   { href: "/admin/agents", label: "Agents & models", icon: Bot },
   { href: "/admin/settings", label: "Settings", icon: Settings },
   { href: "/admin/conversations", label: "Conversations", icon: MessagesSquare },
+  { href: "/ide", label: "IDE", icon: Code },
 ];
 
 export function AdminNav() {

@@ -214,9 +214,12 @@ try {
 
   // Delete from the sidebar asks in a popup; cancelling keeps the chat.
   const openDelete = async () => {
+    // Let the previous popup finish returning focus before opening the menu again.
+    await new Promise((resolve) => setTimeout(resolve, 300));
     await page.click('aside button[aria-label="Options for Renamed by e2e"]');
-    const item = await page.waitForSelector("[role=menu] ::-p-text(Delete)", { visible: true });
-    await item.click();
+    const item = await page.waitForSelector("[role=menu] [role=menuitem] ::-p-text(Delete)", { visible: true });
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    await item.evaluate((node) => node.closest("[role=menuitem]").click());
   };
   await openDelete();
   await page.waitForSelector("[role=alertdialog]");

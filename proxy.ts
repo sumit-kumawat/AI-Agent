@@ -10,7 +10,8 @@ export default auth((req) => {
   const isLoggedIn = Boolean(user?.id);
   const { pathname } = req.nextUrl;
   const isAuthPage = pathname === "/login" || pathname === "/register";
-  const isAdminPage = pathname === "/admin" || pathname.startsWith("/admin/");
+  const isAdminPage =
+    pathname === "/admin" || pathname.startsWith("/admin/") || pathname === "/ide" || pathname.startsWith("/ide/");
   const isAccountPage = pathname === "/account" || pathname.startsWith("/account/");
   const isProtected = pathname.startsWith("/chat") || isAdminPage || isAccountPage;
 
@@ -38,5 +39,5 @@ export default auth((req) => {
 });
 
 export const config = {
-  matcher: ["/chat/:path*", "/admin/:path*", "/admin", "/account/:path*", "/login", "/register"],
+  matcher: ["/chat/:path*", "/admin/:path*", "/admin", "/ide", "/ide/:path*", "/account/:path*", "/login", "/register"],
 };

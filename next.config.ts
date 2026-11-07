@@ -9,6 +9,8 @@ const contentSecurityPolicy = [
   "img-src 'self' data: blob:",
   "font-src 'self' data:",
   `connect-src 'self'${isDev ? " ws: wss:" : ""}`,
+  // The IDE's Monaco editor runs language services in same-origin and blob workers.
+  "worker-src 'self' blob:",
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "form-action 'self'",
@@ -40,9 +42,12 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   // Lets phones and other machines on the local network use `npm run dev`.
   allowedDevOrigins: ["192.168.*.*", "10.*.*.*", "172.*.*.*", "*.local"],
-  serverExternalPackages: ["better-sqlite3"],
+  serverExternalPackages: ["better-sqlite3", "node-pty"],
   outputFileTracingExcludes: {
-    "*": ["./data/**", "./.env*", "./scripts/**", "./drizzle/**"],
+    "*": ["./data/**", "./.env*", "./scripts/**", "./drizzle/**", "./public/monaco/**"],
+  },
+  outputFileTracingIncludes: {
+    "/api/ide/**": ["./node_modules/node-pty/**"],
   },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
