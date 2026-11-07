@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { RegisterForm } from "@/components/auth/register-form";
 import { Mark } from "@/components/brand";
+import { ConzexCredit } from "@/components/conzex-credit";
+import { BRAND } from "@/lib/brand";
 import { SiteHeader } from "@/components/site-header";
 import {
   Card,
@@ -24,7 +26,7 @@ export default function RegisterPage() {
               Create an account
             </CardTitle>
             <CardDescription>
-              Accounts live in the local SQLite database.
+              Create your {BRAND.product} account to start chatting.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -32,6 +34,9 @@ export default function RegisterPage() {
           </CardContent>
         </Card>
       </main>
+      <footer className="pb-6 text-center">
+        <ConzexCredit />
+      </footer>
     </div>
   );
 }

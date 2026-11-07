@@ -13,6 +13,7 @@ export const authConfig = {
         token.id = user.id;
         token.role = user.role ?? "user";
         token.sv = user.sessionVersion ?? 0;
+        token.fl = user.firstLogin ?? false;
       }
       return token;
     },
@@ -21,6 +22,7 @@ export const authConfig = {
         session.user.id =
           typeof token.id === "string" ? token.id : (token.sub ?? "");
         session.user.role = token.role === "admin" ? "admin" : "user";
+        session.user.mustChangePassword = token.fl === true;
       }
       return session;
     },

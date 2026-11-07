@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "check": "npm run typecheck && npm run lint && npm run build",
     "smoke": "node scripts/smoke.mjs",
+    "hash-password": "node scripts/hash-password.mjs",
     "e2e:admin": "node scripts/e2e-admin.mjs",
     "e2e:chat": "node scripts/e2e-chat.mjs",
     "seed": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/seed.mjs",

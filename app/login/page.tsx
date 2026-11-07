@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { LoginForm } from "@/components/auth/login-form";
 import { Mark } from "@/components/brand";
+import { ConzexCredit } from "@/components/conzex-credit";
+import { BRAND } from "@/lib/brand";
 import { SiteHeader } from "@/components/site-header";
 import {
   Card,
@@ -34,7 +36,7 @@ export default async function LoginPage({
             <Mark className="mb-2 size-8 text-primary" />
             <CardTitle className="font-heading text-3xl">Sign in</CardTitle>
             <CardDescription>
-              Use the email and password for this Harbor instance.
+              Use your {BRAND.product} email or username and password.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -42,6 +44,9 @@ export default async function LoginPage({
           </CardContent>
         </Card>
       </main>
+      <footer className="pb-6 text-center">
+        <ConzexCredit />
+      </footer>
     </div>
   );
 }

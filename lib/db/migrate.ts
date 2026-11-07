@@ -151,6 +151,12 @@ const MIGRATIONS: ((sqlite: Sqlite) => void)[] = [
       );
     }
   },
+
+  // 3: accounts that must choose a new password before using the app (the
+  // env-seeded admin, and anyone given a temporary password by an admin).
+  (sqlite) => {
+    addColumn(sqlite, "users", "first_login", "INTEGER NOT NULL DEFAULT 0");
+  },
 ];
 
 function version(sqlite: Sqlite) {

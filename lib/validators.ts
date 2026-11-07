@@ -15,10 +15,27 @@ export const registerSchema = z.object({
   password: bcryptSafePassword,
 });
 
+/** An email address, or a plain username such as the env-seeded "admin". */
+const loginId = z
+  .string()
+  .min(3)
+  .max(254)
+  .refine((value) => z.email().safeParse(value).success || /^[a-z0-9._-]+$/.test(value));
+
 export const credentialsSchema = z.object({
-  email: z.email().max(254),
+  email: loginId,
   password: z.string().min(1).max(200),
 });
+
+export const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1).max(200),
+    newPassword: bcryptSafePassword,
+  })
+  .refine((value) => value.currentPassword !== value.newPassword, {
+    message: "Choose a password different from the current one.",
+    path: ["newPassword"],
+  });
 
 const messagePartSchema = z.looseObject({
   type: z.string().max(50),

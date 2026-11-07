@@ -4,6 +4,7 @@ import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { env } from "@/lib/env";
 import { migrate } from "./migrate";
+import { seedAdminFromEnv } from "./seed-admin";
 import * as schema from "./schema";
 
 const dataDir = path.resolve(
@@ -27,6 +28,13 @@ function openDatabase() {
   sqlite.pragma("foreign_keys = ON");
   sqlite.pragma("busy_timeout = 5000");
   migrate(sqlite);
+
+  const seeded = seedAdminFromEnv(sqlite);
+  if (seeded.status === "created") {
+    console.info(`Created admin "${seeded.email}" from ADMIN_EMAIL. It must choose a new password on first sign-in.`);
+  } else if (seeded.status === "invalid") {
+    console.warn(`Admin seed skipped: ${seeded.reason}`);
+  }
 
   if (env.ADMIN_EMAILS.length > 0) {
     const promote = sqlite.prepare("UPDATE users SET role = 'admin' WHERE email = ?");

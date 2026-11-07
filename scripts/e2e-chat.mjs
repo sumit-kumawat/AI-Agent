@@ -23,7 +23,6 @@ execFileSync(
   {
     env: {
       ...process.env,
-      SEED_ADMIN_EMAIL: "",
       SEED_USER_EMAIL: user.email,
       SEED_USER_PASSWORD: user.password,
     },

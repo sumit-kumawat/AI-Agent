@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 import { HomePage } from "@/components/landing/home";
 import { auth } from "@/lib/auth";
+import { BRAND } from "@/lib/brand";
 
 export const metadata: Metadata = {
-  title: "Harbor",
-  description:
-    "A self-hosted agent platform. Chat with a local model and keep the conversation history on your machine.",
+  title: { absolute: `${BRAND.product} · Private AI chat by ${BRAND.company}` },
+  description: BRAND.description,
 };
 
 export const dynamic = "force-dynamic";

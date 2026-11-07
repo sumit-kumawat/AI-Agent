@@ -4,6 +4,7 @@ import { ArrowUp, Square } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { ModelPicker, type ModelOption } from "@/components/chat/model-picker";
 import { Button } from "@/components/ui/button";
+import { BRAND } from "@/lib/brand";
 
 const MAX_HEIGHT = 208;
 
@@ -71,7 +72,7 @@ export function Composer({
               submit();
             }
           }}
-          placeholder="Message Harbor"
+          placeholder={`Message ${BRAND.product}`}
           aria-label="Message"
           enterKeyHint="send"
           rows={1}

@@ -20,6 +20,28 @@ export function findUserByEmail(email: string) {
   return db.select().from(users).where(eq(users.email, email)).get();
 }
 
+/**
+ * Sign-in lookup. An exact email wins. A username matches when exactly one
+ * account uses it as the part before @, so "admin" and "admin@conzex.com"
+ * are the same account.
+ */
+export function findUserByLogin(identifier: string, preferredEmail?: string) {
+  const exact = findUserByEmail(identifier);
+  if (exact || identifier.includes("@")) return exact;
+  if (preferredEmail && preferredEmail.split("@")[0] === identifier) {
+    const preferred = findUserByEmail(preferredEmail);
+    if (preferred) return preferred;
+  }
+  const pattern = `${identifier.replace(/[\\%_]/g, (char) => `\\${char}`)}@%`;
+  const matches = db
+    .select()
+    .from(users)
+    .where(sql`${users.email} LIKE ${pattern} ESCAPE '\\'`)
+    .all()
+    .filter((user) => user.email.split("@")[0] === identifier);
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
 export function findUserById(id: string) {
   return db.select().from(users).where(eq(users.id, id)).get();
 }

@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { Mark } from "@/components/brand";
+import { ConzexCredit } from "@/components/conzex-credit";
 import { SiteHeader } from "@/components/site-header";
+import { BRAND } from "@/lib/brand";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -87,7 +89,7 @@ export function HomePage({ signedIn }: { signedIn: boolean }) {
                 A private chat that stays on your machine.
               </h1>
               <p className="mt-6 max-w-xl text-base leading-relaxed text-muted-foreground sm:text-lg">
-                Harbor is the first slice of a product you can host yourself.
+                {BRAND.product} is the first slice of a product you can host yourself.
                 Sign in, talk to a local model, and keep the thread in SQLite.
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
@@ -192,9 +194,12 @@ export function HomePage({ signedIn }: { signedIn: boolean }) {
         </section>
       </main>
       <footer className="mt-auto border-t">
-        <div className="mx-auto flex max-w-6xl items-center gap-2 px-6 py-6 text-sm text-muted-foreground">
-          <Mark className="size-5 text-primary" />
-          Harbor · local phase 1
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-6 py-6 text-sm text-muted-foreground">
+          <span className="flex items-center gap-2">
+            <Mark className="size-5 text-primary" />
+            {BRAND.product}
+          </span>
+          <ConzexCredit className="text-sm" />
         </div>
       </footer>
     </div>

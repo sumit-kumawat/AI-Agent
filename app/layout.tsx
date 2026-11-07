@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Fraunces, Geist, Geist_Mono } from "next/font/google";
 import { ThemeProvider } from "@/components/theme";
+import { BRAND } from "@/lib/brand";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -19,13 +20,25 @@ const fraunces = Fraunces({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.AUTH_URL ?? BRAND.appUrl),
   title: {
-    default: "Harbor",
-    template: "%s · Harbor",
+    default: `${BRAND.product} · Private AI chat`,
+    template: `%s · ${BRAND.product}`,
   },
-  description:
-    "Self-hosted AI agent platform. Chat with a local Ollama model, with accounts and saved conversations.",
-  appleWebApp: { capable: true, title: "Harbor", statusBarStyle: "default" },
+  description: BRAND.description,
+  applicationName: BRAND.product,
+  publisher: BRAND.company,
+  authors: [{ name: BRAND.company, url: BRAND.companyUrl }],
+  alternates: { canonical: "/" },
+  openGraph: {
+    type: "website",
+    url: "/",
+    siteName: BRAND.product,
+    title: `${BRAND.product} · Private AI chat`,
+    description: BRAND.description,
+  },
+  twitter: { card: "summary", title: BRAND.product, description: BRAND.description },
+  appleWebApp: { capable: true, title: BRAND.product, statusBarStyle: "default" },
   formatDetection: { telephone: false },
 };
 

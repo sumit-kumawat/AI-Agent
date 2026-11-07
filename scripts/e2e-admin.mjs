@@ -6,6 +6,7 @@
 //   CHROME_PATH=/path/to/chrome E2E_URL=http://host:3000 npm run e2e:admin
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import bcrypt from "bcryptjs";
 import puppeteer from "puppeteer-core";
 
 const base = (process.env.E2E_URL ?? "http://localhost:3000").replace(/\/$/, "");
@@ -18,14 +19,16 @@ const stamp = Date.now();
 const admin = { email: `e2e-admin-${stamp}@harbor.local`, password: `admin-${stamp}-pw` };
 const user = { email: `e2e-user-${stamp}@harbor.local`, password: `user-${stamp}-pw` };
 
+// Seeded the way production is: ADMIN_EMAIL plus an escaped bcrypt hash, so the
+// admin starts on a password it must change.
 execFileSync(
   process.execPath,
   ["--disable-warning=ExperimentalWarning", "--disable-warning=MODULE_TYPELESS_PACKAGE_JSON", "scripts/seed.mjs"],
   {
     env: {
       ...process.env,
-      SEED_ADMIN_EMAIL: admin.email,
-      SEED_ADMIN_PASSWORD: admin.password,
+      ADMIN_EMAIL: admin.email,
+      ADMIN_PASSWORD_HASH: bcrypt.hashSync(admin.password, 10).replaceAll("$", "\\$"),
       SEED_USER_EMAIL: user.email,
       SEED_USER_PASSWORD: user.password,
     },
@@ -56,6 +59,19 @@ async function session(account) {
   await page.type("#password", account.password);
   await Promise.all([page.waitForNavigation({ waitUntil: "networkidle0" }), page.click("button[type=submit]")]);
   return page;
+}
+
+/** Fills the forced change-password form and waits for the redirect away from it. */
+async function changePassword(page, account, next) {
+  await page.waitForSelector("#current");
+  await page.type("#current", account.password);
+  await page.type("#new", next);
+  await page.type("#confirm", next);
+  await Promise.all([
+    page.waitForFunction(() => !location.pathname.startsWith("/account/password"), { timeout: 20_000 }),
+    page.click("button[type=submit]"),
+  ]);
+  account.password = next;
 }
 
 /** Calls the API from inside the page so the session cookie is used. */
@@ -113,6 +129,19 @@ try {
   check(!userPage.url().includes("/admin"), "non-admin is redirected away from /admin");
 
   const adminPage = await session(admin);
+  check(adminPage.url().includes("/account/password"), "seeded admin is sent to change password on first sign-in");
+  await adminPage.goto(`${base}/admin`, { waitUntil: "networkidle0" });
+  check(adminPage.url().includes("/account/password"), "admin panel stays locked until the password changes");
+  const locked = await api(adminPage, "/api/models", { method: "POST", body: JSON.stringify({ name: "x" }) });
+  check(locked.status === 403 || locked.status === 401, `admin APIs refuse a first-login admin (${locked.status})`);
+  await adminPage.screenshot({ path: `${shots}/account_password_forced.png`, fullPage: true });
+  await adminPage.goto(`${base}/account/password?next=/admin`, { waitUntil: "networkidle0" });
+  await changePassword(adminPage, admin, `admin-${stamp}-changed`);
+  check(new URL(adminPage.url()).pathname === "/admin", "after changing it, the admin lands on /admin");
+  check(
+    (await adminPage.evaluate(() => document.body.innerText)).includes("A Product Of"),
+    "Conzex credit shows in the admin panel",
+  );
   for (const path of ["/admin", "/admin/users", "/admin/usage", "/admin/agents", "/admin/settings", "/admin/conversations"]) {
     const response = await adminPage.goto(`${base}${path}`, { waitUntil: "networkidle0" });
     check(response.status() === 200 && adminPage.url().endsWith(path), `admin opens ${path}`);
@@ -241,9 +270,12 @@ try {
   const temporary = await tempInput.evaluate((input) => input.value);
   check(temporary.length >= 12, "temporary password shown once");
   await clickText(adminPage, "Done", "[role=dialog]");
-  const relogged = await session({ email: user.email, password: temporary });
-  check(relogged.url().endsWith("/chat"), "user signs in with the temporary password");
-  user.password = temporary;
+  const resetAccount = { email: user.email, password: temporary };
+  const relogged = await session(resetAccount);
+  check(relogged.url().includes("/account/password"), "temporary password forces a password change");
+  await changePassword(relogged, resetAccount, `user-${stamp}-changed`);
+  check(new URL(relogged.url()).pathname === "/chat", "user reaches chat after choosing a new password");
+  user.password = resetAccount.password;
 
   // Role change.
   await userRowAction(adminPage, user.email, "Change role to admin");
@@ -272,15 +304,16 @@ try {
 } catch (error) {
   failures += 1;
   console.error("FAIL unexpected error:", error);
-  for (const page of await browser.pages().catch(() => [])) {
-    if (page.url().includes("/admin")) await page.screenshot({ path: `${shots}/failure.png`, fullPage: true }).catch(() => {});
+  const pages = await browser.pages().catch(() => []);
+  for (const [index, page] of pages.entries()) {
+    await page.screenshot({ path: `${shots}/failure-${index}.png`, fullPage: true }).catch(() => {});
   }
 } finally {
   // Both throwaway accounts delete themselves, even after a failure.
   // E2E_CLEANUP_STAMPS removes accounts left behind by an interrupted earlier run.
   const leftovers = (process.env.E2E_CLEANUP_STAMPS ?? "").split(",").filter(Boolean).flatMap((old) => [
-    { email: `e2e-user-${old}@harbor.local`, password: `user-${old}-pw` },
-    { email: `e2e-admin-${old}@harbor.local`, password: `admin-${old}-pw` },
+    { email: `e2e-user-${old}@harbor.local`, password: `user-${old}-changed` },
+    { email: `e2e-admin-${old}@harbor.local`, password: `admin-${old}-changed` },
   ]);
   for (const account of [user, ...leftovers, admin]) {
     try {

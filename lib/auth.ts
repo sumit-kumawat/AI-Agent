@@ -2,7 +2,7 @@ import NextAuth, { CredentialsSignin } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { compare } from "bcryptjs";
 import { authConfig } from "@/lib/auth.config";
-import { findUserByEmail, findUserById, touchUser } from "@/lib/db/queries";
+import { findUserById, findUserByLogin, touchUser } from "@/lib/db/queries";
 import { env } from "@/lib/env";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
 import { credentialsSchema } from "@/lib/validators";
@@ -36,6 +36,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         return null;
       }
       token.role = user.role;
+      token.fl = user.firstLogin;
       return token;
     },
   },
@@ -62,7 +63,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const byEmail = rateLimit(`login:email:${parsed.data.email}`, 10, WINDOW, context);
         if (!byIp.ok || !byEmail.ok) throw new RateLimited();
 
-        const user = findUserByEmail(parsed.data.email);
+        const user = findUserByLogin(parsed.data.email, env.ADMIN_EMAIL);
         const passwordMatches = await compare(
           parsed.data.password,
           user?.passwordHash ?? DUMMY_HASH,
@@ -77,6 +78,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           email: user.email,
           role: user.role,
           sessionVersion: user.sessionVersion,
+          firstLogin: user.firstLogin,
         };
       },
     }),

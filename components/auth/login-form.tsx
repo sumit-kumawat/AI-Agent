@@ -31,7 +31,7 @@ export function LoginForm({ callbackUrl }: { callbackUrl: string }) {
             ? "Too many sign-in attempts. Wait 15 minutes and try again."
             : result.code === "suspended"
               ? "This account is suspended. Contact an administrator."
-              : "Email or password is incorrect.",
+              : "Email, username, or password is incorrect.",
         );
         setPending(false);
         return;
@@ -47,12 +47,16 @@ export function LoginForm({ callbackUrl }: { callbackUrl: string }) {
   return (
     <form onSubmit={onSubmit} className="space-y-4">
       <div className="space-y-2">
-        <Label htmlFor="email">Email</Label>
+        <Label htmlFor="email">Email or username</Label>
         <Input
           id="email"
           name="email"
-          type="email"
-          autoComplete="email"
+          type="text"
+          inputMode="email"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          autoComplete="username"
           required
           className="h-10"
         />

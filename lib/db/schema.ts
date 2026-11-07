@@ -19,6 +19,8 @@ export const users = sqliteTable("users", {
   lastActiveAt: integer("last_active_at"),
   /** Bumped to sign the user out everywhere (password reset, suspension). */
   sessionVersion: integer("session_version").notNull().default(0),
+  /** Must choose a new password before using the app. */
+  firstLogin: integer("first_login", { mode: "boolean" }).notNull().default(false),
   createdAt: integer("created_at", { mode: "number" }).notNull(),
 });
 

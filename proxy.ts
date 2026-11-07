@@ -1,14 +1,18 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 
+const CHANGE_PASSWORD = "/account/password";
+
 // Uses the database-backed auth so the role is current on every request:
 // promotions apply at once and suspended users are signed out here too.
 export default auth((req) => {
-  const isLoggedIn = Boolean(req.auth?.user?.id);
+  const user = req.auth?.user;
+  const isLoggedIn = Boolean(user?.id);
   const { pathname } = req.nextUrl;
   const isAuthPage = pathname === "/login" || pathname === "/register";
   const isAdminPage = pathname === "/admin" || pathname.startsWith("/admin/");
-  const isProtected = pathname.startsWith("/chat") || isAdminPage;
+  const isAccountPage = pathname === "/account" || pathname.startsWith("/account/");
+  const isProtected = pathname.startsWith("/chat") || isAdminPage || isAccountPage;
 
   if (isProtected && !isLoggedIn) {
     const url = new URL("/login", req.nextUrl);
@@ -16,7 +20,13 @@ export default auth((req) => {
     return NextResponse.redirect(url);
   }
 
-  if (isAdminPage && req.auth?.user?.role !== "admin") {
+  if (isLoggedIn && user?.mustChangePassword && pathname !== CHANGE_PASSWORD && (isProtected || isAuthPage)) {
+    const url = new URL(CHANGE_PASSWORD, req.nextUrl);
+    if (isAdminPage) url.searchParams.set("next", pathname);
+    return NextResponse.redirect(url);
+  }
+
+  if (isAdminPage && user?.role !== "admin") {
     return NextResponse.redirect(new URL("/chat", req.nextUrl));
   }
 
@@ -28,5 +38,5 @@ export default auth((req) => {
 });
 
 export const config = {
-  matcher: ["/chat/:path*", "/admin/:path*", "/admin", "/login", "/register"],
+  matcher: ["/chat/:path*", "/admin/:path*", "/admin", "/account/:path*", "/login", "/register"],
 };

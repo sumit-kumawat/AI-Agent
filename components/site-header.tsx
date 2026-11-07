@@ -2,6 +2,7 @@ import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { Mark } from "@/components/brand";
 import { Button } from "@/components/ui/button";
+import { BRAND } from "@/lib/brand";
 
 export async function SiteHeader() {
   const session = await auth();
@@ -12,7 +13,7 @@ export async function SiteHeader() {
       <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between gap-2 px-4 sm:px-6">
         <Link href="/" className="flex items-center gap-2 text-sm font-medium">
           <Mark className="size-7 text-primary" />
-          Harbor
+          {BRAND.product}
         </Link>
         <nav className="flex items-center gap-1 text-sm sm:gap-2">
           <Link

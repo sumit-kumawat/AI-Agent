@@ -68,6 +68,7 @@ export async function resetUserPassword(id: string) {
       .set({
         passwordHash: await hash(password, 12),
         sessionVersion: sql`${users.sessionVersion} + 1`,
+        firstLogin: true,
       })
       .where(eq(users.id, user.id))
       .run();

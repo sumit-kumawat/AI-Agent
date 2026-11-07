@@ -15,6 +15,7 @@ import {
 } from "react";
 import {
   Boxes,
+  KeyRound,
   LogOut,
   Menu,
   MoreHorizontal,
@@ -27,7 +28,9 @@ import {
 } from "lucide-react";
 import { Mark } from "@/components/brand";
 import type { ModelOption } from "@/components/chat/model-picker";
+import { ConzexCredit } from "@/components/conzex-credit";
 import { ThemeToggle } from "@/components/theme";
+import { BRAND } from "@/lib/brand";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -308,7 +311,7 @@ function SidebarBody({
       <div className="flex items-center gap-2 px-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3">
         <Link href="/chat" onClick={onNavigate} className="flex min-w-0 flex-1 items-center gap-2 px-1">
           <Mark className="size-7 shrink-0 text-primary" />
-          <span className="font-heading text-lg">Harbor</span>
+          <span className="font-heading text-lg">{BRAND.product}</span>
         </Link>
         {onCollapse ? (
           <Button
@@ -341,7 +344,8 @@ function SidebarBody({
       <nav aria-label="Conversations" className="mt-4 min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-3">
         <ConversationList conversations={conversations} onNavigate={onNavigate} />
       </nav>
-      <div className="flex items-center gap-2 border-t px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+      <div className="border-t px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+      <div className="flex items-center gap-2">
         <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-medium text-primary-foreground">
           {initial}
         </div>
@@ -350,6 +354,11 @@ function SidebarBody({
           <p className="truncate text-xs text-muted-foreground">{user.email}</p>
         </div>
         <ThemeToggle />
+        <Button asChild variant="ghost" size="icon-sm">
+          <Link href="/account/password" onClick={onNavigate} aria-label="Change password" title="Change password">
+            <KeyRound />
+          </Link>
+        </Button>
         <Button
           type="button"
           variant="ghost"
@@ -360,6 +369,8 @@ function SidebarBody({
         >
           <LogOut />
         </Button>
+      </div>
+      <ConzexCredit className="mt-2 px-1" />
       </div>
     </div>
   );

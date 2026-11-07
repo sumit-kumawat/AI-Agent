@@ -6,6 +6,7 @@ import {
 } from "ai";
 import { startSession } from "@/lib/agents";
 import { auth } from "@/lib/auth";
+import { BRAND } from "@/lib/brand";
 import {
   findUserById,
   getConversationForUser,
@@ -30,7 +31,7 @@ const AGENT_ID = "ollama";
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const MODEL_CONTEXT_MESSAGES = 40;
 
-const INSTRUCTIONS = `You are Harbor, a local assistant running through Ollama.
+const INSTRUCTIONS = `You are ${BRAND.product}, an assistant made by ${BRAND.company}, running on open models through Ollama.
 Answer clearly and directly. When you write code, keep it complete enough to run.
 If you are unsure, say so.`;
 
