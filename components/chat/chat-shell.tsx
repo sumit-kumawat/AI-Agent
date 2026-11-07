@@ -29,7 +29,7 @@ import {
 import { Mark } from "@/components/brand";
 import type { ModelOption } from "@/components/chat/model-picker";
 import { ConzexCredit } from "@/components/conzex-credit";
-import { ThemeToggle } from "@/components/theme";
+import { useFeedback } from "@/components/feedback";
 import { BRAND } from "@/lib/brand";
 import { Button } from "@/components/ui/button";
 import {
@@ -145,14 +145,13 @@ function ConversationItem({
   conversation,
   active,
   onNavigate,
-  onError,
 }: {
   conversation: ConversationListItem;
   active: boolean;
   onNavigate?: () => void;
-  onError: (message: string | null) => void;
 }) {
   const router = useRouter();
+  const { confirm, notify } = useFeedback();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(conversation.title);
   const input = useRef<HTMLInputElement>(null);
@@ -165,17 +164,21 @@ function ConversationItem({
     const title = draft.trim();
     setEditing(false);
     if (!title || title === conversation.title) return;
-    onError(null);
     if (await renameConversation(conversation.id, title)) router.refresh();
-    else onError("Could not rename that conversation.");
+    else void notify({ tone: "error", title: "Rename failed", description: "Could not rename that conversation." });
   }
 
   async function remove() {
-    if (!window.confirm(`Delete "${conversation.title}"?`)) return;
-    onError(null);
+    const ok = await confirm({
+      title: "Delete chat?",
+      description: `"${conversation.title}" will be deleted.`,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     const response = await fetch(`/api/conversations/${conversation.id}`, { method: "DELETE" });
     if (!response.ok) {
-      onError("Could not delete that conversation.");
+      void notify({ tone: "error", title: "Delete failed", description: "Could not delete that conversation." });
       return;
     }
     if (active) router.push("/chat");
@@ -258,8 +261,6 @@ function ConversationList({
 }) {
   const pathname = usePathname();
   const today = useSyncExternalStore(subscribeDay, startOfToday, () => null);
-  const [error, setError] = useState<string | null>(null);
-
   if (conversations.length === 0) {
     return <p className="px-2.5 text-sm text-muted-foreground">Your chats will show up here.</p>;
   }
@@ -277,12 +278,10 @@ function ConversationList({
               conversation={conversation}
               active={pathname === `/chat/${conversation.id}`}
               onNavigate={onNavigate}
-              onError={setError}
             />
           ))}
         </section>
       ))}
-      {error ? <p className="px-2.5 text-xs text-destructive">{error}</p> : null}
     </div>
   );
 }
@@ -353,7 +352,6 @@ function SidebarBody({
           <p className="truncate text-sm font-medium">{user.name || "Signed in"}</p>
           <p className="truncate text-xs text-muted-foreground">{user.email}</p>
         </div>
-        <ThemeToggle />
         <Button asChild variant="ghost" size="icon-sm">
           <Link href="/account/password" onClick={onNavigate} aria-label="Change password" title="Change password">
             <KeyRound />
@@ -425,7 +423,7 @@ export function ChatShell({
         </Sheet>
         <div className="flex min-w-0 flex-1 flex-col">
           {ollamaMessage ? (
-            <div className="border-b bg-amber-50 px-4 py-2 text-sm text-amber-950 dark:bg-amber-950/40 dark:text-amber-100">
+            <div className="border-b bg-amber-50 px-4 py-2 text-sm text-amber-950">
               {ollamaMessage}
             </div>
           ) : null}
@@ -502,7 +500,7 @@ export function EditableTitle({ id, title }: { id: string; title: string }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(title);
-  const [error, setError] = useState(false);
+  const { notify } = useFeedback();
   const input = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -513,9 +511,8 @@ export function EditableTitle({ id, title }: { id: string; title: string }) {
     const next = draft.trim();
     setEditing(false);
     if (!next || next === title) return;
-    const ok = await renameConversation(id, next);
-    setError(!ok);
-    if (ok) router.refresh();
+    if (await renameConversation(id, next)) router.refresh();
+    else void notify({ tone: "error", title: "Rename failed", description: "Could not rename that conversation." });
   }
 
   if (editing) {
@@ -548,7 +545,6 @@ export function EditableTitle({ id, title }: { id: string; title: string }) {
     >
       <h1 className="truncate">{title}</h1>
       <Pencil className="size-3.5 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100" />
-      {error ? <span className="text-xs font-normal text-destructive">Rename failed</span> : null}
     </button>
   );
 }

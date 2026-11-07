@@ -1,6 +1,7 @@
 // Browser test for the chat UI. Seeds a throwaway user, chats in headless
 // Chrome on desktop and phone sizes, checks streaming, markdown, copy, stop,
-// regenerate, rename, auto-scroll and dark mode, then deletes the account.
+// regenerate, rename, auto-scroll, the light theme and the delete popup, then
+// deletes the account.
 //
 //   npm run e2e:chat               (server must be running; uses Chrome)
 //   E2E_MODEL=llama3.2:1b CHROME_PATH=... E2E_URL=... npm run e2e:chat
@@ -40,7 +41,10 @@ const browser = await puppeteer.launch({ executablePath: chrome, headless: true 
 const context = await browser.createBrowserContext();
 const page = await context.newPage();
 page.setDefaultTimeout(30_000);
-page.on("dialog", (dialog) => void dialog.accept());
+page.on("dialog", (dialog) => {
+  check(false, `native ${dialog.type()} dialog appeared: ${dialog.message()}`);
+  void dialog.dismiss();
+});
 const pageErrors = [];
 page.on("pageerror", (error) => pageErrors.push(error.message));
 await page.setViewport({ width: 1366, height: 860 });
@@ -50,6 +54,24 @@ const text = () => page.evaluate(() => document.body.innerText);
 const assistantCount = () => page.$$eval('[data-role="assistant"]', (nodes) => nodes.length);
 const waitIdle = () =>
   page.waitForSelector('button[aria-label="Send message"]', { timeout: 180_000 });
+
+/** Presses `button` in the in-app popup titled `title` and waits for it to close. */
+async function popup(title, button) {
+  const find = (value) =>
+    [...document.querySelectorAll("[role=alertdialog]")].find((node) => node.innerText.includes(value)) ?? null;
+  await page.waitForFunction(find, {}, title);
+  const clicked = await (await page.evaluateHandle(find, title)).evaluate((node, label) => {
+    const target = [...node.querySelectorAll("button")].find((item) => item.innerText.trim() === label);
+    target?.click();
+    return Boolean(target);
+  }, button);
+  if (!clicked) throw new Error(`popup "${title}" has no "${button}" button`);
+  await page.waitForFunction(
+    (value) => ![...document.querySelectorAll("[role=alertdialog]")].some((node) => node.innerText.includes(value)),
+    {},
+    title,
+  );
+}
 
 async function send(message) {
   await page.click('textarea[aria-label="Message"]');
@@ -175,13 +197,13 @@ try {
   await page.waitForFunction(() => document.querySelector('nav[aria-label="Conversations"]')?.textContent?.includes("Renamed by e2e"));
   check(true, "title is editable and the sidebar updates");
 
-  // Dark mode toggle in the sidebar footer.
-  await page.click('aside button[aria-label="Toggle dark mode"]');
-  await page.waitForFunction(() => document.documentElement.classList.contains("dark"));
-  check(true, "dark mode toggles from the sidebar footer");
-  await shot("desktop_dark");
-  await page.click('aside button[aria-label="Toggle dark mode"]');
-  await page.waitForFunction(() => !document.documentElement.classList.contains("dark"));
+  // Light theme only.
+  const light = await page.evaluate(() => ({
+    dark: document.documentElement.classList.contains("dark"),
+    toggle: Boolean(document.querySelector('[aria-label="Toggle dark mode"]')),
+    scheme: getComputedStyle(document.documentElement).colorScheme,
+  }));
+  check(!light.dark && !light.toggle && light.scheme === "light", "light theme only, with no dark-mode toggle");
 
   // Collapse the desktop sidebar.
   await page.click('button[aria-label="Close sidebar"]');
@@ -189,6 +211,25 @@ try {
   await page.click('button[aria-label="Open sidebar"]');
   await page.waitForSelector("aside");
   check(true, "desktop sidebar collapses and reopens");
+
+  // Delete from the sidebar asks in a popup; cancelling keeps the chat.
+  const openDelete = async () => {
+    await page.click('aside button[aria-label="Options for Renamed by e2e"]');
+    const item = await page.waitForSelector("[role=menu] ::-p-text(Delete)", { visible: true });
+    await item.click();
+  };
+  await openDelete();
+  await page.waitForSelector("[role=alertdialog]");
+  await shot("delete_confirm_popup");
+  await popup("Delete chat?", "Cancel");
+  check(new URL(page.url()).pathname.startsWith("/chat/"), "cancelling the delete popup keeps the chat");
+  await openDelete();
+  await popup("Delete chat?", "Delete");
+  await page.waitForFunction(() => location.pathname === "/chat");
+  await page.waitForFunction(
+    () => !document.querySelector('nav[aria-label="Conversations"]')?.textContent?.includes("Renamed by e2e"),
+  );
+  check(true, "confirming the popup deletes the chat");
 
   // Phone layout: sidebar is a sheet.
   await page.setViewport({ width: 390, height: 844, isMobile: true, hasTouch: true });

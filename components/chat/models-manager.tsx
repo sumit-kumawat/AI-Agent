@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { Check, Download, Search, Trash } from "lucide-react";
 import { ChatTopBar } from "@/components/chat/chat-shell";
 import { setPreferredModel, usePreferredModel } from "@/components/chat/model-picker";
+import { useFeedback } from "@/components/feedback";
 import { formatBytes } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -56,7 +57,7 @@ export function ModelsManager({
   const [custom, setCustom] = useState("");
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
-  const [notice, setNotice] = useState<string | null>(null);
+  const { confirm, notify } = useFeedback();
   const active = installed.some((model) => model.name === preferred)
     ? preferred
     : defaultModel;
@@ -140,7 +141,13 @@ export function ModelsManager({
   }
 
   async function remove(name: string) {
-    if (!window.confirm(`Remove ${name} from this server?`)) return;
+    const ok = await confirm({
+      title: `Remove ${name}?`,
+      description: "The model is deleted from this server. You can download it again later.",
+      confirmLabel: "Remove",
+      destructive: true,
+    });
+    if (!ok) return;
     const response = await fetch("/api/models", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
@@ -148,16 +155,16 @@ export function ModelsManager({
     });
     if (!response.ok && response.status !== 204) {
       const data = (await response.json().catch(() => null)) as { error?: string } | null;
-      setNotice(data?.error ?? "Could not remove that model.");
+      void notify({ tone: "error", title: "Remove failed", description: data?.error ?? "Could not remove that model." });
       return;
     }
-    setNotice(`${name} was removed.`);
+    void notify({ tone: "success", title: "Model removed", description: `${name} was removed from this server.` });
     router.refresh();
   }
 
   function use(name: string) {
     setPreferredModel(name);
-    setNotice(`New chats will use ${name}.`);
+    void notify({ tone: "success", title: "Default model updated", description: `New chats will use ${name}.` });
   }
 
   return (
@@ -171,11 +178,6 @@ export function ModelsManager({
           {ollamaError ? (
             <p className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm">
               {ollamaError}
-            </p>
-          ) : null}
-          {notice ? (
-            <p className="rounded-xl border bg-muted px-4 py-3 text-sm" role="status">
-              {notice}
             </p>
           ) : null}
 

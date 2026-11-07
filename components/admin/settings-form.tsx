@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { saveSystemSettings } from "@/app/admin/actions";
+import { useFeedback } from "@/components/feedback";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,7 +16,7 @@ export function SettingsForm({
 }) {
   const [pending, startTransition] = useTransition();
   const [registration, setRegistration] = useState(initial.registrationEnabled);
-  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const { report } = useFeedback();
 
   return (
     <form
@@ -23,17 +24,20 @@ export function SettingsForm({
       onSubmit={(event) => {
         event.preventDefault();
         const form = new FormData(event.currentTarget);
-        setMessage(null);
         startTransition(async () => {
           const result = await saveSystemSettings({
             chatRateLimitPerMinute: Number(form.get("rate")),
             registrationEnabled: registration,
             moderationKeywords: String(form.get("keywords") ?? ""),
           });
-          setMessage(
+          report(
+            result,
             result.ok
-              ? { ok: true, text: `Saved. ${result.keywords} blocked keyword${result.keywords === 1 ? "" : "s"}.` }
-              : { ok: false, text: result.error },
+              ? {
+                  title: "Settings saved",
+                  description: `${result.keywords} blocked keyword${result.keywords === 1 ? "" : "s"}. Changes apply immediately.`,
+                }
+              : undefined,
           );
         });
       }}
@@ -79,11 +83,6 @@ export function SettingsForm({
         />
       </div>
       <div className="flex items-center justify-end gap-3 p-4">
-        {message ? (
-          <p className={`text-sm ${message.ok ? "text-muted-foreground" : "text-destructive"}`} role="status">
-            {message.text}
-          </p>
-        ) : null}
         <Button type="submit" disabled={pending}>{pending ? "Saving…" : "Save settings"}</Button>
       </div>
     </form>

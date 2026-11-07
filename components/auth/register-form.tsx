@@ -4,13 +4,15 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
 import { useState } from "react";
+import { useFeedback } from "@/components/feedback";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 export function RegisterForm() {
   const router = useRouter();
-  const [error, setError] = useState<string | null>(null);
+  const { notify } = useFeedback();
+  const fail = (description: string) => void notify({ tone: "error", title: "Could not create the account", description });
   const [pending, setPending] = useState(false);
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -20,7 +22,6 @@ export function RegisterForm() {
     const email = String(form.get("email") ?? "").trim();
     const password = String(form.get("password") ?? "");
     setPending(true);
-    setError(null);
 
     try {
       const response = await fetch("/api/register", {
@@ -33,7 +34,7 @@ export function RegisterForm() {
       } | null;
 
       if (!response.ok) {
-        setError(payload?.error ?? "Could not create the account.");
+        fail(payload?.error ?? "Could not create the account.");
         setPending(false);
         return;
       }
@@ -46,7 +47,7 @@ export function RegisterForm() {
       });
 
       if (result?.error) {
-        setError("Account created, but sign-in failed. Sign in to continue.");
+        fail("Account created, but sign-in failed. Sign in to continue.");
         setPending(false);
         router.push("/login");
         return;
@@ -55,7 +56,7 @@ export function RegisterForm() {
       router.replace("/chat");
       router.refresh();
     } catch {
-      setError("Could not reach the server. Check your connection.");
+      fail("Could not reach the server. Check your connection.");
       setPending(false);
     }
   }
@@ -96,11 +97,6 @@ export function RegisterForm() {
         />
         <p className="text-xs text-muted-foreground">At least 8 characters.</p>
       </div>
-      {error ? (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      ) : null}
       <Button type="submit" className="h-10 w-full" disabled={pending}>
         {pending ? "Creating account…" : "Create account"}
       </Button>

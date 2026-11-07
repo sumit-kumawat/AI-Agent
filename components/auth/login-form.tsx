@@ -4,20 +4,21 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
 import { useState } from "react";
+import { useFeedback } from "@/components/feedback";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 export function LoginForm({ callbackUrl }: { callbackUrl: string }) {
   const router = useRouter();
-  const [error, setError] = useState<string | null>(null);
+  const { notify } = useFeedback();
+  const fail = (description: string) => void notify({ tone: "error", title: "Sign-in failed", description });
   const [pending, setPending] = useState(false);
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     setPending(true);
-    setError(null);
     try {
       const result = await signIn("credentials", {
         email: String(form.get("email") ?? "").trim(),
@@ -26,7 +27,7 @@ export function LoginForm({ callbackUrl }: { callbackUrl: string }) {
         callbackUrl,
       });
       if (result?.error) {
-        setError(
+        fail(
           result.code === "rate_limited"
             ? "Too many sign-in attempts. Wait 15 minutes and try again."
             : result.code === "suspended"
@@ -39,7 +40,7 @@ export function LoginForm({ callbackUrl }: { callbackUrl: string }) {
       router.replace(callbackUrl);
       router.refresh();
     } catch {
-      setError("Could not reach the server. Check your connection.");
+      fail("Could not reach the server. Check your connection.");
       setPending(false);
     }
   }
@@ -72,11 +73,6 @@ export function LoginForm({ callbackUrl }: { callbackUrl: string }) {
           className="h-10"
         />
       </div>
-      {error ? (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      ) : null}
       <Button type="submit" className="h-10 w-full" disabled={pending}>
         {pending ? "Signing in…" : "Sign in"}
       </Button>

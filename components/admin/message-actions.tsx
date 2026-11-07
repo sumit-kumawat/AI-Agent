@@ -1,27 +1,31 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useTransition } from "react";
 import { Flag, FlagOff, Trash } from "lucide-react";
 import { deleteMessage, flagMessage } from "@/app/admin/actions";
+import { useFeedback } from "@/components/feedback";
 import { Button } from "@/components/ui/button";
 
 export function MessageActions({ id, flagged }: { id: string; flagged: boolean }) {
   const [pending, startTransition] = useTransition();
-  const [error, setError] = useState<string | null>(null);
+  const { confirm, prompt, report } = useFeedback();
 
-  function perform(action: () => Promise<{ ok: boolean; error?: string }>) {
-    setError(null);
+  function perform(action: () => Promise<{ ok: boolean; error?: string }>, success: string) {
     startTransition(async () => {
-      const result = await action();
-      if (!result.ok) setError(result.error ?? "Something went wrong.");
+      report(await action(), { title: success });
     });
   }
 
   return (
     <div className="flex items-center gap-1">
-      {error ? <span className="text-xs text-destructive">{error}</span> : null}
       {flagged ? (
-        <Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => perform(() => flagMessage(id, false, ""))}>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          disabled={pending}
+          onClick={() => perform(() => flagMessage(id, false, ""), "Flag removed")}
+        >
           <FlagOff />
           Unflag
         </Button>
@@ -31,10 +35,17 @@ export function MessageActions({ id, flagged }: { id: string; flagged: boolean }
           size="sm"
           variant="ghost"
           disabled={pending}
-          onClick={() => {
-            const reason = window.prompt("Why are you flagging this message? (optional)");
+          onClick={async () => {
+            const reason = await prompt({
+              title: "Flag this message?",
+              description: "Flagged messages are listed for review in the admin panel.",
+              label: "Reason (optional)",
+              placeholder: "Why are you flagging it?",
+              confirmLabel: "Flag",
+              maxLength: 300,
+            });
             if (reason === null) return;
-            perform(() => flagMessage(id, true, reason));
+            perform(() => flagMessage(id, true, reason), "Message flagged");
           }}
         >
           <Flag />
@@ -47,9 +58,14 @@ export function MessageActions({ id, flagged }: { id: string; flagged: boolean }
         variant="ghost"
         className="text-destructive hover:text-destructive"
         disabled={pending}
-        onClick={() => {
-          if (!window.confirm("Delete this message permanently? This cannot be undone.")) return;
-          perform(() => deleteMessage(id));
+        onClick={async () => {
+          const ok = await confirm({
+            title: "Delete this message?",
+            description: "The message is removed permanently. This cannot be undone.",
+            confirmLabel: "Delete",
+            destructive: true,
+          });
+          if (ok) perform(() => deleteMessage(id), "Message deleted");
         }}
       >
         <Trash />

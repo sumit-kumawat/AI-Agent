@@ -9,6 +9,7 @@ import {
   updateUserQuota,
   type ActionResult,
 } from "@/app/admin/actions";
+import { useFeedback } from "@/components/feedback";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -42,22 +43,23 @@ type Target = {
 
 export function UserActions({ user }: { user: Target }) {
   const [pending, startTransition] = useTransition();
-  const [error, setError] = useState<string | null>(null);
   const [password, setPassword] = useState<string | null>(null);
   const [quotaOpen, setQuotaOpen] = useState(false);
+  const { confirm, report } = useFeedback();
 
-  function perform<T extends object>(action: () => Promise<ActionResult<T>>, onDone?: (result: T) => void) {
-    setError(null);
+  function perform<T extends object>(
+    action: () => Promise<ActionResult<T>>,
+    success: string | null,
+    onDone?: (result: T) => void,
+  ) {
     startTransition(async () => {
       const result = await action();
-      if (!result.ok) setError(result.error);
-      else onDone?.(result);
+      if (report(result, success ? { title: success } : undefined) && result.ok) onDone?.(result);
     });
   }
 
   return (
     <div className="flex items-center justify-end gap-2">
-      {error ? <span className="max-w-48 text-right text-xs text-destructive">{error}</span> : null}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" size="icon-sm" disabled={pending} aria-label={`Actions for ${user.email}`}>
@@ -68,15 +70,31 @@ export function UserActions({ user }: { user: Target }) {
           <DropdownMenuLabel className="truncate text-xs text-muted-foreground">{user.email}</DropdownMenuLabel>
           <DropdownMenuItem
             disabled={user.self}
-            onSelect={() => perform(() => setUserRole(user.id, user.role === "admin" ? "user" : "admin"))}
+            onSelect={async () => {
+              const role = user.role === "admin" ? "user" : "admin";
+              const ok = await confirm({
+                title: `Make ${user.email} ${role === "admin" ? "an admin" : "a regular user"}?`,
+                description:
+                  role === "admin"
+                    ? "Admins can manage every user, conversation and setting."
+                    : "They lose access to the admin panel immediately.",
+                confirmLabel: "Change role",
+              });
+              if (ok) perform(() => setUserRole(user.id, role), "Role updated");
+            }}
           >
             {user.role === "admin" ? "Change role to user" : "Change role to admin"}
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={() => setQuotaOpen(true)}>Adjust plan and quota</DropdownMenuItem>
           <DropdownMenuItem
-            onSelect={() => {
-              if (!window.confirm(`Reset the password for ${user.email}? They will be signed out everywhere.`)) return;
-              perform(() => resetUserPassword(user.id), (result) => setPassword(result.password));
+            onSelect={async () => {
+              const ok = await confirm({
+                title: "Reset password?",
+                description: `${user.email} gets a temporary password, is signed out everywhere, and must choose a new password at next sign-in.`,
+                confirmLabel: "Reset password",
+                destructive: true,
+              });
+              if (ok) perform(() => resetUserPassword(user.id), null, (result) => setPassword(result.password));
             }}
           >
             Reset password
@@ -85,9 +103,18 @@ export function UserActions({ user }: { user: Target }) {
           <DropdownMenuItem
             variant={user.suspended ? "default" : "destructive"}
             disabled={user.self}
-            onSelect={() => {
-              if (!user.suspended && !window.confirm(`Suspend ${user.email}? They will be signed out and cannot sign in.`)) return;
-              perform(() => setUserSuspended(user.id, !user.suspended));
+            onSelect={async () => {
+              const ok = await confirm(
+                user.suspended
+                  ? { title: "Reactivate account?", description: `${user.email} can sign in again.`, confirmLabel: "Reactivate" }
+                  : {
+                      title: "Suspend account?",
+                      description: `${user.email} is signed out and cannot sign in until reactivated.`,
+                      confirmLabel: "Suspend",
+                      destructive: true,
+                    },
+              );
+              if (ok) perform(() => setUserSuspended(user.id, !user.suspended), user.suspended ? "Account reactivated" : "Account suspended");
             }}
           >
             {user.suspended ? "Reactivate" : "Suspend"}
@@ -126,10 +153,9 @@ export function UserActions({ user }: { user: Target }) {
         open={quotaOpen}
         onOpenChange={setQuotaOpen}
         onSave={(input) =>
-          perform(() => updateUserQuota(user.id, input), () => setQuotaOpen(false))
+          perform(() => updateUserQuota(user.id, input), "Plan and quota saved", () => setQuotaOpen(false))
         }
         pending={pending}
-        error={error}
       />
     </div>
   );
@@ -141,14 +167,12 @@ function QuotaDialog({
   onOpenChange,
   onSave,
   pending,
-  error,
 }: {
   user: Target;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSave: (input: { plan: string; quotaTokens: number | null; resetUsage: boolean }) => void;
   pending: boolean;
-  error: string | null;
 }) {
   const [resetUsage, setResetUsage] = useState(false);
   return (
@@ -191,7 +215,6 @@ function QuotaDialog({
             Reset this month&apos;s usage to zero
             <Switch checked={resetUsage} onCheckedChange={setResetUsage} />
           </label>
-          {error ? <p className="text-sm text-destructive">{error}</p> : null}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
             <Button type="submit" disabled={pending}>{pending ? "Saving…" : "Save"}</Button>

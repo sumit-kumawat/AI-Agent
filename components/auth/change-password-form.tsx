@@ -4,13 +4,15 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signIn, signOut } from "next-auth/react";
 import { useState } from "react";
+import { useFeedback } from "@/components/feedback";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 export function ChangePasswordForm({ next, cancellable }: { next: string; cancellable: boolean }) {
   const router = useRouter();
-  const [error, setError] = useState<string | null>(null);
+  const { notify } = useFeedback();
+  const fail = (description: string) => void notify({ tone: "error", title: "Password not changed", description });
   const [pending, setPending] = useState(false);
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -19,11 +21,10 @@ export function ChangePasswordForm({ next, cancellable }: { next: string; cancel
     const currentPassword = String(form.get("current") ?? "");
     const newPassword = String(form.get("new") ?? "");
     if (newPassword !== String(form.get("confirm") ?? "")) {
-      setError("The new passwords do not match.");
+      fail("The new passwords do not match.");
       return;
     }
     setPending(true);
-    setError(null);
     try {
       const response = await fetch("/api/account/password", {
         method: "POST",
@@ -32,7 +33,7 @@ export function ChangePasswordForm({ next, cancellable }: { next: string; cancel
       });
       const data = (await response.json().catch(() => ({}))) as { error?: string; email?: string };
       if (!response.ok || !data.email) {
-        setError(data.error ?? "Could not change the password.");
+        fail(data.error ?? "Could not change the password.");
         setPending(false);
         return;
       }
@@ -45,7 +46,7 @@ export function ChangePasswordForm({ next, cancellable }: { next: string; cancel
       // A full load: the client router may still hold the redirect to this page from before the change.
       window.location.replace(next);
     } catch {
-      setError("Could not reach the server. Check your connection.");
+      fail("Could not reach the server. Check your connection.");
       setPending(false);
     }
   }
@@ -65,11 +66,6 @@ export function ChangePasswordForm({ next, cancellable }: { next: string; cancel
         <Label htmlFor="confirm">Confirm new password</Label>
         <Input id="confirm" name="confirm" type="password" autoComplete="new-password" minLength={8} required className="h-10" />
       </div>
-      {error ? (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      ) : null}
       <Button type="submit" className="h-10 w-full" disabled={pending}>
         {pending ? "Saving…" : "Save new password"}
       </Button>

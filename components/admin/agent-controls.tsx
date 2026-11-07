@@ -7,6 +7,7 @@ import {
   setModelEnabled,
   updateAgentConfig,
 } from "@/app/admin/actions";
+import { useFeedback } from "@/components/feedback";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,14 +23,13 @@ export function AgentRow({
   running: number;
 }) {
   const [pending, startTransition] = useTransition();
-  const [error, setError] = useState<string | null>(null);
   const [limit, setLimit] = useState(String(agent.maxConcurrency));
+  const { report } = useFeedback();
 
   function save(patch: { enabled?: boolean; maxConcurrency?: number }) {
-    setError(null);
     startTransition(async () => {
       const result = await updateAgentConfig(agent.id, patch);
-      if (!result.ok) setError(result.error);
+      report(result, patch.maxConcurrency === undefined ? undefined : { title: "Limit saved", description: `${agent.name} now runs at most ${patch.maxConcurrency} at once.` });
     });
   }
 
@@ -49,7 +49,6 @@ export function AgentRow({
         <p className="mt-1 text-xs text-muted-foreground">
           {running} running · limit {agent.maxConcurrency}
         </p>
-        {error ? <p className="mt-1 text-xs text-destructive">{error}</p> : null}
       </div>
       <form
         className="flex items-center gap-2"
@@ -110,21 +109,24 @@ export function LiveRefresh({ seconds = 3 }: { seconds?: number }) {
 
 export function KillButton({ sessionId, label }: { sessionId: string; label: string }) {
   const [pending, startTransition] = useTransition();
-  const [error, setError] = useState<string | null>(null);
+  const { confirm, report } = useFeedback();
   return (
     <div className="flex items-center justify-end gap-2">
-      {error ? <span className="text-xs text-destructive">{error}</span> : null}
       <Button
         type="button"
         size="sm"
         variant="destructive"
         disabled={pending}
-        onClick={() => {
-          if (!window.confirm(`Stop ${label}? The reply ends immediately.`)) return;
-          setError(null);
+        onClick={async () => {
+          const ok = await confirm({
+            title: "Stop this session?",
+            description: `${label}: the reply ends immediately.`,
+            confirmLabel: "Stop session",
+            destructive: true,
+          });
+          if (!ok) return;
           startTransition(async () => {
-            const result = await killAgentSession(sessionId);
-            if (!result.ok) setError(result.error);
+            report(await killAgentSession(sessionId), { title: "Session stopped" });
           });
         }}
       >
@@ -136,19 +138,16 @@ export function KillButton({ sessionId, label }: { sessionId: string; label: str
 
 export function ModelToggle({ name, enabled }: { name: string; enabled: boolean }) {
   const [pending, startTransition] = useTransition();
-  const [error, setError] = useState<string | null>(null);
+  const { report } = useFeedback();
   return (
     <label className="flex items-center gap-2 text-sm">
-      {error ? <span className="text-xs text-destructive">{error}</span> : null}
       <Switch
         checked={enabled}
         disabled={pending}
         aria-label={`${enabled ? "Disable" : "Enable"} ${name}`}
         onCheckedChange={(next) => {
-          setError(null);
           startTransition(async () => {
-            const result = await setModelEnabled(name, next);
-            if (!result.ok) setError(result.error);
+            report(await setModelEnabled(name, next));
           });
         }}
       />

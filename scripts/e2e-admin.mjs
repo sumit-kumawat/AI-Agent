@@ -53,7 +53,10 @@ async function session(account) {
   const page = await context.newPage();
   await page.setViewport({ width: 1280, height: 860 });
   page.setDefaultTimeout(20_000);
-  page.on("dialog", (dialog) => void dialog.accept(dialog.type() === "prompt" ? "e2e flag reason" : undefined));
+  page.on("dialog", (dialog) => {
+    check(false, `native ${dialog.type()} dialog appeared: ${dialog.message()}`);
+    void dialog.dismiss();
+  });
   await page.goto(`${base}/login`, { waitUntil: "networkidle0" });
   await page.type("#email", account.email);
   await page.type("#password", account.password);
@@ -118,6 +121,33 @@ async function userRowAction(page, email, item) {
   await clickText(page, item, "[role=menu]");
 }
 
+/**
+ * Waits for the in-app lightbox popup whose text includes `title`, optionally
+ * types into its input, presses `button` (or the primary button), and waits
+ * for that popup to close.
+ */
+async function popup(page, title, { input, button } = {}) {
+  const find = (value) =>
+    [...document.querySelectorAll("[role=alertdialog]")].find((node) => node.innerText.includes(value)) ?? null;
+  await page.waitForFunction(find, {}, title);
+  const dialog = await page.evaluateHandle(find, title);
+  if (input !== undefined) await (await dialog.$("input")).type(input);
+  const clicked = await dialog.evaluate((node, label) => {
+    const target = label
+      ? [...node.querySelectorAll("button")].find((item) => item.innerText.trim() === label)
+      : node.querySelector("button[type=submit]");
+    target?.click();
+    return Boolean(target);
+  }, button ?? null);
+  if (!clicked) throw new Error(`popup "${title}" has no "${button ?? "submit"}" button`);
+  await page.waitForFunction(
+    (value) =>
+      ![...document.querySelectorAll("[role=alertdialog]")].some((node) => node.innerText.includes(value)),
+    {},
+    title,
+  );
+}
+
 async function waitForText(page, text) {
   await page.waitForFunction((value) => document.body.innerText.includes(value), {}, text);
 }
@@ -127,6 +157,16 @@ try {
   check(userPage.url().endsWith("/chat"), "user signs in");
   await userPage.goto(`${base}/admin`, { waitUntil: "networkidle0" });
   check(!userPage.url().includes("/admin"), "non-admin is redirected away from /admin");
+
+  const wrong = await (await browser.createBrowserContext()).newPage();
+  await wrong.goto(`${base}/login`, { waitUntil: "networkidle0" });
+  await wrong.type("#email", admin.email);
+  await wrong.type("#password", "definitely-wrong");
+  await wrong.click("button[type=submit]");
+  await wrong.waitForSelector("[role=alertdialog]");
+  await wrong.screenshot({ path: `${shots}/login_error_popup.png` });
+  await popup(wrong, "Sign-in failed");
+  check(true, "a wrong password shows the sign-in error popup");
 
   const adminPage = await session(admin);
   check(adminPage.url().includes("/account/password"), "seeded admin is sent to change password on first sign-in");
@@ -190,6 +230,8 @@ try {
   await adminPage.waitForSelector("::-p-text(Kill)");
   await adminPage.screenshot({ path: `${shots}/admin_agents_running.png`, fullPage: true });
   await clickText(adminPage, "Kill");
+  await popup(adminPage, "Stop this session?", { button: "Stop session" });
+  await popup(adminPage, "Session stopped");
   const killed = await Promise.race([pendingChat, new Promise((resolve) => setTimeout(() => resolve(null), 20_000))]);
   check(killed !== null, "killed session ends the user's stream");
 
@@ -200,6 +242,7 @@ try {
   await adminPage.type('input[name="plan"]', "pro");
   await adminPage.type('input[name="quota"]', "1");
   await clickText(adminPage, "Save", "[role=dialog]");
+  await popup(adminPage, "Plan and quota saved");
   await adminPage.waitForSelector("[role=dialog]", { hidden: true });
   await adminPage.waitForFunction((email) => {
     const row = [...document.querySelectorAll("tr")].find((tr) => tr.innerText.includes(email));
@@ -211,6 +254,7 @@ try {
   await adminPage.waitForSelector('input[name="quota"]');
   await adminPage.$eval('input[name="quota"]', (input) => (input.value = ""));
   await clickText(adminPage, "Save", "[role=dialog]");
+  await popup(adminPage, "Plan and quota saved");
   await adminPage.waitForSelector("[role=dialog]", { hidden: true });
   check((await chat(userPage, "Reply with one word: ok", target)).status === 200, "unlimited quota allows chat again");
 
@@ -218,20 +262,20 @@ try {
   await adminPage.goto(`${base}/admin/settings`, { waitUntil: "networkidle0" });
   await adminPage.$eval("#keywords", (input) => (input.value = "forbiddenword"));
   await clickText(adminPage, "Save settings");
-  await waitForText(adminPage, "Saved.");
+  await popup(adminPage, "Settings saved");
   const blocked = await chat(userPage, "this has forbiddenword inside");
   check(blocked.status === 400, `blocklisted keyword is rejected (${blocked.status})`);
   await adminPage.goto(`${base}/admin/settings`, { waitUntil: "networkidle0" });
   await adminPage.$eval("#rate", (input) => (input.value = "2"));
   await clickText(adminPage, "Save settings");
-  await waitForText(adminPage, "Saved.");
+  await popup(adminPage, "Settings saved");
   const statuses = [];
   for (let attempt = 0; attempt < 3; attempt += 1) statuses.push((await chat(userPage, "Reply with one word: ok", target)).status);
   check(statuses.includes(429), `global rate limit applies (${statuses.join(", ")})`);
   await adminPage.$eval("#keywords", (input) => (input.value = ""));
   await adminPage.$eval("#rate", (input) => (input.value = "30"));
   await clickText(adminPage, "Save settings");
-  await waitForText(adminPage, "Saved.");
+  await popup(adminPage, "Settings saved");
 
   // Usage dashboard shows the rate-limit hit and token usage.
   await adminPage.goto(`${base}/admin/usage?period=daily`, { waitUntil: "networkidle0" });
@@ -250,22 +294,34 @@ try {
   check(Boolean(withMessages), "audit search finds the user's conversations");
   await adminPage.goto(`${base}${withMessages}`, { waitUntil: "networkidle0" });
   await clickText(adminPage, "Flag", "ol");
+  await popup(adminPage, "Flag this message?", { input: "e2e flag reason" });
+  await popup(adminPage, "Message flagged");
   await waitForText(adminPage, "e2e flag reason");
   check(true, "message flagged with a reason");
   const before = await adminPage.$$eval("ol > li", (items) => items.length);
-  await clickText(adminPage, "Delete");
+  await clickText(adminPage, "Delete", "ol");
+  await popup(adminPage, "Delete this message?", { button: "Cancel" });
+  check((await adminPage.$$eval("ol > li", (items) => items.length)) === before, "cancelling the delete popup keeps the message");
+  await clickText(adminPage, "Delete", "ol");
+  await popup(adminPage, "Delete this message?", { button: "Delete" });
+  await popup(adminPage, "Message deleted");
   await adminPage.waitForFunction((count) => document.querySelectorAll("ol > li").length === count - 1, {}, before);
   check(true, "message deleted");
 
   // Suspend and reactivate.
   await userRowAction(adminPage, user.email, "Suspend");
+  await popup(adminPage, "Suspend account?", { button: "Suspend" });
+  await popup(adminPage, "Account suspended");
   await waitForText(adminPage, "suspended");
   check((await api(userPage, "/api/conversations")).status === 401, "suspended user's session stops working");
   await userRowAction(adminPage, user.email, "Reactivate");
+  await popup(adminPage, "Reactivate account?");
+  await popup(adminPage, "Account reactivated");
   await adminPage.waitForFunction(() => !document.body.innerText.includes("suspended"));
 
   // Reset password: old session ends, temporary password works.
   await userRowAction(adminPage, user.email, "Reset password");
+  await popup(adminPage, "Reset password?", { button: "Reset password" });
   const tempInput = await adminPage.waitForSelector("[role=dialog] input[readonly]");
   const temporary = await tempInput.evaluate((input) => input.value);
   check(temporary.length >= 12, "temporary password shown once");
@@ -279,6 +335,8 @@ try {
 
   // Role change.
   await userRowAction(adminPage, user.email, "Change role to admin");
+  await popup(adminPage, "an admin?");
+  await popup(adminPage, "Role updated");
   await adminPage.waitForFunction((email) => {
     const row = [...document.querySelectorAll("tr")].find((tr) => tr.innerText.includes(email));
     return row?.innerText.includes("admin");
@@ -286,6 +344,8 @@ try {
   await relogged.goto(`${base}/admin`, { waitUntil: "networkidle0" });
   check(relogged.url().endsWith("/admin"), "promoted user can open /admin immediately");
   await userRowAction(adminPage, user.email, "Change role to user");
+  await popup(adminPage, "a regular user?");
+  await popup(adminPage, "Role updated");
   await relogged.goto(`${base}/admin/users`, { waitUntil: "networkidle0" });
   check(!relogged.url().includes("/admin"), "demoted user loses /admin immediately");
 
