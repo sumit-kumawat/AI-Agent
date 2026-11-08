@@ -19,6 +19,8 @@ export function Composer({
   model,
   onModelChange,
   error,
+  sendWithEnter = true,
+  note,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -32,6 +34,9 @@ export function Composer({
   model: string | null;
   onModelChange: (name: string) => void;
   error?: string | null;
+  /** When false, Enter inserts a newline and Ctrl/⌘+Enter sends. */
+  sendWithEnter?: boolean;
+  note?: string;
 }) {
   const textarea = useRef<HTMLTextAreaElement>(null);
   const canSend = value.trim().length > 0 && model !== null && !busy && !pending;
@@ -67,7 +72,9 @@ export function Composer({
           value={value}
           onChange={(event) => onChange(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+            if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
+            const modified = event.metaKey || event.ctrlKey;
+            if (sendWithEnter || modified) {
               event.preventDefault();
               submit();
             }
@@ -107,7 +114,10 @@ export function Composer({
         <p className="mt-2 text-center text-sm text-destructive">{error}</p>
       ) : (
         <p className="mt-2 hidden text-center text-xs text-muted-foreground sm:block">
-          Replies come from a local model and can be wrong. Enter to send, Shift+Enter for a new line.
+          {note ??
+            (sendWithEnter
+              ? "Replies can be wrong; check important information. Enter to send, Shift+Enter for a new line."
+              : "Replies can be wrong; check important information. Ctrl/⌘+Enter to send.")}
         </p>
       )}
     </form>

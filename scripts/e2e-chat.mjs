@@ -1,6 +1,6 @@
 // Browser test for the chat UI. Seeds a throwaway user, chats in headless
 // Chrome on desktop and phone sizes, checks streaming, markdown, copy, stop,
-// regenerate, rename, auto-scroll, the light theme and the delete popup, then
+// regenerate, rename, auto-scroll, the default theme and the delete popup, then
 // deletes the account.
 //
 //   npm run e2e:chat               (server must be running; uses Chrome)
@@ -52,8 +52,19 @@ await page.setViewport({ width: 1366, height: 860 });
 const shot = (name) => page.screenshot({ path: `${shots}/chat_${name}.png` });
 const text = () => page.evaluate(() => document.body.innerText);
 const assistantCount = () => page.$$eval('[data-role="assistant"]', (nodes) => nodes.length);
+/** Waits until the latest reply has finished streaming and shows its actions. */
 const waitIdle = () =>
-  page.waitForSelector('button[aria-label="Send message"]', { timeout: 180_000 });
+  page.waitForFunction(
+    () => {
+      const replies = document.querySelectorAll('[data-role="assistant"]');
+      const last = replies[replies.length - 1];
+      return (
+        !document.querySelector('button[aria-label="Stop generating"]') &&
+        last?.querySelector('button[aria-label="Copy"]')
+      );
+    },
+    { timeout: 180_000 },
+  );
 
 /** Presses `button` in the in-app popup titled `title` and waits for it to close. */
 async function popup(title, button) {
@@ -86,7 +97,7 @@ try {
   await Promise.all([page.waitForNavigation({ waitUntil: "networkidle0" }), page.click("button[type=submit]")]);
   await page.evaluate((name) => localStorage.setItem("harbor-model", name), model);
   await page.goto(`${base}/chat`, { waitUntil: "networkidle0" });
-  check((await text()).includes("What can I help with?"), "blank new chat shows the greeting");
+  check((await text()).includes("What can I help with"), "blank new chat shows the greeting");
   check(
     (await page.$eval('button[aria-label="Choose model"]', (node) => node.textContent)).includes(model),
     `model selector in the composer shows ${model}`,
@@ -149,12 +160,12 @@ try {
     window.__copied = null;
     document.addEventListener("copy", () => (window.__copied = "event"));
   });
-  const copyButtons = await page.$$('button[aria-label="Copy message"]');
+  const copyButtons = await page.$$('button[aria-label="Copy"]');
   check(copyButtons.length >= 2, "copy buttons on user and assistant messages");
 
   // Regenerate replaces the last reply.
   const before = await assistantCount();
-  await page.click('button[aria-label="Regenerate response"]');
+  await page.click('button[aria-label="Regenerate"]');
   await page.waitForSelector('button[aria-label="Stop generating"]');
   await waitIdle();
   check((await assistantCount()) === before, "regenerate replaces the last reply");
@@ -197,13 +208,12 @@ try {
   await page.waitForFunction(() => document.querySelector('nav[aria-label="Conversations"]')?.textContent?.includes("Renamed by e2e"));
   check(true, "title is editable and the sidebar updates");
 
-  // Light theme only.
-  const light = await page.evaluate(() => ({
+  // Default theme follows the system (headless Chrome reports light).
+  const theme = await page.evaluate(() => ({
     dark: document.documentElement.classList.contains("dark"),
-    toggle: Boolean(document.querySelector('[aria-label="Toggle dark mode"]')),
-    scheme: getComputedStyle(document.documentElement).colorScheme,
+    pref: document.documentElement.dataset.theme,
   }));
-  check(!light.dark && !light.toggle && light.scheme === "light", "light theme only, with no dark-mode toggle");
+  check(!theme.dark && theme.pref === "system", "default theme follows the system setting");
 
   // Collapse the desktop sidebar.
   await page.click('button[aria-label="Close sidebar"]');

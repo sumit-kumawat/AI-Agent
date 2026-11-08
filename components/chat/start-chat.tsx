@@ -1,10 +1,13 @@
 "use client";
 
+import { Timer } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ChatTopBar, useChatChrome } from "@/components/chat/chat-shell";
 import { Composer } from "@/components/chat/composer";
+import { jsonFetch } from "@/components/chat/conversation-actions";
 import { pickModel, usePreferredModel, useWarmModel } from "@/components/chat/model-picker";
+import { Button } from "@/components/ui/button";
 
 const SUGGESTIONS = [
   "Explain how SQLite WAL mode works",
@@ -13,10 +16,24 @@ const SUGGESTIONS = [
   "Compare REST and GraphQL in a table",
 ];
 
-export function Greeting({ onPick }: { onPick: (text: string) => void }) {
+export function Greeting({ onPick, temporary = false }: { onPick: (text: string) => void; temporary?: boolean }) {
+  const { prefs, user } = useChatChrome();
+  const name = prefs.nickname || user.name.split(" ")[0];
   return (
     <div className="flex flex-col items-center px-2 text-center">
-      <h2 className="font-heading text-3xl text-balance sm:text-4xl">What can I help with?</h2>
+      {temporary ? (
+        <>
+          <h2 className="font-heading text-3xl text-balance sm:text-4xl">Temporary chat</h2>
+          <p className="mt-3 max-w-md text-sm text-muted-foreground">
+            This chat won&rsquo;t appear in your history, won&rsquo;t use or update memory, and is deleted after 24
+            hours.
+          </p>
+        </>
+      ) : (
+        <h2 className="font-heading text-3xl text-balance sm:text-4xl">
+          {name ? `What can I help with, ${name}?` : "What can I help with?"}
+        </h2>
+      )}
       <div className="mt-6 grid w-full max-w-2xl grid-cols-1 gap-2 sm:grid-cols-2">
         {SUGGESTIONS.map((suggestion) => (
           <button
@@ -34,9 +51,9 @@ export function Greeting({ onPick }: { onPick: (text: string) => void }) {
 }
 
 /** A blank chat. The conversation is created when the first message is sent. */
-export function StartChat() {
+export function StartChat({ temporary }: { temporary: boolean }) {
   const router = useRouter();
-  const { models, defaultModel } = useChatChrome();
+  const { models, defaultModel, prefs } = useChatChrome();
   const preferred = usePreferredModel();
   const [picked, setPicked] = useState<string | null>(null);
   const model = pickModel(models, picked, preferred, defaultModel);
@@ -51,13 +68,10 @@ export function StartChat() {
     setPending(true);
     setError(null);
     try {
-      const response = await fetch("/api/conversations", {
+      const conversation = await jsonFetch<{ id: string }>("/api/conversations", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model }),
+        body: JSON.stringify({ model, temporary }),
       });
-      if (!response.ok) throw new Error();
-      const conversation = (await response.json()) as { id: string };
       sessionStorage.setItem(`harbor-draft:${conversation.id}`, trimmed);
       router.push(`/chat/${conversation.id}`);
       router.refresh();
@@ -69,10 +83,26 @@ export function StartChat() {
 
   return (
     <div className="flex h-full flex-col">
-      <ChatTopBar title="New chat" />
+      <ChatTopBar
+        title={temporary ? "Temporary chat" : "New chat"}
+        actions={
+          <Button
+            type="button"
+            variant={temporary ? "secondary" : "ghost"}
+            size="sm"
+            aria-pressed={temporary}
+            data-temporary-toggle
+            onClick={() => router.replace(temporary ? "/chat" : "/chat?temporary=1")}
+            title={temporary ? "Turn off temporary chat" : "Turn on temporary chat"}
+          >
+            <Timer />
+            <span className="hidden sm:inline">Temporary</span>
+          </Button>
+        }
+      />
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:justify-center">
         <div className="flex flex-1 items-center justify-center py-6 md:mb-8 md:flex-none">
-          <Greeting onPick={(text) => void start(text)} />
+          <Greeting onPick={(text) => void start(text)} temporary={temporary} />
         </div>
         <div className="md:pb-[12vh]">
           <Composer
@@ -84,6 +114,8 @@ export function StartChat() {
             model={model}
             onModelChange={setPicked}
             error={error}
+            sendWithEnter={prefs.sendWithEnter}
+            note={temporary ? "Temporary chat: not saved to history or memory." : undefined}
           />
         </div>
       </div>

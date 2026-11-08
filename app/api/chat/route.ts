@@ -6,18 +6,22 @@ import {
 } from "ai";
 import { startSession } from "@/lib/agents";
 import { auth } from "@/lib/auth";
-import { BRAND } from "@/lib/brand";
+import type { ChatMessageMeta } from "@/lib/chat-types";
 import {
   findUserById,
   getConversationForUser,
   maybeSetTitle,
   quotaState,
+  recentConversationTitles,
   recordUsage,
   saveAssistantMessage,
   setConversationModel,
   syncTranscript,
 } from "@/lib/db/queries";
+import { addMemory, explicitMemory, MemoryError, relevantMemories } from "@/lib/memory";
 import { findBlockedKeyword } from "@/lib/moderation";
+import { getPreferences } from "@/lib/preferences";
+import { buildInstructions } from "@/lib/prompt";
 import { findInstalled, getChatModel, getUserInventory, resolveModel } from "@/lib/ollama";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
 import { getSettings } from "@/lib/settings";
@@ -30,10 +34,6 @@ export const maxDuration = 300;
 const AGENT_ID = "ollama";
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const MODEL_CONTEXT_MESSAGES = 40;
-
-const INSTRUCTIONS = `You are ${BRAND.product}, an assistant made by ${BRAND.company}, running on open models through Ollama.
-Answer clearly and directly. When you write code, keep it complete enough to run.
-If you are unsure, say so.`;
 
 /** Ollama sometimes omits usage; fall back to roughly four characters per token. */
 function estimateTokens(characters: number) {
@@ -164,8 +164,30 @@ export async function POST(request: Request) {
     return Response.json({ error: agent.error }, { status: agent.status });
   }
 
-  syncTranscript(conversation.id, transcript);
+  syncTranscript(conversation.id, transcript, { replace: parsed.data.edit === true });
   maybeSetTitle(conversation.id, conversation.title, latestUser.content);
+
+  const prefs = getPreferences(user.id);
+  const remembering = !conversation.temporary && prefs.memoryEnabled;
+  let savedMemory: string | undefined;
+  const fact = remembering && transcript.at(-1)?.role === "user" ? explicitMemory(latestUser.content) : null;
+  if (fact) {
+    try {
+      savedMemory = addMemory(user.id, fact, { source: "chat", conversationId: conversation.id }).content;
+    } catch (error) {
+      if (!(error instanceof MemoryError)) console.error("Failed to save memory", error);
+    }
+  }
+  const instructions = buildInstructions({
+    prefs,
+    userName: user.name,
+    memories: remembering ? relevantMemories(user.id, latestUser.content) : [],
+    recentTitles:
+      !conversation.temporary && prefs.referenceHistory
+        ? recentConversationTitles(user.id, conversation.id)
+        : [],
+    temporary: conversation.temporary,
+  });
 
   if (!inventory.ok || !modelName) {
     agent.end();
@@ -193,10 +215,15 @@ export async function POST(request: Request) {
   const startedAt = Date.now();
   let usage: LanguageModelUsage | undefined;
   let failed = false;
+  const meta: ChatMessageMeta = {
+    createdAt: startedAt,
+    model: modelName,
+    ...(savedMemory ? { memory: savedMemory } : {}),
+  };
 
   const result = streamText({
     model: getChatModel(modelName),
-    instructions: INSTRUCTIONS,
+    instructions,
     messages: modelMessages,
     maxOutputTokens: 4096,
     abortSignal: agent.signal,
@@ -209,6 +236,7 @@ export async function POST(request: Request) {
     stream: toUIMessageStream({
       stream: result.stream,
       originalMessages: cleanMessages,
+      messageMetadata: ({ part }) => (part.type === "start" ? meta : undefined),
       generateMessageId: () => crypto.randomUUID(),
       onError: (error) => {
         failed = true;
@@ -231,12 +259,13 @@ export async function POST(request: Request) {
           saveAssistantMessage(conversation.id, {
             id: responseMessage.id || crypto.randomUUID(),
             content,
+            meta: { model: meta.model, memory: meta.memory },
           });
         } catch (error) {
           console.error("Failed to save the assistant reply", error);
         }
         try {
-          const promptChars = INSTRUCTIONS.length + context.reduce((sum, m) => sum + m.content.length, 0);
+          const promptChars = instructions.length + context.reduce((sum, m) => sum + m.content.length, 0);
           recordUsage({
             userId: user.id,
             conversationId: conversation.id,

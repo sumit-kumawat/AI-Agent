@@ -22,7 +22,7 @@ async function call(path, init = {}) {
   const response = await fetch(`${base}${path}`, {
     redirect: "manual",
     ...init,
-    headers: { cookie: cookieHeader(), ...(init.headers ?? {}) },
+    headers: { cookie: cookieHeader(), origin: base, ...(init.headers ?? {}) },
   });
   remember(response);
   return response;

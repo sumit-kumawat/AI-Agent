@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Fraunces, Geist, Geist_Mono } from "next/font/google";
 import { Providers } from "@/components/theme";
+import { APPEARANCE_SCRIPT } from "@/lib/appearance";
 import { BRAND } from "@/lib/brand";
 import "./globals.css";
 
@@ -56,6 +57,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${geistSans.variable} ${geistMono.variable} ${fraunces.variable} h-full antialiased`}
       suppressHydrationWarning
     >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: APPEARANCE_SCRIPT }} />
+      </head>
       <body
         className={`${geistSans.className} flex min-h-full flex-col`}
         suppressHydrationWarning

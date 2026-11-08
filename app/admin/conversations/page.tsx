@@ -41,13 +41,13 @@ export default async function AdminConversationsPage({
     <>
       <PageHeader
         title="Conversation audit"
-        description="Read-only access to chats for compliance and debugging. Viewing does not notify the user."
+        description="Chat metadata only. Reading messages requires a written reason, which is recorded in the audit log and grants access to that chat for 30 minutes."
       />
       <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <SearchForm
           fields={[
             { name: "email", placeholder: "User email", value: email },
-            { name: "q", placeholder: "Keyword in title or messages", value: q },
+            { name: "q", placeholder: "Keyword in title", value: q },
           ]}
           hidden={flagged ? { flagged: "1" } : undefined}
         />

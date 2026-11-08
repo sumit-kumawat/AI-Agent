@@ -33,6 +33,10 @@ export const conversations = sqliteTable(
       .references(() => users.id, { onDelete: "cascade" }),
     title: text("title").notNull(),
     model: text("model"),
+    pinnedAt: integer("pinned_at"),
+    archivedAt: integer("archived_at"),
+    /** Temporary chats stay out of history, search and memory. */
+    temporary: integer("temporary", { mode: "boolean" }).notNull().default(false),
     createdAt: integer("created_at", { mode: "number" }).notNull(),
     updatedAt: integer("updated_at", { mode: "number" }).notNull(),
   },
@@ -40,6 +44,33 @@ export const conversations = sqliteTable(
     index("conversations_user_updated_idx").on(table.userId, table.updatedAt),
   ],
 );
+
+export const memories = sqliteTable(
+  "memories",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    content: text("content").notNull(),
+    source: text("source", { enum: ["user", "chat"] }).notNull().default("user"),
+    conversationId: text("conversation_id").references(() => conversations.id, {
+      onDelete: "set null",
+    }),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [index("memories_user_idx").on(table.userId, table.updatedAt)],
+);
+
+export const userPreferences = sqliteTable("user_preferences", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  /** JSON validated by `preferencesSchema`. */
+  data: text("data").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
 
 export const messages = sqliteTable(
   "messages",
@@ -54,6 +85,10 @@ export const messages = sqliteTable(
     flagReason: text("flag_reason"),
     flaggedBy: text("flagged_by"),
     flaggedAt: integer("flagged_at"),
+    /** 1 for a thumbs up, -1 for a thumbs down. */
+    feedback: integer("feedback"),
+    /** JSON such as `{ "model": "...", "memory": "..." }`. */
+    meta: text("meta"),
     createdAt: integer("created_at", { mode: "number" }).notNull(),
   },
   (table) => [

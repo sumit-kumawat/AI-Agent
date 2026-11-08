@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, ne, sql } from "drizzle-orm";
 import { db } from "./index";
 import { conversations, messages, modelConfig, usageEvents, users } from "./schema";
 
@@ -8,6 +8,7 @@ export type ConversationListItem = {
   id: string;
   title: string;
   updatedAt: number;
+  pinnedAt: number | null;
 };
 
 function bounded(content: string) {
@@ -150,17 +151,262 @@ export function renameConversation(id: string, userId: string, title: string) {
   return result.changes > 0;
 }
 
+const TEMPORARY_TTL = 24 * 60 * 60 * 1000;
+
+/** History for the sidebar: saved, unarchived chats, pinned first. */
 export function listConversations(userId: string): ConversationListItem[] {
+  db.delete(conversations)
+    .where(
+      and(
+        eq(conversations.userId, userId),
+        eq(conversations.temporary, true),
+        lt(conversations.updatedAt, Date.now() - TEMPORARY_TTL),
+      ),
+    )
+    .run();
   return db
     .select({
       id: conversations.id,
       title: conversations.title,
       updatedAt: conversations.updatedAt,
+      pinnedAt: conversations.pinnedAt,
     })
     .from(conversations)
-    .where(eq(conversations.userId, userId))
+    .where(
+      and(
+        eq(conversations.userId, userId),
+        eq(conversations.temporary, false),
+        isNull(conversations.archivedAt),
+      ),
+    )
     .orderBy(desc(conversations.updatedAt))
     .all();
+}
+
+export function listArchivedConversations(userId: string) {
+  return db
+    .select({
+      id: conversations.id,
+      title: conversations.title,
+      updatedAt: conversations.updatedAt,
+      archivedAt: conversations.archivedAt,
+    })
+    .from(conversations)
+    .where(and(eq(conversations.userId, userId), isNotNull(conversations.archivedAt)))
+    .orderBy(desc(conversations.archivedAt))
+    .all();
+}
+
+export function recentConversationTitles(userId: string, excludeId: string, limit = 8) {
+  return db
+    .select({ title: conversations.title, updatedAt: conversations.updatedAt })
+    .from(conversations)
+    .where(
+      and(
+        eq(conversations.userId, userId),
+        eq(conversations.temporary, false),
+        isNull(conversations.archivedAt),
+        ne(conversations.id, excludeId),
+        ne(conversations.title, "New chat"),
+      ),
+    )
+    .orderBy(desc(conversations.updatedAt))
+    .limit(limit)
+    .all();
+}
+
+export function updateConversationFlags(
+  id: string,
+  userId: string,
+  flags: { pinned?: boolean; archived?: boolean },
+) {
+  const set: { pinnedAt?: number | null; archivedAt?: number | null } = {};
+  if (flags.pinned !== undefined) set.pinnedAt = flags.pinned ? Date.now() : null;
+  if (flags.archived !== undefined) {
+    set.archivedAt = flags.archived ? Date.now() : null;
+    if (flags.archived) set.pinnedAt = null;
+  }
+  if (Object.keys(set).length === 0) return true;
+  return (
+    db
+      .update(conversations)
+      .set(set)
+      .where(
+        and(
+          eq(conversations.id, id),
+          eq(conversations.userId, userId),
+          eq(conversations.temporary, false),
+        ),
+      )
+      .run().changes > 0
+  );
+}
+
+export function archiveAllConversations(userId: string) {
+  return db
+    .update(conversations)
+    .set({ archivedAt: Date.now(), pinnedAt: null })
+    .where(
+      and(
+        eq(conversations.userId, userId),
+        isNull(conversations.archivedAt),
+        eq(conversations.temporary, false),
+      ),
+    )
+    .run().changes;
+}
+
+export function restoreAllConversations(userId: string) {
+  return db
+    .update(conversations)
+    .set({ archivedAt: null })
+    .where(and(eq(conversations.userId, userId), isNotNull(conversations.archivedAt)))
+    .run().changes;
+}
+
+export function deleteAllConversations(userId: string, scope: "all" | "archived") {
+  return db
+    .delete(conversations)
+    .where(
+      scope === "archived"
+        ? and(eq(conversations.userId, userId), isNotNull(conversations.archivedAt))
+        : eq(conversations.userId, userId),
+    )
+    .run().changes;
+}
+
+export type SearchResult = {
+  id: string;
+  title: string;
+  updatedAt: number;
+  archived: boolean;
+  snippet: string | null;
+};
+
+/** Turns free text into a safe FTS5 prefix query, or null when nothing searchable is left. */
+function ftsQuery(text: string) {
+  const terms = text
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 8);
+  return terms.length ? terms.map((term) => `"${term}"*`).join(" ") : null;
+}
+
+/** Searches the user's saved chats by title and message text, including archived ones. */
+export function searchConversations(userId: string, text: string, limit = 30): SearchResult[] {
+  const query = text.trim();
+  if (!query) return [];
+  const pattern = `%${query.replace(/[\\%_]/g, (char) => `\\${char}`)}%`;
+  const byTitle = db
+    .select({
+      id: conversations.id,
+      title: conversations.title,
+      updatedAt: conversations.updatedAt,
+      archivedAt: conversations.archivedAt,
+    })
+    .from(conversations)
+    .where(
+      and(
+        eq(conversations.userId, userId),
+        eq(conversations.temporary, false),
+        sql`${conversations.title} LIKE ${pattern} ESCAPE '\\'`,
+      ),
+    )
+    .orderBy(desc(conversations.updatedAt))
+    .limit(limit)
+    .all();
+
+  const match = ftsQuery(query);
+  const byContent = match
+    ? (db.$client
+        .prepare(
+          `SELECT c.id AS id, c.title AS title, c.updated_at AS updatedAt, c.archived_at AS archivedAt,
+                  snippet(messages_fts, 0, '', '', '…', 12) AS snippet
+             FROM messages_fts
+             JOIN conversations c ON c.id = messages_fts.conversation_id
+            WHERE messages_fts MATCH ? AND c.user_id = ? AND c.temporary = 0
+            ORDER BY rank
+            LIMIT 200`,
+        )
+        .all(match, userId) as {
+        id: string;
+        title: string;
+        updatedAt: number;
+        archivedAt: number | null;
+        snippet: string;
+      }[])
+    : [];
+
+  const results = new Map<string, SearchResult>();
+  for (const row of byTitle) {
+    results.set(row.id, {
+      id: row.id,
+      title: row.title,
+      updatedAt: row.updatedAt,
+      archived: row.archivedAt !== null,
+      snippet: null,
+    });
+  }
+  for (const row of byContent) {
+    const existing = results.get(row.id);
+    if (existing) {
+      existing.snippet ??= row.snippet;
+      continue;
+    }
+    results.set(row.id, {
+      id: row.id,
+      title: row.title,
+      updatedAt: row.updatedAt,
+      archived: row.archivedAt !== null,
+      snippet: row.snippet,
+    });
+  }
+  return [...results.values()].slice(0, limit);
+}
+
+export function setMessageFeedback(messageId: string, userId: string, feedback: 1 | -1 | null) {
+  const owned = db
+    .select({ id: messages.id })
+    .from(messages)
+    .innerJoin(conversations, eq(conversations.id, messages.conversationId))
+    .where(
+      and(
+        eq(messages.id, messageId),
+        eq(conversations.userId, userId),
+        eq(messages.role, "assistant"),
+      ),
+    )
+    .get();
+  if (!owned) return false;
+  db.update(messages).set({ feedback }).where(eq(messages.id, messageId)).run();
+  return true;
+}
+
+/** Everything a user owns, for the data export. */
+export function exportUserConversations(userId: string) {
+  const owned = db
+    .select()
+    .from(conversations)
+    .where(and(eq(conversations.userId, userId), eq(conversations.temporary, false)))
+    .orderBy(asc(conversations.createdAt))
+    .all();
+  return owned.map((conversation) => ({
+    id: conversation.id,
+    title: conversation.title,
+    model: conversation.model,
+    pinned: conversation.pinnedAt !== null,
+    archived: conversation.archivedAt !== null,
+    createdAt: new Date(conversation.createdAt).toISOString(),
+    updatedAt: new Date(conversation.updatedAt).toISOString(),
+    messages: listMessages(conversation.id).map((message) => ({
+      role: message.role,
+      content: message.content,
+      feedback: message.feedback,
+      createdAt: new Date(message.createdAt).toISOString(),
+    })),
+  }));
 }
 
 export function getConversationForUser(id: string, userId: string) {
@@ -171,20 +417,25 @@ export function getConversationForUser(id: string, userId: string) {
     .get();
 }
 
-export function createConversation(userId: string, model: string | null = null) {
+export function createConversation(
+  userId: string,
+  model: string | null = null,
+  temporary = false,
+) {
   const now = Date.now();
   const id = crypto.randomUUID();
   db.insert(conversations)
     .values({
       id,
       userId,
-      title: "New chat",
+      title: temporary ? "Temporary chat" : "New chat",
       model,
+      temporary,
       createdAt: now,
       updatedAt: now,
     })
     .run();
-  return { id, title: "New chat", model, updatedAt: now };
+  return { id, title: temporary ? "Temporary chat" : "New chat", model, temporary, updatedAt: now };
 }
 
 export function setConversationModel(id: string, model: string) {
@@ -220,6 +471,7 @@ export function titleFromMessage(content: string) {
 export function syncTranscript(
   conversationId: string,
   incoming: { id: string; role: "user" | "assistant"; content: string }[],
+  options: { replace?: boolean } = {},
 ) {
   const stored = db
     .select({ id: messages.id })
@@ -229,7 +481,9 @@ export function syncTranscript(
     .all();
   const incomingIds = new Set(incoming.map((message) => message.id));
   const sameThread =
-    stored.length === 0 || (stored[0] !== undefined && incomingIds.has(stored[0].id));
+    options.replace ||
+    stored.length === 0 ||
+    (stored[0] !== undefined && incomingIds.has(stored[0].id));
   const staleIds = sameThread
     ? stored.flatMap((message) => (incomingIds.has(message.id) ? [] : [message.id]))
     : [];
@@ -302,10 +556,11 @@ export function maybeSetTitle(
 
 export function saveAssistantMessage(
   conversationId: string,
-  message: { id: string; content: string },
+  message: { id: string; content: string; meta?: Record<string, unknown> },
 ) {
   const content = bounded(message.content).trim();
   if (!content) return;
+  const meta = message.meta ? JSON.stringify(message.meta) : null;
   const latest = db
     .select({ createdAt: messages.createdAt })
     .from(messages)
@@ -319,11 +574,12 @@ export function saveAssistantMessage(
       conversationId,
       role: "assistant",
       content,
+      meta,
       createdAt,
     })
     .onConflictDoUpdate({
       target: messages.id,
-      set: { content },
+      set: { content, meta },
     })
     .run();
   db.update(conversations)

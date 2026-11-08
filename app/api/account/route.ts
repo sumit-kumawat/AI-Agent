@@ -1,6 +1,6 @@
 import { compare } from "bcryptjs";
 import { auth } from "@/lib/auth";
-import { deleteUser, findUserById } from "@/lib/db/queries";
+import { adminCount, deleteUser, findUserById } from "@/lib/db/queries";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
@@ -22,6 +22,12 @@ export async function DELETE(request: Request) {
     !(await compare(body.password, user.passwordHash))
   ) {
     return Response.json({ error: "Password is incorrect." }, { status: 403 });
+  }
+  if (user.role === "admin" && adminCount() <= 1) {
+    return Response.json(
+      { error: "You are the only admin. Make someone else an admin before deleting this account." },
+      { status: 409 },
+    );
   }
 
   deleteUser(user.id);

@@ -293,6 +293,12 @@ try {
   });
   check(Boolean(withMessages), "audit search finds the user's conversations");
   await adminPage.goto(`${base}${withMessages}`, { waitUntil: "networkidle0" });
+  check((await adminPage.$$("ol > li")).length === 0, "messages stay hidden until a reason is recorded");
+  await adminPage.type('textarea[name="reason"]', "e2e: investigating a support request");
+  await clickText(adminPage, "Record reason and view", "form");
+  await adminPage.waitForSelector("[data-access-granted]");
+  await adminPage.waitForSelector("ol > li");
+  check(true, "recording a reason unlocks the conversation");
   await clickText(adminPage, "Flag", "ol");
   await popup(adminPage, "Flag this message?", { input: "e2e flag reason" });
   await popup(adminPage, "Message flagged");
@@ -357,7 +363,7 @@ try {
   }
   await adminPage.goto(`${base}/admin/settings`, { waitUntil: "networkidle0" });
   const fullAudit = await adminPage.evaluate(() => document.body.innerText);
-  for (const action of ["settings.update", "session.kill", "message.delete", "model.enable", "agent.update"]) {
+  for (const action of ["settings.update", "session.kill", "message.delete", "model.enable", "agent.update", "conversation.content_access"]) {
     check(fullAudit.includes(action), `audit log has ${action}`);
   }
 

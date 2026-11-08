@@ -281,7 +281,7 @@ try {
   // Leaving with unsaved edits warns first; the rest of the app stays light.
   await adminPage.goto(`${base}/chat`, { waitUntil: "networkidle0" });
   check(unloadWarnings > 0, "leaving the IDE with unsaved edits warns first");
-  check(!(await adminPage.evaluate(() => Boolean(document.querySelector(".dark")))), "the chat app stays light");
+  check(!(await adminPage.evaluate(() => Boolean(document.querySelector(".dark")))), "the IDE theme does not change the chat app's theme");
 } catch (error) {
   failures += 1;
   console.error("FAIL unexpected error:", error);

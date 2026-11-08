@@ -186,10 +186,8 @@ export function auditLog({ page, q }: { page: number; q: string }) {
 export function searchConversations({ email, q, flagged, page }: { email: string; q: string; flagged: boolean; page: number }) {
   const conditions = [sql`1 = 1`];
   if (email) conditions.push(sql`u.email LIKE ${likePattern(email)} ESCAPE '\\'`);
-  if (q) {
-    conditions.push(sql`(c.title LIKE ${likePattern(q)} ESCAPE '\\' OR EXISTS (
-      SELECT 1 FROM messages m WHERE m.conversation_id = c.id AND m.content LIKE ${likePattern(q)} ESCAPE '\\'))`);
-  }
+  // Titles only: searching message text would expose content without a recorded reason.
+  if (q) conditions.push(sql`c.title LIKE ${likePattern(q)} ESCAPE '\\'`);
   if (flagged) {
     conditions.push(sql`EXISTS (SELECT 1 FROM messages m WHERE m.conversation_id = c.id AND m.flagged = 1)`);
   }

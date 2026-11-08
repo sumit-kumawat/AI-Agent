@@ -33,7 +33,13 @@ type ConfirmOptions = {
   /** Destructive actions get a red confirm button and a warning icon. */
   destructive?: boolean;
 };
-type PromptOptions = ConfirmOptions & { label?: string; placeholder?: string; defaultValue?: string; maxLength?: number };
+type PromptOptions = ConfirmOptions & {
+  label?: string;
+  placeholder?: string;
+  defaultValue?: string;
+  maxLength?: number;
+  type?: "text" | "password";
+};
 
 type Entry =
   | { id: number; key: string; kind: "notify"; options: NotifyOptions; resolve: () => void }
@@ -46,7 +52,11 @@ type Feedback = {
   prompt: (options: PromptOptions) => Promise<string | null>;
   /** Shows an error popup for a failed action result; returns whether it succeeded. */
   report: (result: { ok: boolean; error?: string }, success?: NotifyOptions) => boolean;
+  /** A short, non-blocking message at the bottom of the screen. */
+  toast: (message: string, tone?: Tone) => void;
 };
+
+type Toast = { id: number; message: string; tone: Tone };
 
 const FeedbackContext = createContext<Feedback | null>(null);
 
@@ -67,7 +77,11 @@ function keyFor(kind: string, title: string, description: ReactNode) {
   return `${kind}|${title}|${typeof description === "string" ? description : ""}`;
 }
 
-function createFeedback(setQueue: Dispatch<SetStateAction<Entry[]>>, pending: Set<string>): Feedback {
+function createFeedback(
+  setQueue: Dispatch<SetStateAction<Entry[]>>,
+  pending: Set<string>,
+  setToasts: Dispatch<SetStateAction<Toast[]>>,
+): Feedback {
   let nextId = 1;
   const push = (entry: Omit<Entry, "id">) => {
     // The same message already waiting or on screen is not shown twice.
@@ -102,13 +116,45 @@ function createFeedback(setQueue: Dispatch<SetStateAction<Entry[]>>, pending: Se
       if (success) void notify({ tone: "success", ...success });
       return true;
     },
+    toast: (message, tone = "success") => {
+      const id = nextId++;
+      setToasts((current) => [...current.filter((item) => item.message !== message), { id, message, tone }].slice(-3));
+      window.setTimeout(() => setToasts((current) => current.filter((item) => item.id !== id)), 3200);
+    },
   };
+}
+
+function Toasts({ toasts }: { toasts: Toast[] }) {
+  return (
+    <div
+      aria-live="polite"
+      className="pointer-events-none fixed inset-x-0 top-[max(0.75rem,env(safe-area-inset-top))] z-[60] flex flex-col items-center gap-2 px-4"
+    >
+      {toasts.map((item) => {
+        const { icon: Icon, className } = ICONS[item.tone];
+        return (
+          <div
+            key={item.id}
+            role="status"
+            data-toast
+            className="flex max-w-sm items-center gap-2 rounded-full border bg-popover px-4 py-2 text-sm text-popover-foreground shadow-lg animate-in fade-in slide-in-from-top-2"
+          >
+            <span className={`flex size-5 items-center justify-center rounded-full ${className}`}>
+              <Icon className="size-3.5" />
+            </span>
+            {item.message}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 export function FeedbackProvider({ children }: { children: ReactNode }) {
   const [queue, setQueue] = useState<Entry[]>([]);
+  const [toasts, setToasts] = useState<Toast[]>([]);
   const [pending] = useState(() => new Set<string>());
-  const [value] = useState(() => createFeedback(setQueue, pending));
+  const [value] = useState(() => createFeedback(setQueue, pending, setToasts));
 
   const current = queue[0];
 
@@ -124,6 +170,7 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
     <FeedbackContext.Provider value={value}>
       {children}
       {current ? <FeedbackDialog key={current.id} entry={current} onClose={(result) => close(current, result)} /> : null}
+      <Toasts toasts={toasts} />
     </FeedbackContext.Provider>
   );
 }
@@ -159,7 +206,7 @@ function FeedbackDialog({ entry, onClose }: { entry: Entry; onClose: (result: bo
           className="grid gap-4"
           onSubmit={(event) => {
             event.preventDefault();
-            onClose(entry.kind === "prompt" ? text.trim() : true);
+            onClose(entry.kind === "prompt" ? (entry.options.type === "password" ? text : text.trim()) : true);
           }}
         >
           <AlertDialogHeader>
@@ -178,6 +225,8 @@ function FeedbackDialog({ entry, onClose }: { entry: Entry; onClose: (result: bo
                 autoFocus
                 onFocus={(event) => event.currentTarget.select()}
                 value={text}
+                type={entry.options.type ?? "text"}
+                autoComplete={entry.options.type === "password" ? "current-password" : "off"}
                 maxLength={entry.options.maxLength ?? 500}
                 placeholder={entry.options.placeholder}
                 onChange={(event) => setText(event.target.value)}

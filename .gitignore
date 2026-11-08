@@ -37,6 +37,7 @@ yarn-error.log*
 # local sqlite database and IDE workspaces
 /data/*.db
 /data/*.db-*
+/data/*.backup-*
 /data/workspaces/
 
 # copied from node_modules by scripts/copy-monaco.mjs

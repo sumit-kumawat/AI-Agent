@@ -10,7 +10,8 @@ import { adminAction, type AdminUser } from "@/lib/admin";
 import { audit } from "@/lib/audit";
 import { db } from "@/lib/db";
 import { adminCount, findUserById } from "@/lib/db/queries";
-import { messages, modelConfig, users } from "@/lib/db/schema";
+import { conversations, messages, modelConfig, users } from "@/lib/db/schema";
+import { ACCESS_ACTION, activeContentGrant } from "@/lib/content-access";
 import { parseKeywords } from "@/lib/moderation";
 import { getSettings, updateSettings } from "@/lib/settings";
 import { modelNameSchema } from "@/lib/validators";
@@ -203,19 +204,44 @@ export async function saveSystemSettings(input: z.input<typeof settingsSchema>) 
   });
 }
 
-function findMessage(id: string) {
-  return (
+function findMessage(id: string, admin: AdminUser) {
+  const message =
     db
       .select({ id: messages.id, conversationId: messages.conversationId })
       .from(messages)
       .where(eq(messages.id, id))
-      .get() ?? fail("That message no longer exists.")
-  );
+      .get() ?? fail("That message no longer exists.");
+  if (!activeContentGrant(admin.id, message.conversationId)) {
+    fail("Your access to this conversation has expired. Request access again.");
+  }
+  return message;
+}
+
+const accessReason = z.string().trim().min(10, "Give a reason of at least 10 characters.").max(500);
+
+/** Records why an admin needs to read a conversation; the audit entry grants access for 30 minutes. */
+export async function requestConversationAccess(id: string, reason: string) {
+  return run((admin) => {
+    const parsed = accessReason.safeParse(reason);
+    if (!parsed.success) fail(parsed.error.issues[0]?.message ?? "Give a reason.");
+    const conversation =
+      db
+        .select({ id: conversations.id, userId: conversations.userId })
+        .from(conversations)
+        .where(eq(conversations.id, String(id)))
+        .get() ?? fail("That conversation no longer exists.");
+    audit(admin, ACCESS_ACTION, { type: "conversation", id: conversation.id }, {
+      owner: conversation.userId,
+      reason: parsed.data,
+    });
+    revalidatePath(`/admin/conversations/${conversation.id}`);
+    return {};
+  });
 }
 
 export async function flagMessage(id: string, flagged: boolean, reason: string) {
   return run((admin) => {
-    const message = findMessage(id);
+    const message = findMessage(id, admin);
     const note = reason.trim().slice(0, 500) || null;
     db.update(messages)
       .set(
@@ -236,7 +262,7 @@ export async function flagMessage(id: string, flagged: boolean, reason: string) 
 
 export async function deleteMessage(id: string) {
   return run((admin) => {
-    const message = findMessage(id);
+    const message = findMessage(id, admin);
     db.delete(messages)
       .where(and(eq(messages.id, message.id), eq(messages.conversationId, message.conversationId)))
       .run();

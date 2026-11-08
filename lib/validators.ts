@@ -52,6 +52,8 @@ export const modelNameSchema = z
 export const chatRequestSchema = z.object({
   conversationId: z.uuid(),
   model: modelNameSchema.optional(),
+  /** The user edited an earlier message, so the stored thread is replaced from that point. */
+  edit: z.boolean().optional(),
   messages: z
     .array(
       z.looseObject({

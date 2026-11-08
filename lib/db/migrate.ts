@@ -171,6 +171,58 @@ const MIGRATIONS: ((sqlite: Sqlite) => void)[] = [
       );
     `);
   },
+
+  // 5: platform rebuild. Conversation organisation, message feedback and
+  // metadata, saved memories, per-user preferences, and full-text search.
+  (sqlite) => {
+    addColumn(sqlite, "conversations", "pinned_at", "INTEGER");
+    addColumn(sqlite, "conversations", "archived_at", "INTEGER");
+    addColumn(sqlite, "conversations", "temporary", "INTEGER NOT NULL DEFAULT 0");
+    addColumn(sqlite, "messages", "feedback", "INTEGER");
+    addColumn(sqlite, "messages", "meta", "TEXT");
+    sqlite.exec(`
+      CREATE INDEX IF NOT EXISTS conversations_user_archived_idx
+        ON conversations (user_id, archived_at, updated_at);
+
+      CREATE TABLE IF NOT EXISTS memories (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        content TEXT NOT NULL,
+        source TEXT NOT NULL DEFAULT 'user',
+        conversation_id TEXT REFERENCES conversations(id) ON DELETE SET NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS memories_user_idx ON memories (user_id, updated_at);
+
+      CREATE TABLE IF NOT EXISTS user_preferences (
+        user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        data TEXT NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
+      CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+        content,
+        message_id UNINDEXED,
+        conversation_id UNINDEXED,
+        tokenize = 'unicode61 remove_diacritics 2'
+      );
+      CREATE TRIGGER IF NOT EXISTS messages_fts_insert AFTER INSERT ON messages BEGIN
+        INSERT INTO messages_fts (content, message_id, conversation_id)
+        VALUES (new.content, new.id, new.conversation_id);
+      END;
+      CREATE TRIGGER IF NOT EXISTS messages_fts_update AFTER UPDATE OF content ON messages BEGIN
+        DELETE FROM messages_fts WHERE message_id = old.id;
+        INSERT INTO messages_fts (content, message_id, conversation_id)
+        VALUES (new.content, new.id, new.conversation_id);
+      END;
+      CREATE TRIGGER IF NOT EXISTS messages_fts_delete AFTER DELETE ON messages BEGIN
+        DELETE FROM messages_fts WHERE message_id = old.id;
+      END;
+      INSERT INTO messages_fts (content, message_id, conversation_id)
+        SELECT content, id, conversation_id FROM messages;
+    `);
+  },
 ];
 
 function version(sqlite: Sqlite) {

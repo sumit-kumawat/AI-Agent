@@ -1,82 +1,76 @@
-import { auth } from "@/lib/auth";
+import { z } from "zod";
+import { ApiError, apiUser, handler, parseBody } from "@/lib/api";
+import { parseMeta } from "@/lib/chat-types";
 import {
   deleteConversation,
   getConversationForUser,
   listMessages,
   renameConversation,
+  updateConversationFlags,
 } from "@/lib/db/queries";
 
 export const runtime = "nodejs";
 
-export async function GET(
-  _request: Request,
-  context: { params: Promise<{ id: string }> },
-) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-  }
+type Context = { params: Promise<{ id: string }> };
 
+export const GET = handler<Context>(async (request, context) => {
+  const user = await apiUser(request);
   const { id } = await context.params;
-  const conversation = getConversationForUser(id, session.user.id);
-  if (!conversation) {
-    return Response.json({ error: "Conversation not found" }, { status: 404 });
-  }
-
+  const conversation = getConversationForUser(id, user.id);
+  if (!conversation) throw new ApiError("Conversation not found", 404);
   return Response.json({
     id: conversation.id,
     title: conversation.title,
     model: conversation.model,
+    pinned: conversation.pinnedAt !== null,
+    archived: conversation.archivedAt !== null,
+    temporary: conversation.temporary,
     messages: listMessages(conversation.id).map((message) => ({
       id: message.id,
       role: message.role,
       content: message.content,
+      feedback: message.feedback,
+      meta: parseMeta(message.meta),
       createdAt: message.createdAt,
     })),
   });
-}
+});
 
-export async function PATCH(
-  request: Request,
-  context: { params: Promise<{ id: string }> },
-) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-  }
+const patchSchema = z
+  .object({
+    title: z
+      .string()
+      .transform((value) => value.replace(/\s+/g, " ").trim())
+      .pipe(z.string().min(1, "Title must be 1 to 120 characters.").max(120, "Title must be 1 to 120 characters.")),
+    pinned: z.boolean(),
+    archived: z.boolean(),
+  })
+  .partial()
+  .strict();
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return Response.json({ error: "Invalid JSON" }, { status: 400 });
-  }
-  const raw = (body as { title?: unknown } | null)?.title;
-  const title = typeof raw === "string" ? raw.replace(/\s+/g, " ").trim() : "";
-  if (!title || title.length > 120) {
-    return Response.json({ error: "Title must be 1 to 120 characters." }, { status: 400 });
-  }
-
+export const PATCH = handler<Context>(async (request, context) => {
+  const user = await apiUser(request);
   const { id } = await context.params;
-  if (!renameConversation(id, session.user.id, title)) {
-    return Response.json({ error: "Conversation not found" }, { status: 404 });
+  const body = await parseBody(request, patchSchema);
+  if (!getConversationForUser(id, user.id)) throw new ApiError("Conversation not found", 404);
+  if (body.title !== undefined) renameConversation(id, user.id, body.title);
+  if (body.pinned !== undefined || body.archived !== undefined) {
+    if (!updateConversationFlags(id, user.id, body)) {
+      throw new ApiError("Temporary chats cannot be pinned or archived.", 400);
+    }
   }
-  return Response.json({ id, title });
-}
+  const conversation = getConversationForUser(id, user.id)!;
+  return Response.json({
+    id,
+    title: conversation.title,
+    pinned: conversation.pinnedAt !== null,
+    archived: conversation.archivedAt !== null,
+  });
+});
 
-export async function DELETE(
-  _request: Request,
-  context: { params: Promise<{ id: string }> },
-) {
-  const session = await auth();
-  if (!session?.user?.id) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
+export const DELETE = handler<Context>(async (request, context) => {
+  const user = await apiUser(request);
   const { id } = await context.params;
-  const deleted = deleteConversation(id, session.user.id);
-  if (!deleted) {
-    return Response.json({ error: "Conversation not found" }, { status: 404 });
-  }
+  if (!deleteConversation(id, user.id)) throw new ApiError("Conversation not found", 404);
   return new Response(null, { status: 204 });
-}
+});
