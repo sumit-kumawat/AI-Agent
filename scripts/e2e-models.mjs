@@ -160,8 +160,34 @@ try {
   check((await groupOf("deepseek-r1:1.5b")) === "Reasoning", "deepseek-r1 is grouped under Reasoning");
   check((await groupOf("llama3.2:3b")) === "General", "llama3.2 is grouped under General");
   check(
-    (await page.$eval('[data-model-option="gemma3:4b"]', (node) => node.textContent)).includes("Images"),
-    "gemma3:4b shows the Images capability",
+    (await page.$('[data-model-option="gemma3:4b"] [data-capability="images"]')) !== null,
+    "gemma3:4b shows the image input capability",
+  );
+  check(
+    (await page.$('[data-model-option="qwen2.5:1.5b"] [data-capability="images"]')) === null &&
+      (await page.$('[data-model-option="deepseek-r1:1.5b"] [data-capability="reasoning"]')) !== null &&
+      (await page.$('[data-model-option="qwen2.5-coder:14b"] [data-capability="coding"]')) !== null,
+    "capabilities follow what Ollama reports (no images on qwen2.5, reasoning on deepseek-r1, coding on the coder)",
+  );
+  const windows = await page.$$eval("[data-context-window]", (nodes) =>
+    nodes.map((node) => ({ model: node.closest("[data-model-option]")?.dataset.modelOption, tokens: Number(node.dataset.contextWindow) })),
+  );
+  const ps = await fetch("http://127.0.0.1:11434/api/ps").then((response) => response.json()).catch(() => ({ models: [] }));
+  const runningOk = (ps.models ?? []).every((running) => {
+    const shown = windows.find((entry) => entry.model === running.name);
+    return !shown || shown.tokens === running.context_length;
+  });
+  check(runningOk && windows.length > 0, "loaded models show the context window Ollama reports for them");
+  const maxima = await Promise.all(
+    windows.map(async (entry) => {
+      const show = await fetch("http://127.0.0.1:11434/api/show", { method: "POST", body: JSON.stringify({ model: entry.model }) }).then((r) => r.json());
+      const key = Object.keys(show.model_info ?? {}).find((field) => field.endsWith(".context_length"));
+      return { ...entry, max: key ? show.model_info[key] : null };
+    }),
+  );
+  check(
+    maxima.every((entry) => !entry.tokens || entry.max === null || entry.tokens <= entry.max),
+    "no model is shown with a window larger than it supports",
   );
   await shot("picker");
   await page.type('input[aria-label="Search models"]', "coder");

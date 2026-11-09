@@ -3,8 +3,9 @@
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { Check, Download, Search, Trash } from "lucide-react";
-import { ChatTopBar } from "@/components/chat/chat-shell";
-import { setPreferredModel, usePreferredModel } from "@/components/chat/model-picker";
+import { ChatTopBar, useChatChrome } from "@/components/chat/chat-shell";
+import { setPreferredModel, usePreferredModel, type ModelOption } from "@/components/chat/model-picker";
+import { contextLabel, formatK } from "@/lib/models/capabilities";
 import { useFeedback } from "@/components/feedback";
 import { formatBytes } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
@@ -38,6 +39,35 @@ function isInstalled(installed: InstalledModel[], name: string) {
   );
 }
 
+/** What a model can do here, its real context window, and what it cannot do. */
+function ModelProfileView({ profile }: { profile: ModelOption }) {
+  return (
+    <div className="w-full space-y-1.5 text-xs">
+      <p className="flex flex-wrap gap-1" data-capabilities>
+        {profile.capabilities.map((capability) => (
+          <span key={capability.id} className="rounded border px-1.5 py-0.5" title={capability.source} data-capability={capability.id}>
+            {capability.label}
+          </span>
+        ))}
+      </p>
+      <p className="text-muted-foreground" data-context-window={profile.context.tokens ?? ""}>
+        Context: {contextLabel(profile.context)}
+        {profile.context.max && profile.context.tokens && profile.context.max > profile.context.tokens
+          ? ` · model supports up to ${formatK(profile.context.max)}`
+          : ""}
+      </p>
+      <details className="text-muted-foreground">
+        <summary className="cursor-pointer">Limitations</summary>
+        <ul className="mt-1 list-disc space-y-0.5 pl-4" data-limitations>
+          {profile.limitations.map((limitation) => (
+            <li key={limitation}>{limitation}</li>
+          ))}
+        </ul>
+      </details>
+    </div>
+  );
+}
+
 export function ModelsManager({
   admin,
   installed,
@@ -52,6 +82,7 @@ export function ModelsManager({
   catalog: CatalogGroup[];
 }) {
   const router = useRouter();
+  const { models: profiles } = useChatChrome();
   const preferred = usePreferredModel();
   const [pulls, setPulls] = useState<Record<string, PullState>>({});
   const [custom, setCustom] = useState("");
@@ -194,10 +225,13 @@ export function ModelsManager({
               </p>
             ) : (
               <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                {installed.map((model) => (
+                {installed.map((model) => {
+                  const profile = profiles.find((option) => option.local && option.modelId === model.name);
+                  return (
                   <div
                     key={model.name}
-                    className={`flex items-center gap-3 rounded-xl border p-3 ${
+                    data-installed-model={model.name}
+                    className={`flex flex-wrap items-center gap-3 rounded-xl border p-3 ${
                       model.name === active ? "ring-2 ring-primary" : ""
                     }`}
                   >
@@ -209,6 +243,7 @@ export function ModelsManager({
                           .join(" · ")}
                       </p>
                     </div>
+                    {profile ? <ModelProfileView profile={profile} /> : null}
                     {model.name === active ? (
                       <Badge>In use</Badge>
                     ) : (
@@ -228,7 +263,8 @@ export function ModelsManager({
                       </Button>
                     ) : null}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </section>

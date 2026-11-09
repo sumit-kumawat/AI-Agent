@@ -36,14 +36,28 @@ export type PromptContext = {
  * override these instructions.
  */
 export function buildInstructions(context: PromptContext) {
+  return instructionParts(context)
+    .map((part) => part.text)
+    .join("\n\n");
+}
+
+/** Which part of the context window a piece of the system prompt belongs to. */
+export type PromptPart = { category: "system" | "rules" | "memory"; text: string };
+
+/** The system prompt in labelled parts, so the context meter can count each once. */
+export function instructionParts(context: PromptContext): PromptPart[] {
   const { prefs } = context;
-  const sections = [BASE];
+  const parts: PromptPart[] = [];
+  const sections = {
+    push: (text: string, category: PromptPart["category"] = "system") => parts.push({ category, text }),
+  };
+  sections.push(BASE);
   const now = context.now ?? new Date();
   sections.push(`Today is ${now.toISOString().slice(0, 10)}.`);
 
   const style = [PERSONALITY[prefs.personality], LENGTH[prefs.responseLength]].filter(Boolean);
   if (prefs.language) style.push(`Reply in ${prefs.language} unless the user writes in another language.`);
-  if (style.length) sections.push(`Style:\n${style.map((line) => `- ${line}`).join("\n")}`);
+  if (style.length) sections.push(`Style:\n${style.map((line) => `- ${line}`).join("\n")}`, "rules");
 
   if (prefs.customInstructionsEnabled) {
     const about = [
@@ -52,11 +66,12 @@ export function buildInstructions(context: PromptContext) {
       prefs.aboutMe && `About: ${prefs.aboutMe}`,
     ].filter(Boolean);
     if (about.length) {
-      sections.push(`What the user shared about themselves:\n<about_user>\n${about.join("\n")}\n</about_user>`);
+      sections.push(`What the user shared about themselves:\n<about_user>\n${about.join("\n")}\n</about_user>`, "rules");
     }
     if (prefs.instructions) {
       sections.push(
         `How the user wants you to respond (follow these unless they conflict with safety):\n<user_instructions>\n${prefs.instructions}\n</user_instructions>`,
+        "rules",
       );
     }
   }
@@ -66,6 +81,7 @@ export function buildInstructions(context: PromptContext) {
       `Saved memories the user asked you to keep. Use them when relevant; do not list them unprompted.\n<memories>\n${context.memories
         .map((memory) => `- ${memory.content}`)
         .join("\n")}\n</memories>`,
+      "memory",
     );
   }
 
@@ -74,11 +90,12 @@ export function buildInstructions(context: PromptContext) {
       `Titles of the user's recent conversations, for context only:\n${context.recentTitles
         .map((item) => `- ${item.title} (${new Date(item.updatedAt).toISOString().slice(0, 10)})`)
         .join("\n")}`,
+      "memory",
     );
   }
 
   if (context.temporary) {
     sections.push("This is a temporary chat: it is not saved to history and memories are not used.");
   }
-  return sections.join("\n\n");
+  return parts;
 }

@@ -1,7 +1,9 @@
 import { modelKey, parseModelRef, type AutoMode, type ModelOption } from "@/lib/model-ref";
 import { chooseAuto, skillsFor, type TaskProfile } from "@/lib/models/router";
-import { getModelName, getUserInventory, loadedModels, modelCapabilities } from "@/lib/ollama";
+import { describeModel, type ContextWindow } from "@/lib/models/capabilities";
+import { getModelName, getUserInventory, modelInfo, runningModels, serverDefaultContext, type ModelInfo } from "@/lib/ollama";
 import { getProvider, getRouting, listProviderModels, listProviders, type ModelRef } from "@/lib/providers/store";
+import { linkReadingEnabled } from "@/lib/research/config";
 
 const downUntil = new Map<string, number>();
 
@@ -24,6 +26,19 @@ function cloudVision(modelId: string) {
   );
 }
 
+/**
+ * The window a conversation really gets. A loaded model reports its own; an
+ * unloaded one will get its Modelfile num_ctx or the server default, never
+ * more than the model maximum.
+ */
+function contextWindow(info: ModelInfo, running: number | undefined, serverDefault: number | null): ContextWindow {
+  const cap = (tokens: number) => (info.maxContext ? Math.min(tokens, info.maxContext) : tokens);
+  if (running) return { tokens: running, max: info.maxContext, source: "running" };
+  if (info.numCtx) return { tokens: cap(info.numCtx), max: info.maxContext, source: "model" };
+  if (serverDefault) return { tokens: cap(serverDefault), max: info.maxContext, source: "server" };
+  return { tokens: null, max: info.maxContext, source: info.maxContext ? "maximum" : null };
+}
+
 function sameOllama(installed: string, wanted: string) {
   return installed === wanted || installed === `${wanted}:latest` || wanted === `${installed}:latest`;
 }
@@ -34,19 +49,24 @@ export async function listSelectableModels(): Promise<{ models: ModelOption[]; w
   const rows = listProviders();
   const ollama = rows.find((provider) => provider.id === "ollama");
   let warning: string | null = null;
+  const webLinks = linkReadingEnabled();
 
   if (!ollama || ollama.enabled) {
     const inventory = await getUserInventory();
     if (inventory.ok) {
-      const [caps, loaded] = await Promise.all([
-        Promise.all(inventory.models.map((model) => modelCapabilities(model.name))),
-        loadedModels(),
+      const [infos, running, serverDefault] = await Promise.all([
+        Promise.all(inventory.models.map((model) => modelInfo(model.name))),
+        runningModels(),
+        serverDefaultContext(),
       ]);
       for (const [index, model] of inventory.models.entries()) {
-        const vision = caps[index]!.includes("vision");
+        const info = infos[index]!;
+        const vision = info.capabilities.includes("vision");
+        const context = contextWindow(info, running.get(model.name), serverDefault);
         models.push({
-          ...skillsFor(model.name, caps[index]!, vision),
-          loaded: loaded.has(model.name),
+          ...skillsFor(model.name, info.capabilities, vision),
+          ...describeModel({ name: model.name, local: true, capabilities: info.capabilities, vision, parameterSize: model.parameterSize, context, webLinks }),
+          loaded: running.has(model.name),
           key: modelKey("ollama", model.name),
           providerId: "ollama",
           modelId: model.name,
@@ -72,6 +92,15 @@ export async function listSelectableModels(): Promise<{ models: ModelOption[]; w
       const vision = cloudVision(model.modelId);
       models.push({
         ...skillsFor(model.modelId, [], vision),
+        ...describeModel({
+          name: model.modelId,
+          local: false,
+          capabilities: [],
+          vision,
+          parameterSize: null,
+          context: { tokens: null, max: null, source: null },
+          webLinks,
+        }),
         group: "Cloud",
         loaded: true,
         key: modelKey(provider.id, model.modelId),

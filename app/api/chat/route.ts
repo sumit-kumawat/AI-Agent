@@ -28,7 +28,21 @@ import { checkAllowance } from "@/lib/plans/usage";
 import { addMemory, explicitMemory, MemoryError, relevantMemories } from "@/lib/memory";
 import { findBlockedKeyword } from "@/lib/moderation";
 import { getPreferences } from "@/lib/preferences";
-import { buildInstructions } from "@/lib/prompt";
+import {
+  IMAGE_TOKENS,
+  estimateTokens as tokensOf,
+  planHistory,
+  replyReserve,
+  snapshot,
+  summarize,
+  summaryBlock,
+  windowOf,
+} from "@/lib/context/compress";
+import type { ContextCategory } from "@/lib/context/types";
+import { instructionParts } from "@/lib/prompt";
+import { linkReadingEnabled } from "@/lib/research/config";
+import { extractLinks, NO_BROWSING_MESSAGE, readLinks, webAccessNote, webBlock } from "@/lib/web/links";
+import type { WebSource } from "@/lib/web/types";
 import { listSelectableModels, noteProviderFailure, resolveChatTarget } from "@/lib/providers/catalog";
 import { costMicro, languageModel, safeProviderError } from "@/lib/providers/engine";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
@@ -42,7 +56,6 @@ export const maxDuration = 300;
 
 const AGENT_ID = "ollama";
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
-const MODEL_CONTEXT_MESSAGES = 40;
 /** Earlier images are re-sent so follow-up questions still see them, up to this many. */
 const MAX_IMAGES_IN_CONTEXT = 6;
 
@@ -276,7 +289,7 @@ export async function POST(request: Request) {
       if (!(error instanceof MemoryError)) console.error("Failed to save memory", error);
     }
   }
-  const baseInstructions = buildInstructions({
+  const promptParts: { category: ContextCategory; text: string }[] = instructionParts({
     prefs,
     userName: user.name,
     memories: remembering ? relevantMemories(user.id, latestUser.content) : [],
@@ -286,12 +299,13 @@ export async function POST(request: Request) {
         : [],
     temporary: conversation.temporary,
   });
+  const window = windowOf(chosen);
   const documents = documentContext(
     transcript.flatMap((message) => filesOf(message.id)),
     latestUser.content || "Summarize the attached files.",
-    contextBudget(chosen.local),
+    contextBudget(chosen.local, window.tokens),
   );
-  const instructions = documents.text ? `${baseInstructions}\n\n${documents.text}` : baseInstructions;
+  if (documents.text) promptParts.push({ category: "attachments", text: documents.text });
 
   const modelMode = autoInfo?.mode ?? null;
   if (
@@ -384,16 +398,27 @@ export async function POST(request: Request) {
     });
   }
 
+  const browsing = linkReadingEnabled();
+  promptParts.push({ category: "system", text: webAccessNote(browsing) });
+  const pasted = extractLinks(latestUser.content);
+  const links = browsing ? pasted : [];
+  const webNotice = !browsing && pasted.length ? NO_BROWSING_MESSAGE : undefined;
+  let webSources: WebSource[] = [];
+  if (links.length) {
+    const pages = await readLinks(user.id, links, contextBudget(chosen.local, window.tokens), agent.signal);
+    promptParts.push({ category: "web", text: webBlock(pages) });
+    webSources = pages.map((page) => ({ url: page.url, title: page.title, ok: page.ok, error: page.error, chars: page.chars }));
+  }
+
   const cleanMessages: UIMessage[] = transcript.map((message) => ({
     id: message.id,
     role: message.role,
     parts: [{ type: "text", text: message.content }],
   }));
 
-  const context = transcript.slice(-MODEL_CONTEXT_MESSAGES);
   let imageBudget = MAX_IMAGES_IN_CONTEXT;
   const visibleImages = new Set<string>();
-  for (const message of [...context].reverse()) {
+  for (const message of [...transcript].reverse()) {
     for (const row of filesOf(message.id)) {
       if (row.kind === "image" && chosen.vision && imageBudget > 0) {
         visibleImages.add(row.id);
@@ -401,6 +426,63 @@ export async function POST(request: Request) {
       }
     }
   }
+  const imagesIn = (messageId: string) => filesOf(messageId).filter((row) => visibleImages.has(row.id)).length;
+  const sized = transcript.map((message) => ({ ...message, extraTokens: imagesIn(message.id) * IMAGE_TOKENS }));
+  const fixedTokens = promptParts.reduce((sum, part) => sum + tokensOf(part.text), 0);
+  const windowTokens = window.tokens ?? 8_192;
+  let history = planHistory({
+    conversationId: conversation.temporary ? null : conversation.id,
+    messages: sized,
+    budget: Math.max(1_024, windowTokens - replyReserve(windowTokens) - fixedTokens),
+  });
+  let summaryText = history.summary;
+  if (history.pending > 0) {
+    try {
+      const made = await summarize({
+        conversationId: conversation.temporary ? null : conversation.id,
+        model: chatModel,
+        messages: sized,
+        plan: history,
+        budget: windowTokens - 1_500,
+        signal: agent.signal,
+      });
+      summaryText = made.summary;
+      recordUsage({
+        userId: user.id,
+        conversationId: conversation.id,
+        agentId: AGENT_ID,
+        model: modelName,
+        providerId: chosen.providerId,
+        feature: "summary",
+        estimated: made.usage.estimated,
+        inputTokens: made.usage.input,
+        outputTokens: made.usage.output,
+        costMicro: costMicro(chosen.providerId, modelName, made.usage.input, made.usage.output),
+        durationMs: 0,
+        status: "ok",
+      });
+    } catch (error) {
+      console.error("Summarising older messages failed", error);
+      // Without a summary, older messages are left out rather than overflowing the window.
+      summaryText = null;
+    }
+    history = { ...history, pending: 0 };
+  }
+  if (summaryText) promptParts.push({ category: "summary", text: summaryBlock(summaryText) });
+  const context = transcript.slice(history.keepFrom);
+  for (const row of visibleImages) {
+    if (!context.some((message) => filesOf(message.id).some((file) => file.id === row))) visibleImages.delete(row);
+  }
+  const instructions = promptParts.map((part) => part.text).join("\n\n");
+  const contextSnapshot = snapshot({
+    parts: promptParts,
+    history: sized.slice(history.keepFrom, -1),
+    current: sized.at(-1) ?? null,
+    images: visibleImages.size,
+    window,
+    summarized: summaryText ? history.keepFrom : 0,
+    pendingSummary: 0,
+  });
   const modelMessages: ModelMessage[] = context.map((message) => {
     if (message.role === "assistant") return { role: "assistant", content: message.content };
     const attached = filesOf(message.id);
@@ -429,6 +511,9 @@ export async function POST(request: Request) {
     ...(autoInfo ? { auto: autoInfo } : {}),
     ...(savedMemory ? { memory: savedMemory } : {}),
     ...(documents.notes.length ? { fileNotes: documents.notes } : {}),
+    ...(webSources.length ? { web: webSources } : {}),
+    ...(webNotice ? { webNotice } : {}),
+    context: contextSnapshot,
   };
 
   const result = streamText({
@@ -446,7 +531,17 @@ export async function POST(request: Request) {
     stream: toUIMessageStream({
       stream: result.stream,
       originalMessages: cleanMessages,
-      messageMetadata: ({ part }) => (part.type === "start" ? meta : undefined),
+      messageMetadata: ({ part }) => {
+        if (part.type === "start") return meta;
+        if (part.type === "finish" && part.totalUsage.inputTokens !== undefined) {
+          meta.context = {
+            ...contextSnapshot,
+            reported: { input: part.totalUsage.inputTokens, output: part.totalUsage.outputTokens ?? 0 },
+          };
+          return { context: meta.context };
+        }
+        return undefined;
+      },
       generateMessageId: () => crypto.randomUUID(),
       onError: (error) => {
         failed = true;
@@ -480,6 +575,9 @@ export async function POST(request: Request) {
               auto: meta.auto,
               memory: meta.memory,
               fileNotes: meta.fileNotes,
+              web: meta.web,
+              webNotice: meta.webNotice,
+              context: meta.context,
             },
           });
         } catch (error) {

@@ -2,7 +2,7 @@
 
 import { ArrowUp, Lock, Paperclip, Square, Telescope, X } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { ACCEPT, AttachmentTray, type Attachments } from "@/components/chat/attachments";
 import { ModelPicker, type ModelOption } from "@/components/chat/model-picker";
 import { autoModeOf } from "@/lib/model-ref";
@@ -28,6 +28,7 @@ export function Composer({
   files: attachments,
   research,
   locked,
+  meter,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -50,6 +51,8 @@ export function Composer({
   research?: { on: boolean; onChange: (on: boolean) => void; status: ResearchStatus | null };
   /** Capabilities the plan does not include; their controls become upgrade links. */
   locked?: UsageSummary["locked"];
+  /** The context meter, shown beside the send button. */
+  meter?: ReactNode;
 }) {
   const files = locked?.attachments ? undefined : attachments;
   const textarea = useRef<HTMLTextAreaElement>(null);
@@ -225,6 +228,7 @@ export function Composer({
             ) : null}
             <ModelPicker models={models} value={model} onChange={onModelChange} disabled={busy} compact />
           </div>
+          {meter}
           {busy ? (
             <Button
               type="button"

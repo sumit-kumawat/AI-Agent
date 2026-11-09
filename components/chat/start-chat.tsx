@@ -6,6 +6,7 @@ import { useState } from "react";
 import { ChatTopBar, useChatChrome } from "@/components/chat/chat-shell";
 import { useAttachments } from "@/components/chat/attachments";
 import { Composer } from "@/components/chat/composer";
+import { ContextMeter, useContextSnapshot } from "@/components/chat/context-meter";
 import { jsonFetch } from "@/components/chat/conversation-actions";
 import { pickModel, selectionBody, usePreferredModel, useWarmModel } from "@/components/chat/model-picker";
 import { useResearchStatus } from "@/components/chat/research";
@@ -70,6 +71,7 @@ export function StartChat({ temporary }: { temporary: boolean }) {
   const files = useAttachments();
   const [research, setResearch] = useState(false);
   const { status: researchStatus } = useResearchStatus();
+  const context = useContextSnapshot({ conversationId: null, model, temporary, version: 0 });
 
   async function start(text: string) {
     const trimmed = text.trim();
@@ -131,6 +133,7 @@ export function StartChat({ temporary }: { temporary: boolean }) {
             files={files}
             research={{ on: research, onChange: setResearch, status: researchStatus }}
             locked={usage.locked}
+            meter={<ContextMeter snapshot={context} draft={input.length} />}
           />
         </div>
       </div>

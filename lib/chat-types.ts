@@ -1,7 +1,9 @@
 import type { UIMessage } from "ai";
 import type { AttachmentInfo } from "@/lib/attachments/types";
+import type { ContextSnapshot } from "@/lib/context/types";
 import type { AutoMode } from "@/lib/model-ref";
 import type { ResearchData } from "@/lib/research/types";
+import type { WebSource } from "@/lib/web/types";
 
 /** Per-message details sent with the stream and stored in `messages.meta`. */
 export type ChatMessageMeta = {
@@ -21,6 +23,12 @@ export type ChatMessageMeta = {
   fileNotes?: string[];
   /** Set on Deep Research replies: the plan, progress and sources. */
   research?: ResearchData;
+  /** Links from the user's message that the server opened for this reply. */
+  web?: WebSource[];
+  /** Set when the message had links but link reading is turned off. */
+  webNotice?: string;
+  /** What filled the context window for this reply. */
+  context?: ContextSnapshot;
 };
 
 export type ChatDataParts = { research: ResearchData };

@@ -2,8 +2,11 @@ import { chunksOf, readAttachmentFile, searchChunks, type Attachment } from "@/l
 import { KIND_LABEL } from "@/lib/attachments/types";
 
 /** Characters of file text per turn. Local models default to small context windows. */
-export function contextBudget(local: boolean) {
-  return local ? 12_000 : 60_000;
+/** Characters of attached text per turn: about a third of the model's window, within fixed bounds. */
+export function contextBudget(local: boolean, windowTokens: number | null = null) {
+  const fallback = local ? 12_000 : 60_000;
+  if (!windowTokens) return fallback;
+  return Math.max(6_000, Math.min(local ? 48_000 : 200_000, Math.floor(windowTokens * 4 * 0.33)));
 }
 
 const OVERVIEW = /\b(summar|overview|tl;?dr|gist|main (points|ideas)|key (points|takeaways)|outline|what is (this|it) about)/i;

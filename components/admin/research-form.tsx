@@ -64,6 +64,7 @@ export function ResearchForm({ initial }: { initial: PublicResearchConfig }) {
         tavily: { enabled: config.tavily.enabled, key: keys.tavily || undefined },
         brave: { enabled: config.brave.enabled, key: keys.brave || undefined },
         maxSources: config.maxSources,
+        linkReading: config.linkReading,
       });
       if (result.ok) {
         setConfig(result.config);
@@ -98,6 +99,12 @@ export function ResearchForm({ initial }: { initial: PublicResearchConfig }) {
       }}
     >
       <div className="divide-y rounded-xl border bg-card">
+        <Row
+          title="Read links in chat"
+          description="When a chat message contains a web address, the server opens the page and gives its text to the model, which cites it. Private and local addresses are never fetched. When off, the assistant says it cannot visit websites."
+          enabled={config.linkReading}
+          onEnabled={(linkReading) => setConfig({ ...config, linkReading })}
+        />
         <Row
           title="Wikipedia"
           description="Free, no key. Encyclopedic topics; not for news or niche subjects."

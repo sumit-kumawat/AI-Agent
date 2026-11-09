@@ -35,6 +35,7 @@ const schema = z.object({
   tavily: z.object({ enabled: z.boolean(), key: keySchema }),
   brave: z.object({ enabled: z.boolean(), key: keySchema }),
   maxSources: z.number().int().min(3).max(15),
+  linkReading: z.boolean(),
 });
 
 export async function saveResearchConfig(input: z.input<typeof schema>) {
@@ -56,6 +57,7 @@ export async function saveResearchConfig(input: z.input<typeof schema>) {
       tavily: { enabled: data.tavily.enabled, key: data.tavily.key || undefined },
       brave: { enabled: data.brave.enabled, key: data.brave.key || undefined },
       maxSources: data.maxSources,
+      linkReading: data.linkReading,
     });
     clearSourceStatuses();
     audit(admin, "research.update", { type: "settings", id: "research" }, {
@@ -65,6 +67,7 @@ export async function saveResearchConfig(input: z.input<typeof schema>) {
       brave: data.brave.enabled,
       keysChanged: [data.tavily.key ? "tavily" : null, data.brave.key ? "brave" : null].filter(Boolean),
       maxSources: data.maxSources,
+      linkReading: data.linkReading,
     });
     revalidatePath("/admin/research");
     return { config: next };

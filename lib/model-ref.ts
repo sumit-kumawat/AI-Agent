@@ -1,3 +1,5 @@
+import type { ModelProfile } from "@/lib/models/capabilities";
+
 export type ModelSkill = "code" | "reasoning" | "vision" | "tools";
 
 export type ModelGroup = "General" | "Reasoning" | "Coding" | "Cloud";
@@ -19,7 +21,7 @@ export type ModelOption = {
   loaded: boolean;
   skills: ModelSkill[];
   group: ModelGroup;
-};
+} & ModelProfile;
 
 const SEP = "\u001f";
 

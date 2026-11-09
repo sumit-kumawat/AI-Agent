@@ -6,10 +6,12 @@ import {
   Copy,
   Download,
   FastForward,
+  Globe,
   Pencil,
   RefreshCw,
   ThumbsDown,
   ThumbsUp,
+  XCircle,
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { MessageAttachments } from "@/components/chat/attachments";
@@ -20,6 +22,7 @@ import { useFeedback } from "@/components/feedback";
 import { Button } from "@/components/ui/button";
 import type { AttachmentInfo } from "@/lib/attachments/types";
 import type { ResearchData } from "@/lib/research/types";
+import type { WebSource } from "@/lib/web/types";
 
 async function copyText(text: string) {
   if (navigator.clipboard && window.isSecureContext) {
@@ -247,10 +250,13 @@ export function AssistantMessage({
   onContinue,
   research,
   question,
+  web,
 }: {
   id?: string;
   text: string;
   research?: ResearchData;
+  /** Links the server opened for this reply. */
+  web?: WebSource[];
   /** The request a research report answers; used as the export title. */
   question?: string;
   streaming: boolean;
@@ -284,6 +290,19 @@ export function AssistantMessage({
         </button>
       ) : null}
       {research ? <ResearchPanel data={research} /> : null}
+      {web?.length ? (
+        <ul className="mb-1 flex flex-col gap-1 text-xs" data-web-sources aria-label="Pages read for this reply">
+          {web.map((page) => (
+            <li key={page.url} className="flex min-w-0 items-center gap-1.5" data-web-source={page.ok ? "ok" : "failed"}>
+              {page.ok ? <Globe className="size-3.5 shrink-0 text-primary" /> : <XCircle className="size-3.5 shrink-0 text-destructive" />}
+              <a href={page.url} target="_blank" rel="noopener noreferrer nofollow" className="truncate text-muted-foreground hover:text-foreground hover:underline">
+                {page.ok ? page.title || page.url : page.url}
+              </a>
+              {page.ok ? null : <span className="shrink-0 text-destructive">· {page.error}</span>}
+            </li>
+          ))}
+        </ul>
+      ) : null}
       {text ? (
         <Markdown text={research ? linkCitations(text, research) : text} streaming={streaming} />
       ) : streaming ? (

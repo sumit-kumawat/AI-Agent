@@ -83,6 +83,9 @@ It creates `admin@harbor.local` (admin) and `test@harbor.local` (user) if they d
 - Hover a message to copy it. Use **Regenerate** under the last reply, and **Stop** while a reply is streaming; a stopped reply keeps what was written so far.
 - The view follows a streaming reply until you scroll up, then a button jumps back to the latest message.
 - Each chat is named from its first message. Click the title in the top bar to rename it.
+- The bar beside the send button shows how full the model's context window is. Hover or click it for the breakdown by kind of content (system prompt, your instructions, memories, summary, earlier messages, files, web pages, your draft), the space kept for the reply, and what is left. Category counts are estimates; after a reply it also shows the model's own exact count. When a long chat no longer fits, older messages are summarised by the chat's model and the summary is reused on later turns.
+- Paste a link into a message and the server reads the page (public addresses only) and lists the pages it read above the reply. An admin can turn this off under Admin → Research; the reply then says the assistant cannot visit websites.
+- Each installed model on the models page lists what it can do, its real context window, and its limitations, from what Ollama reports.
 - The sun and moon button in the sidebar footer switches between light and dark mode.
 
 ## Admin panel
@@ -131,6 +134,7 @@ The app stores its database in the `harbor-data` volume and models live in `olla
 - `npm run smoke` runs an end-to-end check against a running server: health, register, sign in, list models, a streamed reply, a reply after switching models, saved history, and cleanup. Set `SMOKE_URL` to test another host and `SMOKE_MODEL` to pick the first model. It deletes its test account at the end, so it never becomes the first-account admin.
 - `npm run e2e:admin` drives the admin panel in headless Chrome against a running server. It seeds a throwaway admin and user, exercises every admin page and action (models, agents, killing a session, plan and limits, blocklist, rate limit, flag and delete, suspend, password reset, role changes, audit log), restores the settings, and deletes both accounts. Set `CHROME_PATH` if Chrome is not in `/Applications`, and `E2E_URL` for another host. Screenshots go to `/tmp/harbor-e2e`.
 - `npm run e2e:plans` checks Free, Basic and Advance end to end: which models each plan sees and can use, refusals that name the plan to upgrade to, token limits (0 = unlimited), the upgrade prompts, and the plans and usage pages against the recorded usage.
+- `npm run e2e:context` checks the context meter and its breakdown, the exact token count after a reply, summarising a long conversation (stored, and its tokens recorded as usage), and link reading on and off, including a refused private address.
 - `npm run e2e:chat` drives the chat UI in headless Chrome at desktop and phone sizes: streaming, markdown and code highlighting, copy, regenerate, stop, auto-scroll, rename, dark mode, and the sidebar. It uses `llama3.2:1b` by default; set `E2E_MODEL` to change it. It deletes its test account at the end.
 - `DELETE /api/account` with `{ "password": "…" }` deletes the signed-in account and all of its conversations.
 - Choosing a model in the picker preloads it for 30 minutes, so the first reply does not wait for a cold start.

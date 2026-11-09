@@ -377,6 +377,14 @@ const MIGRATIONS: ((sqlite: Sqlite) => void)[] = [
       CREATE INDEX IF NOT EXISTS usage_events_user_feature_idx ON usage_events (user_id, feature, created_at);
     `);
   },
+
+  // 13: conversation summaries, which replace older messages once a chat
+  // outgrows the model's context window.
+  (sqlite) => {
+    addColumn(sqlite, "conversations", "summary", "TEXT");
+    addColumn(sqlite, "conversations", "summary_count", "INTEGER");
+    addColumn(sqlite, "conversations", "summary_through", "TEXT");
+  },
 ];
 
 // No 0/O or 1/I, so IDs survive being read aloud or retyped.

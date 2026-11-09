@@ -22,6 +22,8 @@ type Stored = {
   brave: { enabled: boolean; keyEnc: string | null; keyHint: string | null };
   /** Results read per research run. */
   maxSources: number;
+  /** Open links pasted into ordinary chat messages. */
+  linkReading: boolean;
 };
 
 const DEFAULTS: Stored = {
@@ -30,6 +32,7 @@ const DEFAULTS: Stored = {
   tavily: { enabled: false, keyEnc: null, keyHint: null },
   brave: { enabled: false, keyEnc: null, keyHint: null },
   maxSources: 8,
+  linkReading: true,
 };
 
 function load(): Stored {
@@ -43,6 +46,7 @@ function load(): Stored {
       tavily: { ...DEFAULTS.tavily, ...value.tavily },
       brave: { ...DEFAULTS.brave, ...value.brave },
       maxSources: value.maxSources ?? DEFAULTS.maxSources,
+      linkReading: value.linkReading ?? DEFAULTS.linkReading,
     };
   } catch {
     return structuredClone(DEFAULTS);
@@ -64,6 +68,7 @@ export type PublicResearchConfig = {
   tavily: { enabled: boolean; keyHint: string | null };
   brave: { enabled: boolean; keyHint: string | null };
   maxSources: number;
+  linkReading: boolean;
 };
 
 export function publicResearchConfig(): PublicResearchConfig {
@@ -74,6 +79,7 @@ export function publicResearchConfig(): PublicResearchConfig {
     tavily: { enabled: value.tavily.enabled, keyHint: value.tavily.keyHint },
     brave: { enabled: value.brave.enabled, keyHint: value.brave.keyHint },
     maxSources: value.maxSources,
+    linkReading: value.linkReading,
   };
 }
 
@@ -83,6 +89,7 @@ export type ResearchConfigPatch = {
   tavily?: { enabled: boolean; key?: string | null };
   brave?: { enabled: boolean; key?: string | null };
   maxSources?: number;
+  linkReading?: boolean;
 };
 
 /** A key of undefined keeps the saved one; null removes it. */
@@ -103,6 +110,7 @@ export function updateResearchConfig(patch: ResearchConfigPatch) {
     }
   }
   if (patch.maxSources !== undefined) value.maxSources = patch.maxSources;
+  if (patch.linkReading !== undefined) value.linkReading = patch.linkReading;
   save(value);
   return publicResearchConfig();
 }
@@ -133,4 +141,8 @@ export function activeSources(): ActiveSource[] {
 
 export function maxSources() {
   return Math.min(15, Math.max(3, load().maxSources));
+}
+
+export function linkReadingEnabled() {
+  return load().linkReading;
 }

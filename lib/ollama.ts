@@ -133,15 +133,23 @@ export function invalidateInventory() {
   cache.harborInventory = undefined;
 }
 
-const capabilityCache = globalThis as typeof globalThis & {
-  harborCapabilities?: Map<string, string[]>;
+/** What Ollama's /api/show reports about one installed model. */
+export type ModelInfo = {
+  /** e.g. ["completion", "vision", "tools", "thinking"]. */
+  capabilities: string[];
+  /** The longest context the model was trained for (model_info.<arch>.context_length). */
+  maxContext: number | null;
+  /** num_ctx set in the model's Modelfile, which Ollama uses instead of its default. */
+  numCtx: number | null;
 };
-const capabilities = (capabilityCache.harborCapabilities ??= new Map<string, string[]>());
 
-/** What Ollama says a model can do, e.g. ["completion", "vision", "tools"]. Empty when unknown. */
-export async function modelCapabilities(name: string): Promise<string[]> {
+const infoCache = globalThis as typeof globalThis & { harborModelInfo?: Map<string, ModelInfo> };
+const infos = (infoCache.harborModelInfo ??= new Map<string, ModelInfo>());
+const UNKNOWN: ModelInfo = { capabilities: [], maxContext: null, numCtx: null };
+
+export async function modelInfo(name: string): Promise<ModelInfo> {
   const key = `${ollamaRoot()}|${name}`;
-  const cached = capabilities.get(key);
+  const cached = infos.get(key);
   if (cached) return cached;
   try {
     const response = await fetch(`${ollamaRoot()}/api/show`, {
@@ -151,36 +159,77 @@ export async function modelCapabilities(name: string): Promise<string[]> {
       signal: AbortSignal.timeout(3000),
       cache: "no-store",
     });
-    if (!response.ok) return [];
-    const data = (await response.json()) as { capabilities?: string[] };
-    const list = Array.isArray(data.capabilities) ? data.capabilities : [];
-    capabilities.set(key, list);
-    return list;
+    if (!response.ok) return UNKNOWN;
+    const data = (await response.json()) as {
+      capabilities?: string[];
+      model_info?: Record<string, unknown>;
+      parameters?: string;
+    };
+    const contextKey = Object.keys(data.model_info ?? {}).find((field) => field.endsWith(".context_length"));
+    const max = contextKey ? Number(data.model_info![contextKey]) : NaN;
+    const numCtx = Number(/(?:^|\n)\s*num_ctx\s+(\d+)/.exec(data.parameters ?? "")?.[1] ?? NaN);
+    const info: ModelInfo = {
+      capabilities: Array.isArray(data.capabilities) ? data.capabilities : [],
+      maxContext: Number.isFinite(max) && max > 0 ? max : null,
+      numCtx: Number.isFinite(numCtx) && numCtx > 0 ? numCtx : null,
+    };
+    infos.set(key, info);
+    return info;
   } catch {
-    return [];
+    return UNKNOWN;
   }
 }
 
-const loadedCache = globalThis as typeof globalThis & {
-  harborLoaded?: { at: number; names: Set<string> };
+/** What Ollama says a model can do, e.g. ["completion", "vision", "tools"]. Empty when unknown. */
+export async function modelCapabilities(name: string): Promise<string[]> {
+  return (await modelInfo(name)).capabilities;
+}
+
+const runningCache = globalThis as typeof globalThis & {
+  harborRunning?: { at: number; models: Map<string, number> };
 };
 
-/** Models Ollama currently holds in memory. Empty when Ollama cannot be reached. */
-export async function loadedModels(): Promise<Set<string>> {
-  const cached = loadedCache.harborLoaded;
-  if (cached && Date.now() - cached.at < 3000) return cached.names;
-  let names = new Set<string>();
+/** Models Ollama holds in memory right now, with the context window each was loaded with. */
+export async function runningModels(): Promise<Map<string, number>> {
+  const cached = runningCache.harborRunning;
+  if (cached && Date.now() - cached.at < 3000) return cached.models;
+  const models = new Map<string, number>();
   try {
     const response = await fetch(`${ollamaRoot()}/api/ps`, { signal: AbortSignal.timeout(1500), cache: "no-store" });
     if (response.ok) {
-      const data = (await response.json()) as { models?: { name: string }[] };
-      names = new Set((data.models ?? []).map((model) => model.name));
+      const data = (await response.json()) as { models?: { name: string; context_length?: number }[] };
+      for (const model of data.models ?? []) models.set(model.name, Number(model.context_length) || 0);
     }
   } catch {
     // Treated as nothing loaded; the inventory check reports Ollama being down.
   }
-  loadedCache.harborLoaded = { at: Date.now(), names };
-  return names;
+  runningCache.harborRunning = { at: Date.now(), models };
+  return models;
+}
+
+/** Models Ollama currently holds in memory. Empty when Ollama cannot be reached. */
+export async function loadedModels(): Promise<Set<string>> {
+  return new Set((await runningModels()).keys());
+}
+
+const defaultCache = globalThis as typeof globalThis & { harborDefaultContext?: number };
+
+/**
+ * The context window Ollama gives models without their own num_ctx. Learned
+ * from a running model that was loaded with less than its maximum, which can
+ * only be the server default. Null until one has been seen.
+ */
+export async function serverDefaultContext(): Promise<number | null> {
+  const running = await runningModels();
+  for (const [name, length] of running) {
+    if (!length) continue;
+    const info = await modelInfo(name);
+    if (info.numCtx === null && info.maxContext !== null && length < info.maxContext) {
+      defaultCache.harborDefaultContext = length;
+      break;
+    }
+  }
+  return defaultCache.harborDefaultContext ?? null;
 }
 
 /** Installed models minus the ones an admin has disabled. */

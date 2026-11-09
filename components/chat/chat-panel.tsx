@@ -8,6 +8,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { ChatTopBar, EditableTitle, useChatChrome } from "@/components/chat/chat-shell";
 import { useAttachments } from "@/components/chat/attachments";
 import { Composer } from "@/components/chat/composer";
+import { ContextMeter, useContextSnapshot } from "@/components/chat/context-meter";
 import { useConversationActions } from "@/components/chat/conversation-actions";
 import { AssistantMessage, UserMessage } from "@/components/chat/message";
 import { pickModel, selectionBody, usePreferredModel, useWarmModel } from "@/components/chat/model-picker";
@@ -283,6 +284,14 @@ export function ChatPanel({
     void regenerate({ body: again ? { ...requestBody, research: true } : requestBody });
   }
 
+  const fetchedContext = useContextSnapshot({
+    conversationId,
+    model,
+    temporary,
+    version: `${messages.length}|${busy ? "busy" : "idle"}`,
+  });
+  const lastContext = [...messages].reverse().find((message) => message.role === "assistant")?.metadata?.context ?? null;
+
   const lastIndex = messages.length - 1;
   const waiting = busy && messages.at(-1)?.role !== "assistant";
 
@@ -345,6 +354,7 @@ export function ChatPanel({
                     id={message.id}
                     text={text}
                     research={report}
+                    web={meta.web}
                     question={report ? messageText(messages[index - 1] ?? message) : undefined}
                     streaming={last && status === "streaming"}
                     last={last && !busy}
@@ -358,6 +368,7 @@ export function ChatPanel({
                           ? `${meta.fallbackFrom} was unavailable, so this reply came from ${meta.model ?? "the fallback model"}.`
                           : null,
                         ...(meta.fileNotes ?? []),
+                        meta.webNotice ?? null,
                       ]
                         .filter(Boolean)
                         .join(" ") || undefined
@@ -411,6 +422,7 @@ export function ChatPanel({
         files={files}
         research={{ on: research, onChange: setResearch, status: researchStatus }}
         locked={usage.locked}
+        meter={<ContextMeter snapshot={busy ? (lastContext ?? fetchedContext) : fetchedContext} draft={input.length} reported={busy ? null : lastContext?.reported} />}
       />
     </div>
   );

@@ -45,6 +45,10 @@ export const conversations = sqliteTable(
     providerId: text("provider_id"),
     /** Auto mode ("intelligence", "balance", "cost"), or null when the user picked a model. */
     modelMode: text("model_mode"),
+    /** Summary standing in for the first summaryCount messages, which end at message summaryThrough. */
+    summary: text("summary"),
+    summaryCount: integer("summary_count"),
+    summaryThrough: text("summary_through"),
     pinnedAt: integer("pinned_at"),
     archivedAt: integer("archived_at"),
     /** Temporary chats stay out of history, search and memory. */

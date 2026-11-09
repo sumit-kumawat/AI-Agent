@@ -290,6 +290,65 @@ refusals and the plan they name, limits including 0 = unlimited, the prompts,
 both pages and their totals against the database). Other suites seed their
 account on Advance with `SEED_USER_PLAN=advance`.
 
+### Model descriptions
+
+Every model in the picker and on the models page carries capabilities,
+context window and limitations built from what the provider reports, not
+from a hand-written list:
+
+- Capabilities come from Ollama's `/api/show` (`vision`, `thinking`, `tools`)
+  plus what the app adds (documents as text). Coding and multilingual labels
+  are inferred from the model family and say so in their tooltip.
+- The context window is the one the model actually runs with: the
+  `context_length` of the loaded model from `/api/ps`, else the Modelfile
+  `num_ctx` or the server default, always capped at the model's own maximum
+  (`model_info.*.context_length`). The maximum is shown separately when it
+  is larger. Cloud models whose window is not reported say so.
+- Limitations cover missing image input, small models, slow thinking models,
+  short windows, external providers and what the model can do with links.
+
+### Context window and summaries
+
+`lib/context` assembles each turn by category: system prompt, the user's
+instructions and preferences, memories and recent chat titles, the summary of
+older messages, earlier messages, attachments, web pages and the current
+message. Each piece of text is counted once (about 4 characters per token, 600
+per image). Tools, skills, MCP servers and sub-agents are not used by this app
+and are listed as such rather than shown as zero-sized bars.
+
+- A share of the window is kept free for the reply (a quarter, at most 4,096).
+- Earlier messages fill up to 70% of what is left, newest first. Older ones are
+  summarised by the conversation's model (at most 600 tokens) before the reply,
+  the summary is stored on the conversation with the message it covers up to,
+  and it is reused until the thread changes. Summary calls are recorded as
+  usage with feature `summary`, so they count toward plan limits.
+- `GET /api/context` returns what the next turn would send, without
+  summarising; the composer's meter uses it and adds the unsent draft. Each
+  reply stores its snapshot and, when the provider reports it, the exact
+  prompt and reply tokens, which are shown separately from the estimates.
+
+The plan allowance (tokens per day, week or month) is separate from the
+context window (tokens per request); neither is shown as the other.
+
+### Web pages in chat
+
+When a message contains links (up to three), the server opens them with the
+same fetcher as Deep Research: http(s) only, no credentials in links, private,
+loopback and link-local addresses refused at connect time, redirects
+re-checked, 2 MB and 12 s per page, 40 pages per user per 10 minutes. Page
+text goes into the prompt as untrusted content with its URL, and the reply
+lists each page read or the reason it failed. The model is told it can read
+pasted links but cannot search the web from chat.
+
+Admin → Research → "Read links in chat" turns this off. Then nothing is
+fetched, the model is told it cannot open websites, and a reply to a message
+with a link carries the fixed message: "I'm a large language model and cannot
+directly visit websites in this configuration. However, I can help review
+website content if you provide the URL, page content, or relevant documents."
+
+`npm run e2e:context` covers the meter, the exact counts, summarising a long
+conversation built from these docs, and link reading on and off.
+
 ## 7. Needs a provider before it can work
 
 | Capability | What is missing |

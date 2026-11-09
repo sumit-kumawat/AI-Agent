@@ -8,6 +8,7 @@ import { useFeedback } from "@/components/feedback";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { formatBytes } from "@/lib/format";
+import { formatK } from "@/lib/models/capabilities";
 import {
   AUTO_INFO,
   AUTO_MODES,
@@ -111,6 +112,23 @@ const SKILL_LABEL: Record<ModelSkill, string> = {
   tools: "Tools",
 };
 
+/** Every model has these; the picker lists what tells models apart. */
+const HIDDEN_IN_PICKER = new Set(["text", "documents", "long-context"]);
+
+function contextTitle(context: ModelOption["context"]) {
+  if (context.tokens === null) {
+    return context.max ? `The model supports up to ${context.max.toLocaleString("en-US")} tokens; the window on this server is not known yet.` : "Not reported by the provider.";
+  }
+  const how =
+    context.source === "running"
+      ? "as loaded in Ollama now"
+      : context.source === "model"
+        ? "from the model's settings"
+        : "this server's default, used when the model loads";
+  const max = context.max && context.max > context.tokens ? ` The model itself supports up to ${context.max.toLocaleString("en-US")}.` : "";
+  return `${context.tokens.toLocaleString("en-US")} tokens ${how}.${max}`;
+}
+
 /** "999.89M" reads as "1B"; "3.2B" stays as it is. */
 function sizeLabel(model: ModelOption) {
   if (!model.local) return model.providerName;
@@ -120,7 +138,13 @@ function sizeLabel(model: ModelOption) {
 }
 
 function searchable(model: ModelOption) {
-  return [model.name, model.providerName, model.group, ...model.skills.map((skill) => SKILL_LABEL[skill])]
+  return [
+    model.name,
+    model.providerName,
+    model.group,
+    ...model.skills.map((skill) => SKILL_LABEL[skill]),
+    ...model.capabilities.map((capability) => capability.label),
+  ]
     .join(" ")
     .toLowerCase();
 }
@@ -326,13 +350,18 @@ export function ModelPicker({
                           <span className="min-w-0 truncate">{model.name}</span>
                           <span className="shrink-0 text-xs text-muted-foreground">{sizeLabel(model)}</span>
                         </span>
-                        <span className="mt-0.5 flex flex-wrap gap-1 text-[10px] text-muted-foreground">
+                        <span className="mt-0.5 flex flex-wrap gap-1 text-[10px] text-muted-foreground" data-capabilities>
                           {model.local ? <span>{model.loaded ? "In memory" : "Ready"}</span> : <span>Healthy</span>}
-                          {model.skills.map((skill) => (
-                            <span key={skill} className="rounded border px-1">
-                              {SKILL_LABEL[skill]}
-                            </span>
-                          ))}
+                          <span data-context-window={model.context.tokens ?? ""} title={contextTitle(model.context)}>
+                            {model.context.tokens ? `${formatK(model.context.tokens)} context` : "Context not reported"}
+                          </span>
+                          {model.capabilities
+                            .filter((capability) => !HIDDEN_IN_PICKER.has(capability.id))
+                            .map((capability) => (
+                              <span key={capability.id} className="rounded border px-1" title={capability.source} data-capability={capability.id}>
+                                {capability.label}
+                              </span>
+                            ))}
                         </span>
                       </span>
                       {selected ? <Check className="mt-0.5 size-4 shrink-0" aria-hidden /> : null}
