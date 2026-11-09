@@ -13,7 +13,11 @@ export const users = sqliteTable("users", {
   passwordHash: text("password_hash").notNull(),
   role: text("role", { enum: ["superadmin", "admin", "user"] }).notNull().default("user"),
   suspended: integer("suspended", { mode: "boolean" }).notNull().default(false),
-  plan: text("plan").notNull().default("free"),
+  plan: text("plan", { enum: ["free", "basic", "advance"] }).notNull().default("free"),
+  /** When the current plan began; subscription-period plans reset monthly usage on this day. */
+  planStartedAt: integer("plan_started_at"),
+  /** JSON personal limits that replace the plan's: { daily?, weekly?, monthly? }; 0 means unlimited. */
+  limitOverrides: text("limit_overrides"),
   /** Monthly token allowance; null means unlimited. */
   quotaTokens: integer("quota_tokens"),
   quotaUsed: integer("quota_used").notNull().default(0),
@@ -121,6 +125,10 @@ export const usageEvents = sqliteTable("usage_events", {
   /** Estimated cost in millionths of a US dollar. Null when the model has no price. */
   costMicro: integer("cost_micro"),
   status: text("status", { enum: ["ok", "aborted", "error", "blocked"] }).notNull(),
+  /** What used the tokens: chat, research, ide, or summary (context compression). */
+  feature: text("feature").notNull().default("chat"),
+  /** The model reported no token counts, so these were estimated from text length. */
+  estimated: integer("estimated", { mode: "boolean" }).notNull().default(false),
   createdAt: integer("created_at").notNull(),
 });
 

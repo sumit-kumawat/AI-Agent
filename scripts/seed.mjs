@@ -4,6 +4,7 @@
 //
 //   npm run seed
 //   SEED_USER_EMAIL=qa@example.com SEED_USER_PASSWORD=... npm run seed
+//   SEED_USER_PLAN=advance ...        (free by default)
 import fs from "node:fs";
 import path from "node:path";
 import { randomBytes, randomUUID } from "node:crypto";
@@ -50,11 +51,15 @@ if (process.env.SEED_USER !== "0") {
       console.error(`skipped  user   ${email}: password must be 8 to 72 bytes`);
       process.exitCode = 1;
     } else {
+      const plan = ["free", "basic", "advance"].includes(process.env.SEED_USER_PLAN) ? process.env.SEED_USER_PLAN : "free";
+      const now = Date.now();
       sqlite
-        .prepare("INSERT INTO users (id, name, email, password_hash, role, created_at) VALUES (?, 'Test User', ?, ?, 'user', ?)")
-        .run(randomUUID(), email, bcrypt.hashSync(password, 12), Date.now());
+        .prepare(
+          "INSERT INTO users (id, name, email, password_hash, role, plan, plan_started_at, created_at) VALUES (?, 'Test User', ?, ?, 'user', ?, ?, ?)",
+        )
+        .run(randomUUID(), email, bcrypt.hashSync(password, 12), plan, now, now);
       console.log(
-        `created  user   ${email}  password: ${process.env.SEED_USER_PASSWORD ? "(from environment)" : password}`,
+        `created  user   ${email}  plan: ${plan}  password: ${process.env.SEED_USER_PASSWORD ? "(from environment)" : password}`,
       );
     }
   }

@@ -1,10 +1,12 @@
 "use client";
 
-import { ArrowUp, Paperclip, Square, Telescope, X } from "lucide-react";
+import { ArrowUp, Lock, Paperclip, Square, Telescope, X } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ACCEPT, AttachmentTray, type Attachments } from "@/components/chat/attachments";
 import { ModelPicker, type ModelOption } from "@/components/chat/model-picker";
 import { autoModeOf } from "@/lib/model-ref";
+import type { UsageSummary } from "@/lib/plans/types";
 import type { ResearchStatus } from "@/components/chat/research";
 import { Button } from "@/components/ui/button";
 
@@ -23,8 +25,9 @@ export function Composer({
   error,
   sendWithEnter = true,
   note,
-  files,
+  files: attachments,
   research,
+  locked,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -45,7 +48,10 @@ export function Composer({
   files?: Attachments;
   /** Enables the Deep Research toggle. */
   research?: { on: boolean; onChange: (on: boolean) => void; status: ResearchStatus | null };
+  /** Capabilities the plan does not include; their controls become upgrade links. */
+  locked?: UsageSummary["locked"];
 }) {
+  const files = locked?.attachments ? undefined : attachments;
   const textarea = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -177,7 +183,24 @@ export function Composer({
                 </Button>
               </>
             ) : null}
-            {research ? (
+            {research && locked?.research ? (
+              <Button
+                asChild
+                variant="ghost"
+                size="sm"
+                className="h-9 shrink-0 rounded-full text-muted-foreground"
+                data-research-locked={locked.research.requiredPlan?.id ?? ""}
+                title={locked.research.message}
+              >
+                <Link href={`/plans?highlight=${locked.research.requiredPlan?.id ?? ""}`}>
+                  <Lock />
+                  <span className="hidden sm:inline">Deep Research</span>
+                  {locked.research.requiredPlan ? (
+                    <span className="rounded bg-muted px-1 text-[10px] font-medium uppercase">{locked.research.requiredPlan.name}</span>
+                  ) : null}
+                </Link>
+              </Button>
+            ) : research ? (
               <Button
                 type="button"
                 variant={researching ? "secondary" : "ghost"}

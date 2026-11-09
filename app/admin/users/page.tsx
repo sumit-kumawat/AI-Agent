@@ -19,6 +19,9 @@ import {
 } from "@/components/ui/table";
 import { requireAdmin } from "@/lib/admin";
 import { listUsers } from "@/lib/db/admin-queries";
+import { findUserById } from "@/lib/db/queries";
+import { getPlans } from "@/lib/plans/config";
+import { overridesOf, usageSummary } from "@/lib/plans/usage";
 import { formatAgo, formatCompact, formatDate, formatNumber } from "@/lib/format";
 import { isStaff, ROLE_LABEL } from "@/lib/roles";
 
@@ -53,14 +56,17 @@ export default async function AdminUsersPage({
                 <TableHead>Role</TableHead>
                 <TableHead>Created</TableHead>
                 <TableHead>Last active</TableHead>
-                <TableHead>Plan / quota (this month)</TableHead>
+                <TableHead>Plan and usage</TableHead>
                 <TableHead className="text-right">Total tokens</TableHead>
                 <TableHead className="pr-4 text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {rows.map((user) => {
-                const percent = user.quotaTokens ? Math.min(100, Math.round((user.quotaUsed / user.quotaTokens) * 100)) : null;
+                const full = findUserById(user.id)!;
+                const usage = usageSummary(full);
+                const monthly = usage.windows.find((window) => window.window === "monthly")!;
+                const percent = usage.peak satisfies number | null;
                 return (
                   <TableRow key={user.id} className={user.suspended ? "opacity-60" : undefined}>
                     <TableCell className="max-w-64 pl-4">
@@ -81,9 +87,13 @@ export default async function AdminUsersPage({
                     <TableCell className="text-muted-foreground">{formatDate(user.createdAt)}</TableCell>
                     <TableCell className="text-muted-foreground">{formatAgo(user.lastActiveAt)}</TableCell>
                     <TableCell>
-                      <p className="capitalize">{user.plan}</p>
+                      <p data-user-plan={usage.plan.id}>
+                        {usage.plan.name}
+                        {full.limitOverrides ? <span className="text-xs text-muted-foreground"> · custom limits</span> : null}
+                      </p>
                       <p className="text-xs text-muted-foreground">
-                        {formatCompact(user.quotaUsed)} / {user.quotaTokens === null ? "unlimited" : formatCompact(user.quotaTokens)}
+                        {formatCompact(monthly.used)} / {monthly.limit === 0 ? "unlimited" : formatCompact(monthly.limit)} this month
+                        {percent !== null && percent >= 100 ? " · limit reached" : ""}
                       </p>
                       {percent !== null ? (
                         <div className="mt-1 h-1 w-28 overflow-hidden rounded-full bg-muted">
@@ -102,8 +112,9 @@ export default async function AdminUsersPage({
                           email: user.email,
                           role: user.role,
                           suspended: Boolean(user.suspended),
-                          plan: user.plan,
-                          quotaTokens: user.quotaTokens,
+                          plan: usage.plan.id,
+                          overrides: overridesOf(full),
+                          planLimits: getPlans()[usage.plan.id].limits,
                           self: user.id === admin.id,
                         }}
                         viewerRole={admin.role}

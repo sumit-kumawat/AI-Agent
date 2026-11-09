@@ -233,7 +233,7 @@ headless Chrome, including a fake SearXNG that returns a private address
   the part of an email before "@" is gone, since it let similar addresses
   collide.
 - **Roles**: User, Administrator, Super Administrator. Only a Super
-  Administrator can change roles or reset, suspend or change the quota of
+  Administrator can change roles or reset, suspend or change the plan of
   another admin; this is checked in the server actions, not only hidden in the
   menu. The last active Super Administrator cannot be demoted, suspended or
   deleted.
@@ -250,6 +250,45 @@ headless Chrome, including a fake SearXNG that returns a private address
 `npm run e2e:auth` covers registration, IDs, username sign-in, the bootstrap
 and forced change, and replays admin actions as a plain Administrator to prove
 the server refuses them.
+
+### Plans: Free, Basic, Advance
+
+- Every account is on **Free**, **Basic** or **Advance** (migration 12
+  normalised older values to Free). Admin → Plans sets, per plan: the models
+  it includes (or "every model, including future ones"), daily, weekly and
+  monthly token allowances, per-model and per-feature limits (chat, Deep
+  Research, IDE assistant), whether attachments, Deep Research, the IDE and
+  cloud models are included, storage, and whether the monthly allowance resets
+  on the 1st or on the day the plan started. **A limit of 0 means unlimited**
+  everywhere. Prices stay unset until an admin enters them; none are invented.
+- Admin → Users → *Change plan and limits* moves an account between plans and
+  sets personal daily/weekly/monthly limits that replace the plan's (empty =
+  use the plan's, 0 = unlimited). Plan edits and account changes are audited
+  (`plans.update`, `user.plan`).
+- **Enforced on the server.** `/api/models`, warm-up, conversation creation,
+  `/api/chat` and uploads only accept models and features in the account's
+  plan; others are left out of every list and response, not just hidden.
+  Installed models are never removed. A refusal returns
+  `{ error, plan: { code, requiredPlan, resetAt } }`: 403 `upgrade_required`
+  names the cheapest plan that unlocks it, 429 `limit_reached` gives the reset
+  time. Administrators are not limited.
+- **Usage is summed from `usage_events`**, which store the input and output
+  tokens the model reported, the feature, and whether the count had to be
+  estimated (Ollama occasionally omits counts; estimates are flagged and their
+  total is shown on the Usage page). Days start at 00:00 UTC, weeks on Monday.
+  A request that starts within the allowance has its output capped to what is
+  left, so it cannot run far past it.
+- **Pages**: `/plans` compares the plans (other plans show model counts and
+  capabilities, not the names of models outside your plan) and `/usage` shows
+  each window, its reset time, and usage by model and feature. The chat shows
+  an upgrade prompt in place of a refused reply, a warning above the composer
+  at 80% of any limit, and Deep Research as locked with the plan that unlocks
+  it. There is no online checkout yet, so upgrading is done by an admin.
+
+`npm run e2e:plans` checks every tier against real models (lists, picker,
+refusals and the plan they name, limits including 0 = unlimited, the prompts,
+both pages and their totals against the database). Other suites seed their
+account on Advance with `SEED_USER_PLAN=advance`.
 
 ## 7. Needs a provider before it can work
 

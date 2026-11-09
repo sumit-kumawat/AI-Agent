@@ -26,6 +26,7 @@ execFileSync(
       ...process.env,
       SEED_USER_EMAIL: user.email,
       SEED_USER_PASSWORD: user.password,
+      SEED_USER_PLAN: "advance",
     },
     stdio: "ignore",
   },

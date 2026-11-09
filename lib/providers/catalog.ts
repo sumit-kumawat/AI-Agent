@@ -130,8 +130,10 @@ export async function resolveChatTarget(input: {
   /** Auto selection: the mode and what this turn needs. Ignored when a model is requested. */
   mode?: AutoMode;
   task?: TaskProfile;
+  /** The models this user's plan allows; defaults to every selectable model. */
+  catalog?: { models: ModelOption[]; warning: string | null };
 }): Promise<{ ok: true; target: ChatTarget } | { ok: false; status: number; error: string }> {
-  const { models, warning } = await listSelectableModels();
+  const { models, warning } = input.catalog ?? (await listSelectableModels());
   if (models.length === 0) {
     return { ok: false, status: 503, error: warning ?? "No chat models are available." };
   }

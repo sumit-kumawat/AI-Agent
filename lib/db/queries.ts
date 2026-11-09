@@ -56,6 +56,7 @@ export function createUser(input: { name: string; email: string; passwordHash: s
         passwordHash: input.passwordHash,
         role: "user",
         createdAt: Date.now(),
+        planStartedAt: Date.now(),
       })
       .run();
     return { publicId, username };
@@ -88,19 +89,6 @@ export function currentQuotaPeriod(now = new Date()) {
   return now.toISOString().slice(0, 7);
 }
 
-/** Returns the user's monthly allowance state, rolling usage over when the month changes. */
-export function quotaState(userId: string) {
-  const user = findUserById(userId);
-  if (!user) return null;
-  const period = currentQuotaPeriod();
-  const used = user.quotaPeriod === period ? user.quotaUsed : 0;
-  return {
-    limit: user.quotaTokens,
-    used,
-    exceeded: user.quotaTokens !== null && used >= user.quotaTokens,
-  };
-}
-
 export function touchUser(userId: string) {
   db.update(users).set({ lastActiveAt: Date.now() }).where(eq(users.id, userId)).run();
 }
@@ -116,6 +104,8 @@ export function recordUsage(event: {
   status: "ok" | "aborted" | "error" | "blocked";
   providerId?: string | null;
   costMicro?: number | null;
+  feature?: "chat" | "research" | "ide" | "summary";
+  estimated?: boolean;
 }) {
   const total = event.inputTokens + event.outputTokens;
   const now = Date.now();

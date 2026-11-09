@@ -1,5 +1,19 @@
+import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { settings } from "@/lib/db/schema";
+
+/** Raw stored value for one settings key, or null. */
+export function getSettingValue(key: string) {
+  return db.select().from(settings).where(eq(settings.key, key)).get()?.value ?? null;
+}
+
+export function setSettingValue(key: string, value: string) {
+  const now = Date.now();
+  db.insert(settings)
+    .values({ key, value, updatedAt: now })
+    .onConflictDoUpdate({ target: settings.key, set: { value, updatedAt: now } })
+    .run();
+}
 
 export type SystemSettings = {
   /** Chat requests allowed per user per minute. */

@@ -1,6 +1,5 @@
 import { sql } from "drizzle-orm";
 import { db } from "./index";
-import { currentQuotaPeriod } from "./queries";
 import type { Role } from "@/lib/roles";
 
 export const PAGE_SIZE = 20;
@@ -32,8 +31,6 @@ export type AdminUserRow = {
   role: Role;
   suspended: number;
   plan: string;
-  quotaTokens: number | null;
-  quotaUsed: number;
   tokensTotal: number;
   lastActiveAt: number | null;
   createdAt: number;
@@ -45,11 +42,8 @@ export function listUsers({ q, page }: { q: string; page: number }) {
   const filter = q
     ? sql`WHERE u.email LIKE ${like} ESCAPE '\\' OR u.name LIKE ${like} ESCAPE '\\' OR u.username LIKE ${like} ESCAPE '\\' OR u.public_id LIKE ${like} ESCAPE '\\'`
     : sql``;
-  const period = currentQuotaPeriod();
   const rows = db.all<AdminUserRow>(sql`
     SELECT u.id, u.public_id AS publicId, u.username, u.name, u.email, u.role, u.suspended, u.plan,
-           u.quota_tokens AS quotaTokens,
-           CASE WHEN u.quota_period = ${period} THEN u.quota_used ELSE 0 END AS quotaUsed,
            u.tokens_total AS tokensTotal, u.last_active_at AS lastActiveAt, u.created_at AS createdAt,
            (SELECT COUNT(*) FROM conversations c WHERE c.user_id = u.id) AS conversations
     FROM users u ${filter}

@@ -92,7 +92,8 @@ Admins see an **Admin panel** link in the chat sidebar, or open `/admin` directl
 | Route | What it does |
 | --- | --- |
 | `/admin` | Totals for users, tokens, active sessions, and recent admin actions |
-| `/admin/users` | Search and page through users (20 per page) with role, last active, plan, quota, and total tokens. Change role, reset a password (shows a one-time temporary password and signs the user out), suspend or reactivate, and set a plan and monthly token quota. |
+| `/admin/users` | Search and page through users (20 per page) with role, last active, plan, usage this month, and total tokens. Change role, reset a password (shows a one-time temporary password and signs the user out), suspend or reactivate, and change the plan or set personal token limits (0 = unlimited). |
+| `/admin/plans` | Free, Basic and Advance: included models, daily/weekly/monthly allowances, per-model and per-feature limits, features, storage and reset period. A limit of 0 means unlimited. See `docs/PLATFORM.md`. |
 | `/admin/usage` | Tokens per user and per model by day, week, or month, plus a log of rate-limit hits |
 | `/admin/agents` | Turn agents on or off, set each agent's concurrency limit, watch running sessions and stop them, and enable or disable individual Ollama models |
 | `/admin/settings` | Chat rate limit per user per minute, open or closed registration, a moderation keyword blocklist, and the audit log |
@@ -128,7 +129,8 @@ The app stores its database in the `harbor-data` volume and models live in `olla
 
 - `GET /api/health` returns `200` with `{ ok, database, ollama, model, models }` when the database is up and at least one chat model is installed, and `503` otherwise. Point uptime checks and load balancers at it.
 - `npm run smoke` runs an end-to-end check against a running server: health, register, sign in, list models, a streamed reply, a reply after switching models, saved history, and cleanup. Set `SMOKE_URL` to test another host and `SMOKE_MODEL` to pick the first model. It deletes its test account at the end, so it never becomes the first-account admin.
-- `npm run e2e:admin` drives the admin panel in headless Chrome against a running server. It seeds a throwaway admin and user, exercises every admin page and action (models, agents, killing a session, quota, blocklist, rate limit, flag and delete, suspend, password reset, role changes, audit log), restores the settings, and deletes both accounts. Set `CHROME_PATH` if Chrome is not in `/Applications`, and `E2E_URL` for another host. Screenshots go to `/tmp/harbor-e2e`.
+- `npm run e2e:admin` drives the admin panel in headless Chrome against a running server. It seeds a throwaway admin and user, exercises every admin page and action (models, agents, killing a session, plan and limits, blocklist, rate limit, flag and delete, suspend, password reset, role changes, audit log), restores the settings, and deletes both accounts. Set `CHROME_PATH` if Chrome is not in `/Applications`, and `E2E_URL` for another host. Screenshots go to `/tmp/harbor-e2e`.
+- `npm run e2e:plans` checks Free, Basic and Advance end to end: which models each plan sees and can use, refusals that name the plan to upgrade to, token limits (0 = unlimited), the upgrade prompts, and the plans and usage pages against the recorded usage.
 - `npm run e2e:chat` drives the chat UI in headless Chrome at desktop and phone sizes: streaming, markdown and code highlighting, copy, regenerate, stop, auto-scroll, rename, dark mode, and the sidebar. It uses `llama3.2:1b` by default; set `E2E_MODEL` to change it. It deletes its test account at the end.
 - `DELETE /api/account` with `{ "password": "…" }` deletes the signed-in account and all of its conversations.
 - Choosing a model in the picker preloads it for 30 minutes, so the first reply does not wait for a cold start.

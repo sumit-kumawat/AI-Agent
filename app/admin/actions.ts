@@ -14,6 +14,8 @@ import { isStaff, ROLES, type Role } from "@/lib/roles";
 import { conversations, messages, modelConfig, users } from "@/lib/db/schema";
 import { ACCESS_ACTION, activeContentGrant } from "@/lib/content-access";
 import { parseKeywords } from "@/lib/moderation";
+import { getPlans, savePlans } from "@/lib/plans/config";
+import { PLAN_IDS } from "@/lib/plans/types";
 import { getSettings, updateSettings } from "@/lib/settings";
 import { modelNameSchema } from "@/lib/validators";
 
@@ -106,30 +108,44 @@ export async function setUserSuspended(id: string, suspended: boolean) {
   });
 }
 
-const quotaSchema = z.object({
-  plan: z.string().trim().min(1).max(40),
-  quotaTokens: z.number().int().min(0).max(1_000_000_000).nullable(),
-  resetUsage: z.boolean(),
+const tokenLimit = z.number().int().min(0).max(100_000_000_000).nullable();
+const userPlanSchema = z.object({
+  plan: z.enum(PLAN_IDS),
+  /** null uses the plan's limit; 0 is unlimited. */
+  overrides: z.object({ daily: tokenLimit, weekly: tokenLimit, monthly: tokenLimit }),
 });
 
-export async function updateUserQuota(id: string, input: z.input<typeof quotaSchema>) {
+export async function updateUserPlan(id: string, input: z.input<typeof userPlanSchema>) {
   return run((admin) => {
     const user = targetUser(id);
     assertCanManage(admin, user);
-    const parsed = quotaSchema.safeParse(input);
-    if (!parsed.success) fail("Enter a plan name and a token limit of 0 or more, or leave the limit empty.");
-    const { plan, quotaTokens, resetUsage } = parsed.data;
+    const parsed = userPlanSchema.safeParse(input);
+    if (!parsed.success) fail("Pick a plan, and enter limits of 0 (unlimited) or more, or leave them empty to use the plan's.");
+    const { plan, overrides } = parsed.data;
+    const kept = Object.fromEntries(Object.entries(overrides).filter(([, value]) => value !== null));
+    const limitOverrides = Object.keys(kept).length ? JSON.stringify(kept) : null;
     db.update(users)
-      .set({ plan, quotaTokens, ...(resetUsage ? { quotaUsed: 0 } : {}) })
+      .set({ plan, limitOverrides, ...(plan !== user.plan ? { planStartedAt: Date.now() } : {}) })
       .where(eq(users.id, user.id))
       .run();
-    audit(admin, "user.quota", { type: "user", id: user.id }, {
+    audit(admin, "user.plan", { type: "user", id: user.id }, {
       email: user.email,
-      from: { plan: user.plan, quotaTokens: user.quotaTokens },
-      to: { plan, quotaTokens },
-      resetUsage,
+      from: { plan: user.plan, overrides: user.limitOverrides ? JSON.parse(user.limitOverrides) : null },
+      to: { plan, overrides: limitOverrides ? kept : null },
     });
     revalidatePath("/admin/users");
+    return {};
+  });
+}
+
+export async function savePlanConfig(input: unknown) {
+  return run((admin) => {
+    const before = getPlans();
+    const result = savePlans(input);
+    if (!result.ok) fail(result.error);
+    audit(admin, "plans.update", { type: "settings", id: "plans" }, { from: before, to: result.plans });
+    revalidatePath("/admin/plans");
+    revalidatePath("/plans");
     return {};
   });
 }

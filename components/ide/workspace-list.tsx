@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { ArrowLeft, FolderGit2, FolderPlus, Loader2, Trash } from "lucide-react";
+import { FolderGit2, FolderPlus, Loader2, Trash } from "lucide-react";
+import { ChatTopBar } from "@/components/chat/chat-shell";
 import { errorMessage, ideFetch } from "@/components/ide/api";
 import { useFeedback } from "@/components/feedback";
 import { Button } from "@/components/ui/button";
@@ -49,11 +50,9 @@ export function WorkspaceList({ workspaces, root }: { workspaces: Item[]; root: 
   }
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-4 py-10">
-      <Link href="/chat" className="mb-6 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="size-4" />
-        Back to chat
-      </Link>
+    <div className="flex h-full flex-col">
+    <ChatTopBar title="IDE" />
+    <main className="mx-auto w-full max-w-3xl flex-1 overflow-y-auto px-4 pt-4 pb-10">
       <h1 className="font-heading text-3xl">Workspaces</h1>
       <p className="mt-1 text-sm text-muted-foreground">
         Projects you open in the IDE. Each one is a folder in <code className="text-xs">{root}</code>.
@@ -106,5 +105,6 @@ export function WorkspaceList({ workspaces, root }: { workspaces: Item[]; root: 
         )}
       </ul>
     </main>
+    </div>
   );
 }

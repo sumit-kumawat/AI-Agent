@@ -184,11 +184,19 @@ try {
     !(await adminPage.evaluate(() => document.body.innerText)).includes("A Product Of"),
     "the admin panel carries no promotional credit",
   );
-  for (const path of ["/admin", "/admin/users", "/admin/usage", "/admin/agents", "/admin/providers", "/admin/research", "/admin/settings", "/admin/conversations"]) {
+  for (const path of ["/admin", "/admin/users", "/admin/usage", "/admin/plans", "/admin/agents", "/admin/providers", "/admin/research", "/admin/settings", "/admin/conversations"]) {
     const response = await adminPage.goto(`${base}${path}`, { waitUntil: "networkidle0" });
     check(response.status() === 200 && adminPage.url().endsWith(path), `admin opens ${path}`);
     await adminPage.screenshot({ path: `${shots}/${path.replaceAll("/", "_").slice(1) || "admin"}.png`, fullPage: true });
   }
+
+  // Plans editor: saving unchanged plans round-trips and is audited.
+  await adminPage.goto(`${base}/admin/plans`, { waitUntil: "networkidle0" });
+  await adminPage.click("[data-plan-tab='basic']");
+  await adminPage.waitForSelector("[data-plan-form='basic']");
+  await adminPage.click("[data-save-plans]");
+  await popup(adminPage, "Plans saved");
+  check(true, "the plans editor saves");
 
   // Models: disable one, confirm users lose it, enable it again.
   const models = (await api(userPage, "/api/models")).body.models.map((model) => model.name);
@@ -212,7 +220,10 @@ try {
   await adminPage.waitForSelector('button[aria-label="Disable Ollama chat"]');
   check((await chat(userPage, "Reply with one word: ok", target)).status === 200, "re-enabled agent accepts chat");
 
-  // Kill a running session.
+  // Kill a running session. The slow 14b model is on the Advance plan only.
+  const planDb = new Database(path.join(process.env.DATA_DIR ?? "data", "harbor.db"));
+  planDb.prepare("UPDATE users SET plan = 'advance' WHERE email = ?").run(user.email);
+  planDb.close();
   const longConversation = (await api(userPage, "/api/conversations", { method: "POST", body: "{}" })).body.id;
   const pendingChat = userPage.evaluate(async (conversationId) => {
     const response = await fetch("/api/chat", {
@@ -237,26 +248,22 @@ try {
   const killed = await Promise.race([pendingChat, new Promise((resolve) => setTimeout(() => resolve(null), 20_000))]);
   check(killed !== null, "killed session ends the user's stream");
 
-  // Quota.
-  await userRowAction(adminPage, user.email, "Adjust plan and quota");
-  await adminPage.waitForSelector('input[name="quota"]');
+  // Plan and personal limits.
+  await userRowAction(adminPage, user.email, "Change plan and limits");
+  await adminPage.waitForSelector('input[name="monthly"]');
   await adminPage.waitForFunction(() => {
     const dialog = document.querySelector("[role=dialog]");
     return dialog && dialog.getAnimations({ subtree: true }).every((animation) => animation.playState === "finished");
   });
-  await adminPage.$eval('input[name="plan"]', (input) => {
-    input.focus();
-    input.select();
-  });
-  await adminPage.keyboard.type("pro");
-  await adminPage.type('input[name="quota"]', "1");
+  await adminPage.select('select[name="plan"]', "basic");
+  await adminPage.type('input[name="monthly"]', "1");
   await clickText(adminPage, "Save", "[role=dialog]");
-  await popup(adminPage, "Plan and quota saved");
+  await popup(adminPage, "Plan and limits saved");
   await adminPage.waitForSelector("[role=dialog]", { hidden: true });
   await adminPage
     .waitForFunction((email) => {
       const row = [...document.querySelectorAll("tr")].find((tr) => tr.innerText.includes(email));
-      return /Pro/.test(row?.innerText ?? "") && /\/\s*1\b/.test(row?.innerText ?? "");
+      return /Basic/.test(row?.innerText ?? "") && /\/\s*1 this month/.test(row?.innerText ?? "");
     }, {}, user.email)
     .catch(async (error) => {
       const row = await adminPage.evaluate(
@@ -266,14 +273,18 @@ try {
       throw new Error(`plan and quota not shown for the user; row reads: ${row.replace(/\s+/g, " ")}`, { cause: error });
     });
   const overQuota = await chat(userPage, "hi");
-  check(overQuota.status === 429 && /allowance/.test(overQuota.body?.error ?? ""), "user over quota is blocked");
-  await userRowAction(adminPage, user.email, "Adjust plan and quota");
-  await adminPage.waitForSelector('input[name="quota"]');
-  await adminPage.$eval('input[name="quota"]', (input) => (input.value = ""));
+  check(
+    overQuota.status === 429 && overQuota.body?.plan?.code === "limit_reached" && /allowance/.test(overQuota.body?.error ?? ""),
+    "user over a personal limit is blocked with a limit_reached reason",
+  );
+  await userRowAction(adminPage, user.email, "Change plan and limits");
+  await adminPage.waitForSelector('input[name="monthly"]');
+  await adminPage.$eval('input[name="monthly"]', (input) => (input.value = ""));
+  await adminPage.type('input[name="monthly"]', "0");
   await clickText(adminPage, "Save", "[role=dialog]");
-  await popup(adminPage, "Plan and quota saved");
+  await popup(adminPage, "Plan and limits saved");
   await adminPage.waitForSelector("[role=dialog]", { hidden: true });
-  check((await chat(userPage, "Reply with one word: ok", target)).status === 200, "unlimited quota allows chat again");
+  check((await chat(userPage, "Reply with one word: ok", target)).status === 200, "a limit of 0 means unlimited: chat works again");
 
   // Settings: blocklist and rate limit.
   await adminPage.goto(`${base}/admin/settings`, { waitUntil: "networkidle0" });
@@ -476,7 +487,7 @@ try {
   // Audit log recorded the actions.
   await adminPage.goto(`${base}/admin/settings?q=${encodeURIComponent("user.")}#audit`, { waitUntil: "networkidle0" });
   const auditText = await adminPage.evaluate(() => document.body.innerText);
-  for (const action of ["user.quota", "user.suspend", "user.password_reset", "user.role"]) {
+  for (const action of ["user.plan", "user.suspend", "user.password_reset", "user.role"]) {
     check(auditText.includes(action), `audit log has ${action}`);
   }
   await adminPage.goto(`${base}/admin/settings`, { waitUntil: "networkidle0" });
@@ -486,6 +497,8 @@ try {
   }
   await adminPage.goto(`${base}/admin/settings?q=${encodeURIComponent("model.enable")}#audit`, { waitUntil: "networkidle0" });
   check((await adminPage.evaluate(() => document.body.innerText)).includes("model.enable"), "audit log has model.enable");
+  await adminPage.goto(`${base}/admin/settings?q=${encodeURIComponent("plans.update")}#audit`, { waitUntil: "networkidle0" });
+  check((await adminPage.evaluate(() => document.body.innerText)).includes("plans.update"), "audit log has plans.update");
   await adminPage.goto(`${base}/admin/settings?q=${encodeURIComponent("provider.")}#audit`, { waitUntil: "networkidle0" });
   const providerAudit = await adminPage.evaluate(() => document.body.innerText);
   check(providerAudit.includes("provider.update") && providerAudit.includes("provider.health"), "provider changes are audited");

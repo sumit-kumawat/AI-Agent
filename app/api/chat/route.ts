@@ -14,7 +14,6 @@ import {
   findUserById,
   getConversationForUser,
   maybeSetTitle,
-  quotaState,
   recentConversationTitles,
   recordUsage,
   saveAssistantMessage,
@@ -23,11 +22,14 @@ import {
   syncTranscript,
 } from "@/lib/db/queries";
 import { analyzeTask } from "@/lib/models/router";
+import { capabilityBlock, modelBlock, modelsForUser } from "@/lib/plans/entitlements";
+import type { PlanBlock } from "@/lib/plans/types";
+import { checkAllowance } from "@/lib/plans/usage";
 import { addMemory, explicitMemory, MemoryError, relevantMemories } from "@/lib/memory";
 import { findBlockedKeyword } from "@/lib/moderation";
 import { getPreferences } from "@/lib/preferences";
 import { buildInstructions } from "@/lib/prompt";
-import { noteProviderFailure, resolveChatTarget } from "@/lib/providers/catalog";
+import { listSelectableModels, noteProviderFailure, resolveChatTarget } from "@/lib/providers/catalog";
 import { costMicro, languageModel, safeProviderError } from "@/lib/providers/engine";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
 import { researchStream } from "@/lib/research/run";
@@ -55,6 +57,18 @@ function attachmentIds(metadata: unknown) {
 /** Ollama sometimes omits usage; fall back to roughly four characters per token. */
 function estimateTokens(characters: number) {
   return Math.ceil(characters / 4);
+}
+
+const MAX_OUTPUT_TOKENS = 4096;
+
+/** Keeps one reply from running far past the allowance that is left. */
+function outputCap(remaining: number | null) {
+  return remaining === null ? MAX_OUTPUT_TOKENS : Math.max(256, Math.min(MAX_OUTPUT_TOKENS, remaining));
+}
+
+/** A plan refusal the client turns into an upgrade prompt. */
+function planBlocked(block: PlanBlock, status = 403) {
+  return Response.json({ error: block.message, plan: block }, { status });
 }
 
 export async function POST(request: Request) {
@@ -158,6 +172,16 @@ export async function POST(request: Request) {
         historyChars: transcript.reduce((total, message) => total + message.content.length, 0),
       })
     : undefined;
+  const research = parsed.data.research === true;
+  const feature = research ? "research" : "chat";
+  const capability = research
+    ? capabilityBlock(user, "research")
+    : filesOf(latestUser.id).length > 0
+      ? capabilityBlock(user, "attachments")
+      : null;
+  if (capability) return planBlocked(capability);
+
+  const entitled = await modelsForUser(user);
   const resolved = await resolveChatTarget({
     requestedProvider: parsed.data.providerId,
     requestedModel: parsed.data.model,
@@ -166,8 +190,18 @@ export async function POST(request: Request) {
     allowCloud: prefs.cloudModels,
     mode,
     task,
+    catalog: entitled,
   });
   if (!resolved.ok) {
+    if (parsed.data.model) {
+      const { models: everything } = await listSelectableModels();
+      const restricted = everything.find(
+        (model) =>
+          model.modelId === parsed.data.model && model.providerId === (parsed.data.providerId ?? "ollama"),
+      );
+      const block = restricted ? modelBlock(user, restricted) : null;
+      if (block) return planBlocked(block);
+    }
     return Response.json({ error: resolved.error }, { status: resolved.status });
   }
   const chosen = resolved.target.model;
@@ -200,7 +234,6 @@ export async function POST(request: Request) {
     );
   }
 
-  const research = parsed.data.research === true;
   if (research) {
     if (!latestUser.content.trim()) {
       return Response.json({ error: "Describe what to research." }, { status: 400 });
@@ -212,15 +245,8 @@ export async function POST(request: Request) {
     if (!researchLimit.ok) return tooManyRequests(researchLimit.retryAfter);
   }
 
-  const quota = quotaState(user.id);
-  if (quota?.exceeded) {
-    return Response.json(
-      {
-        error: `You have used your monthly allowance of ${quota.limit?.toLocaleString("en-US")} tokens. Ask an admin to raise it.`,
-      },
-      { status: 429 },
-    );
-  }
+  const allowance = checkAllowance(user, { model: modelName, feature });
+  if (!allowance.ok) return planBlocked(allowance.block, 429);
 
   const agent = startSession(
     {
@@ -342,6 +368,8 @@ export async function POST(request: Request) {
               agentId: AGENT_ID,
               model: modelName,
               providerId: chosen.providerId,
+              feature: "research",
+              estimated: !outcome.usage.inputTokens || !outcome.usage.outputTokens,
               inputTokens,
               outputTokens,
               costMicro: costMicro(chosen.providerId, modelName, inputTokens, outputTokens),
@@ -407,7 +435,7 @@ export async function POST(request: Request) {
     model: chatModel,
     instructions,
     messages: modelMessages,
-    maxOutputTokens: 4096,
+    maxOutputTokens: outputCap(allowance.remaining),
     abortSignal: agent.signal,
     onFinish: (event) => {
       usage = event.totalUsage;
@@ -465,6 +493,8 @@ export async function POST(request: Request) {
             agentId: AGENT_ID,
             model: modelName,
             providerId: chosen.providerId,
+            feature: "chat",
+            estimated: usage?.inputTokens === undefined || usage?.outputTokens === undefined,
             inputTokens: usage?.inputTokens ?? estimateTokens(promptChars),
             outputTokens: usage?.outputTokens ?? estimateTokens(content.length),
             costMicro: costMicro(

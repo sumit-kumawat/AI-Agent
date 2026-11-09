@@ -361,6 +361,22 @@ const MIGRATIONS: ((sqlite: Sqlite) => void)[] = [
     `);
     assignMissingIds(sqlite);
   },
+
+  // 12: plans. Accounts are on free, basic or advance; personal limit
+  // overrides are JSON; usage records which feature used the tokens and
+  // whether the count was estimated because the model reported none.
+  (sqlite) => {
+    addColumn(sqlite, "users", "plan_started_at", "INTEGER");
+    addColumn(sqlite, "users", "limit_overrides", "TEXT");
+    addColumn(sqlite, "usage_events", "feature", "TEXT NOT NULL DEFAULT 'chat'");
+    addColumn(sqlite, "usage_events", "estimated", "INTEGER NOT NULL DEFAULT 0");
+    sqlite.exec(`
+      UPDATE users SET plan = 'free' WHERE plan NOT IN ('free', 'basic', 'advance');
+      UPDATE users SET plan_started_at = created_at WHERE plan_started_at IS NULL;
+      UPDATE users SET limit_overrides = json_object('monthly', quota_tokens) WHERE quota_tokens IS NOT NULL AND quota_tokens > 0;
+      CREATE INDEX IF NOT EXISTS usage_events_user_feature_idx ON usage_events (user_id, feature, created_at);
+    `);
+  },
 ];
 
 // No 0/O or 1/I, so IDs survive being read aloud or retyped.

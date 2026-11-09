@@ -6,7 +6,7 @@ import {
   listConversations,
 } from "@/lib/db/queries";
 import { AUTO_MODES } from "@/lib/model-ref";
-import { listSelectableModels } from "@/lib/providers/catalog";
+import { modelsForUser } from "@/lib/plans/entitlements";
 import { modelNameSchema, providerIdSchema } from "@/lib/validators";
 
 export const runtime = "nodejs";
@@ -32,7 +32,7 @@ export const POST = handler(async (request) => {
   let model: string | null = null;
   let providerId: string | null = null;
   if (body.model) {
-    const { models } = await listSelectableModels();
+    const { models } = await modelsForUser(user);
     const wantedProvider = body.providerId ?? "ollama";
     const match = models.find(
       (option) =>

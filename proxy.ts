@@ -14,7 +14,8 @@ export default auth((req) => {
   const isAdminPage =
     pathname === "/admin" || pathname.startsWith("/admin/") || pathname === "/ide" || pathname.startsWith("/ide/");
   const isAccountPage = pathname === "/account" || pathname.startsWith("/account/");
-  const isProtected = pathname.startsWith("/chat") || isAdminPage || isAccountPage;
+  const isAppPage = ["/chat", "/plans", "/usage"].some((root) => pathname === root || pathname.startsWith(`${root}/`));
+  const isProtected = isAppPage || isAdminPage || isAccountPage;
 
   if (isProtected && !isLoggedIn) {
     const url = new URL("/login", req.nextUrl);
@@ -40,5 +41,5 @@ export default auth((req) => {
 });
 
 export const config = {
-  matcher: ["/chat/:path*", "/admin/:path*", "/admin", "/ide", "/ide/:path*", "/account/:path*", "/login", "/register"],
+  matcher: ["/chat/:path*", "/plans", "/usage", "/admin/:path*", "/admin", "/ide", "/ide/:path*", "/account/:path*", "/login", "/register"],
 };

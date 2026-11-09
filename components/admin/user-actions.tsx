@@ -6,7 +6,7 @@ import {
   resetUserPassword,
   setUserRole,
   setUserSuspended,
-  updateUserQuota,
+  updateUserPlan,
   type ActionResult,
 } from "@/app/admin/actions";
 import { useFeedback } from "@/components/feedback";
@@ -29,7 +29,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
+import { asPlanId, formatLimit, PLAN_IDS, WINDOWS, type LimitWindow, type Limits, type PlanId } from "@/lib/plans/types";
 import { isStaff, ROLE_LABEL, ROLES, type Role, type StaffRole } from "@/lib/roles";
 
 type Target = {
@@ -37,8 +37,9 @@ type Target = {
   email: string;
   role: Role;
   suspended: boolean;
-  plan: string;
-  quotaTokens: number | null;
+  plan: PlanId;
+  overrides: Partial<Limits>;
+  planLimits: Limits;
   self: boolean;
 };
 
@@ -104,7 +105,7 @@ export function UserActions({ user, viewerRole }: { user: Target; viewerRole: St
             <DropdownMenuItem disabled>Only a Super Administrator can change this account</DropdownMenuItem>
           ) : null}
           <DropdownMenuItem disabled={locked} onSelect={() => setQuotaOpen(true)}>
-            Adjust plan and quota
+            Change plan and limits
           </DropdownMenuItem>
           <DropdownMenuItem
             disabled={locked}
@@ -169,12 +170,12 @@ export function UserActions({ user, viewerRole }: { user: Target; viewerRole: St
         </DialogContent>
       </Dialog>
 
-      <QuotaDialog
+      <PlanDialog
         user={user}
         open={quotaOpen}
         onOpenChange={setQuotaOpen}
         onSave={(input) =>
-          perform(() => updateUserQuota(user.id, input), "Plan and quota saved", () => setQuotaOpen(false))
+          perform(() => updateUserPlan(user.id, input), "Plan and limits saved", () => setQuotaOpen(false))
         }
         pending={pending}
       />
@@ -182,7 +183,7 @@ export function UserActions({ user, viewerRole }: { user: Target; viewerRole: St
   );
 }
 
-function QuotaDialog({
+function PlanDialog({
   user,
   open,
   onOpenChange,
@@ -192,10 +193,9 @@ function QuotaDialog({
   user: Target;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSave: (input: { plan: string; quotaTokens: number | null; resetUsage: boolean }) => void;
+  onSave: (input: { plan: PlanId; overrides: Record<LimitWindow, number | null> }) => void;
   pending: boolean;
 }) {
-  const [resetUsage, setResetUsage] = useState(false);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -204,38 +204,55 @@ function QuotaDialog({
           onSubmit={(event) => {
             event.preventDefault();
             const form = new FormData(event.currentTarget);
-            const raw = String(form.get("quota") ?? "").replace(/[,\s_]/g, "");
+            const limit = (window: LimitWindow) => {
+              const raw = String(form.get(window) ?? "").replace(/[,\s_]/g, "");
+              return raw === "" ? null : Number(raw);
+            };
             onSave({
-              plan: String(form.get("plan") ?? "").trim(),
-              quotaTokens: raw === "" ? null : Number(raw),
-              resetUsage,
+              plan: asPlanId(form.get("plan")),
+              overrides: { daily: limit("daily"), weekly: limit("weekly"), monthly: limit("monthly") },
             });
           }}
         >
           <DialogHeader>
-            <DialogTitle>Plan and quota</DialogTitle>
-            <DialogDescription>{user.email}. The quota is a monthly token allowance.</DialogDescription>
+            <DialogTitle>Plan and limits</DialogTitle>
+            <DialogDescription>
+              {user.email}. Personal limits replace the plan&apos;s for this account. Leave a limit empty to use the
+              plan&apos;s; enter 0 for unlimited.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
             <Label htmlFor={`plan-${user.id}`}>Plan</Label>
-            <Input id={`plan-${user.id}`} name="plan" defaultValue={user.plan} required maxLength={40} className="h-10" />
+            <select
+              id={`plan-${user.id}`}
+              name="plan"
+              defaultValue={user.plan}
+              className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+            >
+              {PLAN_IDS.map((id) => (
+                <option key={id} value={id}>
+                  {id[0]!.toUpperCase() + id.slice(1)}
+                </option>
+              ))}
+            </select>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor={`quota-${user.id}`}>Monthly token limit</Label>
-            <Input
-              id={`quota-${user.id}`}
-              name="quota"
-              inputMode="numeric"
-              defaultValue={user.quotaTokens ?? ""}
-              placeholder="Unlimited"
-              className="h-10"
-            />
-            <p className="text-xs text-muted-foreground">Leave empty for unlimited. 0 blocks chatting.</p>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {WINDOWS.map((window) => (
+              <div key={window} className="space-y-2">
+                <Label htmlFor={`${window}-${user.id}`} className="capitalize">
+                  {window} tokens
+                </Label>
+                <Input
+                  id={`${window}-${user.id}`}
+                  name={window}
+                  inputMode="numeric"
+                  defaultValue={user.overrides[window] ?? ""}
+                  placeholder={`Plan: ${formatLimit(user.planLimits[window])}`}
+                  className="h-10"
+                />
+              </div>
+            ))}
           </div>
-          <label className="flex items-center justify-between gap-3 text-sm">
-            Reset this month&apos;s usage to zero
-            <Switch checked={resetUsage} onCheckedChange={setResetUsage} />
-          </label>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
             <Button type="submit" disabled={pending}>{pending ? "Saving…" : "Save"}</Button>

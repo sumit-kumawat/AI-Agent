@@ -24,6 +24,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { applyAppearance } from "@/lib/appearance";
 import type { ConversationListItem } from "@/lib/db/queries";
+import type { UsageSummary } from "@/lib/plans/types";
 import type { Preferences } from "@/lib/preferences-schema";
 import type { Role } from "@/lib/roles";
 import { SIDEBAR_COOKIE } from "@/lib/sidebar";
@@ -36,7 +37,6 @@ export type ShellUser = {
   publicId: string | null;
   username: string | null;
   createdAt: number;
-  usage: { used: number; limit: number | null };
 };
 
 type Chrome = {
@@ -47,6 +47,7 @@ type Chrome = {
   defaultModel: string | null;
   admin: boolean;
   user: ShellUser;
+  usage: UsageSummary;
   prefs: Preferences;
   /** Saves a preference change; returns whether it stuck. */
   updatePrefs: (patch: Partial<Preferences>, success?: string) => Promise<boolean>;
@@ -83,6 +84,7 @@ export function ChatShell({
   children,
   conversations,
   user,
+  usage,
   preferences,
   models,
   defaultModel,
@@ -93,6 +95,7 @@ export function ChatShell({
   children: ReactNode;
   conversations: ConversationListItem[];
   user: ShellUser;
+  usage: UsageSummary;
   preferences: Preferences;
   models: ModelOption[];
   defaultModel: string | null;
@@ -184,11 +187,12 @@ export function ChatShell({
       defaultModel,
       admin,
       user,
+      usage,
       prefs,
       updatePrefs,
       openSettings,
     }),
-    [collapsed, toggleCollapsed, models, defaultModel, admin, user, prefs, updatePrefs, openSettings],
+    [collapsed, toggleCollapsed, models, defaultModel, admin, user, usage, prefs, updatePrefs, openSettings],
   );
 
   return (

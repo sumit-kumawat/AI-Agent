@@ -80,7 +80,12 @@ export function storageUsed(userId: string) {
 }
 
 /** Validates, extracts and stores one upload. Throws FileRejected with a message for the person. */
-export async function saveUpload(userId: string, file: { name: string; bytes: Buffer }) {
+export async function saveUpload(
+  userId: string,
+  file: { name: string; bytes: Buffer },
+  /** Bytes this account may store; null means no plan limit. */
+  storageLimit: number | null = USER_STORAGE_BYTES,
+) {
   const name = cleanName(file.name);
   const kind = kindForName(name);
   if (!kind) throw new FileRejected(`${name}: this file type is not supported.`);
@@ -88,9 +93,9 @@ export async function saveUpload(userId: string, file: { name: string; bytes: Bu
   if (file.bytes.length > limit) {
     throw new FileRejected(`${name} is ${formatBytes(file.bytes.length)}. The limit for this type is ${formatBytes(limit)}.`);
   }
-  if (storageUsed(userId) + file.bytes.length > USER_STORAGE_BYTES) {
+  if (storageLimit !== null && storageUsed(userId) + file.bytes.length > storageLimit) {
     throw new FileRejected(
-      `Your file storage is full (${formatBytes(USER_STORAGE_BYTES)}). Delete chats with large attachments to free space.`,
+      `Your file storage is full (${formatBytes(storageLimit)} on your plan). Delete chats with large attachments to free space, or upgrade for more.`,
     );
   }
   let extracted;

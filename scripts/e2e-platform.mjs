@@ -20,7 +20,7 @@ const user = { email: `e2e-platform-${stamp}@harbor.local`, password: `platform-
 execFileSync(
   process.execPath,
   ["--disable-warning=ExperimentalWarning", "--disable-warning=MODULE_TYPELESS_PACKAGE_JSON", "scripts/seed.mjs"],
-  { env: { ...process.env, SEED_USER_EMAIL: user.email, SEED_USER_PASSWORD: user.password }, stdio: "ignore" },
+  { env: { ...process.env, SEED_USER_EMAIL: user.email, SEED_USER_PASSWORD: user.password, SEED_USER_PLAN: "advance" }, stdio: "ignore" },
 );
 
 let failures = 0;

@@ -14,6 +14,7 @@ import { pickModel, selectionBody, usePreferredModel, useWarmModel } from "@/com
 import { autoKey, modelKey, type AutoMode } from "@/lib/model-ref";
 import { Greeting, readDraft } from "@/components/chat/start-chat";
 import { useResearchStatus } from "@/components/chat/research";
+import { UpgradePrompt, UsageWarning } from "@/components/plans/upgrade-prompt";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -24,6 +25,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { AttachmentInfo } from "@/lib/attachments/types";
 import type { ChatMessage } from "@/lib/chat-types";
+import type { PlanBlock } from "@/lib/plans/types";
 import type { ResearchData } from "@/lib/research/types";
 import { textFromParts } from "@/lib/text";
 
@@ -157,10 +159,11 @@ export function ChatPanel({
   initialMessages: ChatMessage[];
 }) {
   const router = useRouter();
-  const { models, prefs } = useChatChrome();
+  const { models, prefs, usage } = useChatChrome();
   const actions = useConversationActions();
   const preferred = usePreferredModel();
   const [picked, setPicked] = useState<string | null>(null);
+  const [planBlock, setPlanBlock] = useState<PlanBlock | null>(null);
   const conversationKey = conversationMode
     ? autoKey(conversationMode)
     : conversationModel
@@ -177,12 +180,14 @@ export function ChatPanel({
         api: "/api/chat",
         body: { conversationId },
         fetch: async (input, init) => {
+          setPlanBlock(null);
           const response = await globalThis.fetch(input, init);
           if (!response.ok) {
             let message = "The model did not respond.";
             try {
-              const data = (await response.json()) as { error?: string };
+              const data = (await response.json()) as { error?: string; plan?: PlanBlock };
               if (data.error) message = data.error;
+              if (data.plan) setPlanBlock(data.plan);
             } catch {
               message = "The model did not respond.";
             }
@@ -366,7 +371,9 @@ export function ChatPanel({
               })
             )}
             {waiting ? <AssistantMessage text="" streaming last={false} /> : null}
-            {error ? (
+            {error && planBlock ? (
+              <UpgradePrompt block={planBlock} onRetry={retry} />
+            ) : error ? (
               <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm" role="alert">
                 <p>{error.message}</p>
                 <Button type="button" variant="outline" size="sm" className="mt-3" onClick={retry}>
@@ -389,6 +396,7 @@ export function ChatPanel({
           </Button>
         )}
       </div>
+      <UsageWarning usage={usage} />
       <Composer
         value={input}
         onChange={setInput}
@@ -402,6 +410,7 @@ export function ChatPanel({
         note={temporary ? "Temporary chat: not saved to history or memory." : undefined}
         files={files}
         research={{ on: research, onChange: setResearch, status: researchStatus }}
+        locked={usage.locked}
       />
     </div>
   );

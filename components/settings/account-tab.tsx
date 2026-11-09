@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -9,15 +10,16 @@ import { useFeedback } from "@/components/feedback";
 import { Row } from "@/components/settings/controls";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { formatReset } from "@/lib/plans/types";
 import { ROLE_LABEL } from "@/lib/roles";
 
 export function AccountTab() {
   const router = useRouter();
-  const { user } = useChatChrome();
+  const { user, usage } = useChatChrome();
   const { confirm, prompt, notify, toast } = useFeedback();
   const [name, setName] = useState(user.name);
   const [saving, setSaving] = useState(false);
-  const usage = user.usage;
+  const monthly = usage.windows.find((window) => window.window === "monthly");
 
   async function saveName() {
     setSaving(true);
@@ -95,13 +97,15 @@ export function AccountTab() {
           {new Date(user.createdAt).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })}
         </span>
       </Row>
-      <Row
-        label="Usage this month"
-        description={usage.limit === null ? "No monthly limit on this account." : "Resets on the 1st of each month."}
-      >
-        <span className="text-sm text-muted-foreground" data-usage>
-          {usage.used.toLocaleString()} {usage.limit === null ? "" : `of ${usage.limit.toLocaleString()} `}tokens
-        </span>
+      <Row label="Plan" description={usage.staff ? "Administrators are not limited by plans." : "Compare plans to see what each includes."}>
+        <Link href="/plans" className="text-sm font-medium underline-offset-4 hover:underline" data-plan={usage.plan.id}>
+          {usage.plan.name}
+        </Link>
+      </Row>
+      <Row label="Usage this month" description={monthly && monthly.limit !== 0 ? `Resets ${formatReset(monthly.resetAt)}.` : "No monthly limit on this account."}>
+        <Link href="/usage" className="text-sm text-muted-foreground underline-offset-4 hover:underline" data-usage>
+          {monthly ? `${monthly.used.toLocaleString()} ${monthly.limit === 0 ? "" : `of ${monthly.limit.toLocaleString()} `}tokens` : "—"}
+        </Link>
       </Row>
       <Row label="Delete account" description="Permanently deletes your account and everything in it.">
         <Button type="button" variant="destructive" size="sm" onClick={() => void deleteAccount()}>

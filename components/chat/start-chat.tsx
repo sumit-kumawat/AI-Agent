@@ -9,8 +9,8 @@ import { Composer } from "@/components/chat/composer";
 import { jsonFetch } from "@/components/chat/conversation-actions";
 import { pickModel, selectionBody, usePreferredModel, useWarmModel } from "@/components/chat/model-picker";
 import { useResearchStatus } from "@/components/chat/research";
+import { UsageWarning } from "@/components/plans/upgrade-prompt";
 import { Button } from "@/components/ui/button";
-
 import type { AttachmentInfo } from "@/lib/attachments/types";
 
 /** Carries the first message into the new chat page, which sends it. */
@@ -58,7 +58,7 @@ export function Greeting({ temporary = false }: { temporary?: boolean }) {
 /** A blank chat. The conversation is created when the first message is sent. */
 export function StartChat({ temporary }: { temporary: boolean }) {
   const router = useRouter();
-  const { models, prefs } = useChatChrome();
+  const { models, prefs, usage } = useChatChrome();
   const preferred = usePreferredModel();
   const [picked, setPicked] = useState<string | null>(null);
   const model = pickModel(models, prefs.cloudModels, picked, preferred);
@@ -116,6 +116,7 @@ export function StartChat({ temporary }: { temporary: boolean }) {
           <Greeting temporary={temporary} />
         </div>
         <div className="md:pb-[12vh]">
+          <UsageWarning usage={usage} />
           <Composer
             value={input}
             onChange={setInput}
@@ -129,6 +130,7 @@ export function StartChat({ temporary }: { temporary: boolean }) {
             note={temporary ? "Temporary chat: not saved to history or memory." : undefined}
             files={files}
             research={{ on: research, onChange: setResearch, status: researchStatus }}
+            locked={usage.locked}
           />
         </div>
       </div>

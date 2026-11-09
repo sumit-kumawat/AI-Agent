@@ -1,13 +1,9 @@
 import { isAdmin } from "@/lib/admin";
 import { audit } from "@/lib/audit";
 import { auth } from "@/lib/auth";
-import {
-  getInventory,
-  getModelName,
-  getUserInventory,
-  invalidateInventory,
-  ollamaRoot,
-} from "@/lib/ollama";
+import { findUserById } from "@/lib/db/queries";
+import { getInventory, getModelName, invalidateInventory, ollamaRoot } from "@/lib/ollama";
+import { inventoryForUser } from "@/lib/plans/entitlements";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
 import { modelNameSchema } from "@/lib/validators";
 
@@ -25,8 +21,12 @@ export async function GET() {
   if (!session?.user?.id) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const admin = isAdmin(session.user);
-  const inventory = admin ? await getInventory() : await getUserInventory();
+  const user = findUserById(session.user.id);
+  if (!user || user.suspended) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const admin = isAdmin(user);
+  const inventory = admin ? await getInventory() : await inventoryForUser(user);
   return Response.json(
     {
       ok: inventory.ok,

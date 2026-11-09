@@ -13,8 +13,9 @@ import {
   Command as CommandIcon,
   Files,
   FolderKanban,
+  Code,
   Loader2,
-  MessageSquare,
+  Menu,
   Moon,
   PanelBottom,
   Search,
@@ -30,6 +31,8 @@ import { SearchPanel } from "@/components/ide/search-panel";
 import { Splitter } from "@/components/ide/splitter";
 import { useIdeTheme } from "@/components/ide/use-ide-theme";
 import { useFeedback } from "@/components/feedback";
+import { useChatChrome } from "@/components/chat/chat-shell";
+
 loader.config({ paths: { vs: "/monaco/vs" } });
 
 type Monaco = typeof import("monaco-editor");
@@ -52,6 +55,7 @@ export function Workbench({
   user: { name: string; email: string };
 }) {
   const { confirm, notify } = useFeedback();
+  const { openMenu } = useChatChrome();
   const router = useRouter();
   const [theme, setTheme] = useIdeTheme();
   const [root, setRoot] = useState<HTMLDivElement | null>(null);
@@ -453,12 +457,15 @@ export function Workbench({
       <div
         ref={setRoot}
         data-ide
-        className={`${theme === "dark" ? "dark" : ""} flex h-dvh flex-col overflow-hidden bg-background text-foreground`}
+        className={`${theme === "dark" ? "dark" : ""} flex h-full flex-col overflow-hidden bg-background text-foreground`}
       >
         <header className="flex h-10 shrink-0 items-center gap-2 border-b bg-sidebar px-2">
-          <Link href="/chat" className="flex items-center gap-1.5 px-1 text-sm font-medium" title="Back to chat">
-            <MessageSquare className="size-4" />
-            <span className="hidden sm:inline">Chat</span>
+          <button type="button" onClick={openMenu} className="rounded p-1 md:hidden" aria-label="Open navigation">
+            <Menu className="size-4" />
+          </button>
+          <Link href="/ide" className="flex items-center gap-1.5 px-1 text-sm font-medium" title="All workspaces">
+            <Code className="size-4" />
+            <span className="hidden sm:inline">IDE</span>
           </Link>
           <span className="text-muted-foreground">/</span>
           <Link href="/ide" className="truncate text-sm hover:underline" title="All workspaces">

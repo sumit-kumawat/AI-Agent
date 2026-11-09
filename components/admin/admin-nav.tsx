@@ -10,6 +10,7 @@ import {
   LayoutDashboard,
   MessagesSquare,
   Settings,
+  Sparkles,
   Telescope,
   Users,
 } from "lucide-react";
@@ -18,6 +19,7 @@ const LINKS = [
   { href: "/admin", label: "Overview", icon: LayoutDashboard },
   { href: "/admin/users", label: "Users", icon: Users },
   { href: "/admin/usage", label: "Usage", icon: Activity },
+  { href: "/admin/plans", label: "Plans", icon: Sparkles },
   { href: "/admin/agents", label: "Agents & models", icon: Bot },
   { href: "/admin/providers", label: "Providers", icon: Cloud },
   { href: "/admin/research", label: "Research", icon: Telescope },

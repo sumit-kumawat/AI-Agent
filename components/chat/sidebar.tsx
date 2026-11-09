@@ -9,6 +9,7 @@ import {
   Boxes,
   CircleHelp,
   Code,
+  Gauge,
   Loader2,
   LogOut,
   MoreHorizontal,
@@ -21,6 +22,7 @@ import {
   Settings,
   Shield,
   SlidersHorizontal,
+  Sparkles,
   SquarePen,
   Trash,
   X,
@@ -283,12 +285,6 @@ function ProfileMenu({ onNavigate, collapsed }: { onNavigate?: () => void; colla
                 Admin panel
               </Link>
             </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link href="/ide">
-                <Code />
-                IDE
-              </Link>
-            </DropdownMenuItem>
           </>
         ) : null}
         <DropdownMenuSeparator />
@@ -410,7 +406,7 @@ export function SidebarBody({
   /** Present on desktop, where the sidebar can collapse to the rail. */
   onToggle?: () => void;
 }) {
-  const { admin } = useChatChrome();
+  const { admin, usage } = useChatChrome();
   const pathname = usePathname();
   const [searching, setSearching] = useState(false);
   const openSearch = () => {
@@ -426,6 +422,9 @@ export function SidebarBody({
       href: "/chat/models",
       active: pathname === "/chat/models",
     },
+    ...(!admin || usage.locked.ide ? [] : [{ label: "IDE", icon: Code, href: "/ide", active: pathname.startsWith("/ide") }]),
+    { label: "Usage", icon: Gauge, href: "/usage", active: pathname === "/usage" },
+    { label: "Plans", icon: Sparkles, href: "/plans", active: pathname === "/plans" },
   ];
   const item = (active = false) =>
     `flex h-9 w-full items-center gap-3 rounded-lg px-3 text-sm whitespace-nowrap ${

@@ -2,16 +2,21 @@ import type { Metadata } from "next";
 import { ModelsManager } from "@/components/chat/models-manager";
 import { isAdmin } from "@/lib/admin";
 import { MODEL_CATALOG } from "@/lib/model-catalog";
-import { getInventory, getUserInventory, resolveModel } from "@/lib/ollama";
+import { redirect } from "next/navigation";
+import { findUserById } from "@/lib/db/queries";
+import { getInventory, resolveModel } from "@/lib/ollama";
+import { inventoryForUser } from "@/lib/plans/entitlements";
 import { requireUser } from "@/lib/session";
 
 export const metadata: Metadata = { title: "Models" };
 export const dynamic = "force-dynamic";
 
 export default async function ModelsPage() {
-  const user = await requireUser();
+  const sessionUser = await requireUser();
+  const user = findUserById(sessionUser.id!);
+  if (!user) redirect("/login");
   const admin = isAdmin(user);
-  const inventory = admin ? await getInventory() : await getUserInventory();
+  const inventory = admin ? await getInventory() : await inventoryForUser(user);
 
   return (
     <ModelsManager
