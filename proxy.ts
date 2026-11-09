@@ -13,11 +13,13 @@ export default auth((req) => {
   const isAdminPage =
     pathname === "/admin" || pathname.startsWith("/admin/") || pathname === "/ide" || pathname.startsWith("/ide/");
   const isAccountPage = pathname === "/account" || pathname.startsWith("/account/");
-  const isProtected = pathname.startsWith("/chat") || isAdminPage || isAccountPage;
+  const isPortalPage =
+    pathname === "/portal" || pathname.startsWith("/portal/") || pathname.startsWith("/order/");
+  const isProtected = pathname.startsWith("/chat") || isAdminPage || isAccountPage || isPortalPage;
 
   if (isProtected && !isLoggedIn) {
     const url = new URL("/login", req.nextUrl);
-    url.searchParams.set("callbackUrl", pathname);
+    url.searchParams.set("callbackUrl", `${pathname}${req.nextUrl.search}`);
     return NextResponse.redirect(url);
   }
 
@@ -39,5 +41,17 @@ export default auth((req) => {
 });
 
 export const config = {
-  matcher: ["/chat/:path*", "/admin/:path*", "/admin", "/ide", "/ide/:path*", "/account/:path*", "/login", "/register"],
+  matcher: [
+    "/chat/:path*",
+    "/admin/:path*",
+    "/admin",
+    "/ide",
+    "/ide/:path*",
+    "/account/:path*",
+    "/portal",
+    "/portal/:path*",
+    "/order/:path*",
+    "/login",
+    "/register",
+  ],
 };

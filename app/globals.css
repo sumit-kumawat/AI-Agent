@@ -14,37 +14,44 @@
   color-scheme: light;
 }
 
+/*
+ * Dark theme. #10A37F carries dark text on filled buttons: white on it is
+ * only 3.2:1, below WCAG AA.
+ */
 :root.dark {
   color-scheme: dark;
-  --background: oklch(0.2 0.006 60);
-  --foreground: oklch(0.93 0.008 85);
-  --card: oklch(0.235 0.006 60);
-  --card-foreground: oklch(0.93 0.008 85);
-  --popover: oklch(0.25 0.006 60);
-  --popover-foreground: oklch(0.93 0.008 85);
-  --primary: oklch(0.74 0.1 175);
-  --primary-foreground: oklch(0.18 0.01 175);
-  --secondary: oklch(0.28 0.006 60);
-  --secondary-foreground: oklch(0.93 0.008 85);
-  --muted: oklch(0.28 0.006 60);
-  --muted-foreground: oklch(0.7 0.01 70);
-  --accent: oklch(0.31 0.03 175);
-  --accent-foreground: oklch(0.95 0.01 175);
-  --destructive: oklch(0.68 0.19 25);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.6 0.08 175);
-  --sidebar: oklch(0.175 0.006 60);
-  --sidebar-foreground: oklch(0.93 0.008 85);
-  --sidebar-primary: oklch(0.74 0.1 175);
-  --sidebar-primary-foreground: oklch(0.18 0.01 175);
-  --sidebar-accent: oklch(0.26 0.006 60);
-  --sidebar-accent-foreground: oklch(0.95 0 0);
-  --sidebar-border: oklch(1 0 0 / 8%);
-  --sidebar-ring: oklch(0.6 0.08 175);
+  --background: #212121;
+  --foreground: #ececec;
+  --card: #262626;
+  --card-foreground: #ececec;
+  --popover: #2f2f2f;
+  --popover-foreground: #ececec;
+  --brand: #10a37f;
+  --primary: #10a37f;
+  --primary-foreground: #0d0d0d;
+  --secondary: #2f2f2f;
+  --secondary-foreground: #ececec;
+  --muted: #2f2f2f;
+  --muted-foreground: #b4b4b4;
+  --subtle: #8e8ea0;
+  --accent: #2f2f2f;
+  --accent-foreground: #ececec;
+  --destructive: #f87171;
+  --border: rgb(255 255 255 / 10%);
+  --input: rgb(255 255 255 / 16%);
+  --ring: #10a37f;
+  --sidebar: #171717;
+  --sidebar-foreground: #ececec;
+  --sidebar-primary: #10a37f;
+  --sidebar-primary-foreground: #0d0d0d;
+  --sidebar-accent: #262626;
+  --sidebar-accent-foreground: #ececec;
+  --sidebar-border: rgb(255 255 255 / 8%);
+  --sidebar-ring: #10a37f;
+  --shadow-color: rgb(0 0 0 / 40%);
 }
 
-/* Accent colours. Teal is the brand default and needs no override. */
+/* Optional accents chosen in Settings. Green is the brand default and needs no override. */
 :root[data-accent="blue"] { --primary: oklch(0.48 0.15 255); --ring: oklch(0.58 0.14 255); --accent: oklch(0.94 0.025 255); --accent-foreground: oklch(0.32 0.1 255); }
 :root[data-accent="violet"] { --primary: oklch(0.47 0.17 295); --ring: oklch(0.58 0.15 295); --accent: oklch(0.94 0.03 295); --accent-foreground: oklch(0.32 0.12 295); }
 :root[data-accent="rose"] { --primary: oklch(0.52 0.17 10); --ring: oklch(0.62 0.15 10); --accent: oklch(0.94 0.03 10); --accent-foreground: oklch(0.35 0.12 10); }
@@ -92,9 +99,15 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "Geist Mono", ui-monospace, monospace;
-  --font-heading: "Fraunces", ui-serif, Georgia, serif;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --font-heading: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --color-brand: var(--brand);
+  --color-subtle: var(--subtle);
+  --shadow-sm: 0 1px 2px var(--shadow-color);
+  --shadow-md: 0 4px 16px var(--shadow-color);
+  --shadow-lg: 0 12px 32px var(--shadow-color);
+  --default-transition-duration: 160ms;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -124,50 +137,60 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
+  /* Inputs 8px, cards and bubbles 12–16px, pills 24px. */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+  --radius-3xl: 24px;
+  --radius-4xl: 28px;
 }
 
+/*
+ * Light theme. #10A37F is the brand accent (marks, rings, switches). Filled
+ * buttons and link text use a deeper shade, and muted text uses #6E6E80,
+ * because #10A37F and #8E8EA0 are about 3.2:1 on white, below WCAG AA for
+ * text. #8E8EA0 stays for placeholders and icons.
+ */
 :root,
 [data-ide]:not(.dark) {
   color-scheme: light;
-  --background: oklch(0.975 0.012 85);
-  --foreground: oklch(0.25 0.02 55);
-  --card: oklch(0.995 0.006 85);
-  --card-foreground: oklch(0.25 0.02 55);
-  --popover: oklch(0.995 0.006 85);
-  --popover-foreground: oklch(0.25 0.02 55);
-  --primary: oklch(0.4 0.07 175);
-  --primary-foreground: oklch(0.98 0.01 95);
-  --secondary: oklch(0.94 0.015 85);
-  --secondary-foreground: oklch(0.28 0.02 55);
-  --muted: oklch(0.94 0.012 85);
-  --muted-foreground: oklch(0.48 0.02 60);
-  --accent: oklch(0.93 0.02 170);
-  --accent-foreground: oklch(0.3 0.04 175);
-  --destructive: oklch(0.55 0.18 28);
-  --border: oklch(0.88 0.015 80);
-  --input: oklch(0.88 0.015 80);
-  --ring: oklch(0.5 0.07 175);
+  --background: #ffffff;
+  --foreground: #202123;
+  --card: #ffffff;
+  --card-foreground: #202123;
+  --popover: #ffffff;
+  --popover-foreground: #202123;
+  --brand: #10a37f;
+  --primary: #0b7a5f;
+  --primary-foreground: #ffffff;
+  --secondary: #f7f7f8;
+  --secondary-foreground: #202123;
+  --muted: #f7f7f8;
+  --muted-foreground: #6e6e80;
+  --subtle: #8e8ea0;
+  --accent: #ececf1;
+  --accent-foreground: #202123;
+  --destructive: #d92d20;
+  --border: #e5e5e5;
+  --input: #d9d9e3;
+  --ring: #10a37f;
+  --shadow-color: rgb(0 0 0 / 8%);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --radius: 0.75rem;
+  --sidebar: #f7f7f8;
+  --sidebar-foreground: #202123;
+  --sidebar-primary: #0b7a5f;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #ececf1;
+  --sidebar-accent-foreground: #202123;
+  --sidebar-border: #e5e5e5;
+  --sidebar-ring: #10a37f;
 }
 
 @layer base {
@@ -179,6 +202,17 @@
   }
   html {
     @apply font-sans;
+  }
+  h1,
+  h2,
+  h3,
+  .font-heading {
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
   }
 }
 

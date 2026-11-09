@@ -113,18 +113,73 @@ All new tables reference these with foreign keys; nothing is dropped.
 - Ollama remains the local default. Installing and disabling local models
   stays on Agents & models.
 
-## 6. Next up
+## 6. What changed in the business platform release
 
-1. Phase 7: storage abstraction, uploads, attachments in the composer,
-   library page, avatars.
-2. Phase 8: projects (instructions, files, chats), custom assistants, share
-   links (read-only, revocable).
-3. Phase 9 remainder: feature flags, maintenance mode, storage admin.
-4. Phase 3 remainder: SMTP-backed verification and reset, optional Google
-   sign-in, optional 2FA.
-5. Phase 4 remainder: response branching, export of a single chat, pagination
-   of very long histories.
+CONZEX no longer depends on WHMCS. Website, customer portal, billing and
+requests are part of this app.
 
-Capabilities without a working backend (web search, deep research, image
-generation, voice, code execution) are not shown in the UI until they are
+- **Design**: Inter, the light (`#FFFFFF`, sidebar `#F7F7F8`) and dark
+  (`#212121`, sidebar `#171717`) palettes, accent `#10A37F`. The accent and
+  `#8E8EA0` fail WCAG AA as text on white, so text uses `#6E6E80` and light
+  primary buttons use `#0B7A5F`; `#10A37F` stays for marks, focus rings and
+  dark mode.
+- **Website** (`app/(site)`): home, domains (search and transfer), web,
+  WordPress, builder, cloud, VPS, dedicated, business hosting, email, SSL,
+  website security, backup, four solutions pages, CONZEX AI, FAQ, support and
+  about. The copy comes from the old WHMCS addon (`lib/site/pages.ts`). Product
+  pages list plans from the catalogue, and say "quoted on request" when there
+  are none. Prices show in the visitor's currency (INR or USD).
+- **Migration 7** (additive): `billing_profiles`, `products`, `product_prices`,
+  `services`, `invoices`, `invoice_items`, `payments`, `projects`,
+  `project_updates`, `proposals`. Amounts are stored in paise or cents.
+- **Billing** (`lib/billing`): orders create a pending service and an invoice
+  (numbered `CZX-YEAR-00001`, configurable GST). Paying activates the service
+  and sets its next due date. An AI plan sets the member's plan and token quota
+  while it is paid. Renewal invoices are issued hourly (`instrumentation.ts`),
+  ahead of the due date, once per period. A requested cancellation ends the
+  service at the end of the paid term.
+- **Razorpay**: keys are saved encrypted under Admin → Billing → Payments &
+  tax. Checkout is verified with the order signature and the webhook
+  (`/api/billing/razorpay/webhook`) with the webhook secret. Payment is applied
+  once, and only when the amount and currency match the invoice. Without keys,
+  invoices say online payment is not set up, and admins can record bank
+  transfers.
+- **Portal** (`/portal`): overview, services (with cancellation), invoices
+  (print or save as PDF, pay), requests and billing details.
+- **Requests** replace the WHMCS projects addon. Customers send a request; staff
+  reply, keep internal notes, change status and send a proposal. Accepting a
+  proposal issues an invoice; paying it moves the request to In progress.
+- **Domains**: availability is looked up live over RDAP. No registrar is
+  connected, so registering or transferring opens a request.
+- **Admin**: Billing (overview, invoices, services, plans and prices, payments
+  and tax) and Requests. Every change is audited; secrets are never logged.
+- **Tests**: `npm run e2e:billing` covers the website, ordering with GST,
+  signed and forged webhooks and checkout callbacks, replay safety, invoice
+  isolation between customers, and the request to proposal to invoice flow.
+
+## 7. Needs a provider before it can work
+
+| Capability | What is missing |
+| --- | --- |
+| Online card and UPI payment | Razorpay key ID, key secret and webhook secret (Admin → Billing → Payments & tax) |
+| Domain registration and transfer | A registrar API. Until then these go through a request |
+| Email verification, password reset, invoice emails | SMTP settings (not built yet) |
+| Google sign-in | Google OAuth client (not built yet) |
+| Image, GIF and video generation, voice, web search and research | Provider integrations (not built yet; not shown in the UI) |
+
+## 8. Next up
+
+1. Remove the separate local WHMCS install once its removal is confirmed.
+2. Phase 7: storage, uploads, attachments in the composer, library page,
+   avatars; document export (PDF, DOCX, XLSX, CSV, PPTX, TXT, MD).
+3. Phase 3 remainder: SMTP settings in admin, email verification, password
+   reset, invoice and renewal emails, optional Google sign-in and 2FA.
+4. Generation and research: image, GIF and video generation, web search with
+   real citations, voice, each behind a configured provider.
+5. Phase 8: projects in chat, custom assistants, share links.
+6. Settings modal tabs for billing, notifications and connected providers;
+   phase 9 remainder (feature flags, maintenance mode, storage admin); phase 4
+   remainder.
+
+Capabilities without a working backend are not shown in the UI until they are
 implemented.

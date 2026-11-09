@@ -2,18 +2,27 @@ import type { NextConfig } from "next";
 
 const isDev = process.env.NODE_ENV !== "production";
 
+// Razorpay Checkout loads its script and opens its payment frame from these hosts.
+const razorpay = {
+  script: "https://checkout.razorpay.com",
+  frame: "https://api.razorpay.com https://checkout.razorpay.com",
+  connect: "https://api.razorpay.com https://lumberjack.razorpay.com",
+  img: "https://*.razorpay.com",
+};
+
 const contentSecurityPolicy = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
+  `script-src 'self' 'unsafe-inline' ${razorpay.script}${isDev ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob:",
+  `img-src 'self' data: blob: ${razorpay.img}`,
   "font-src 'self' data:",
-  `connect-src 'self'${isDev ? " ws: wss:" : ""}`,
+  `connect-src 'self' ${razorpay.connect}${isDev ? " ws: wss:" : ""}`,
+  `frame-src ${razorpay.frame}`,
   // The IDE's Monaco editor runs language services in same-origin and blob workers.
   "worker-src 'self' blob:",
   "frame-ancestors 'none'",
   "base-uri 'self'",
-  "form-action 'self'",
+  `form-action 'self' ${razorpay.frame}`,
   "object-src 'none'",
 ].join("; ");
 

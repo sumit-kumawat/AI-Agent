@@ -6,7 +6,7 @@ import { Row, Segmented, Select, Toggle } from "@/components/settings/controls";
 import { ACCENTS, type Preferences } from "@/lib/preferences-schema";
 
 const SWATCH: Record<Preferences["accent"], string> = {
-  teal: "oklch(0.5 0.08 175)",
+  teal: "#10a37f",
   blue: "oklch(0.55 0.15 255)",
   violet: "oklch(0.55 0.17 295)",
   rose: "oklch(0.6 0.17 10)",

@@ -17,7 +17,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
   return (
     <div className="flex min-h-dvh flex-col md:flex-row">
-      <aside className="border-b bg-card/60 md:sticky md:top-0 md:flex md:h-dvh md:w-60 md:shrink-0 md:flex-col md:border-r md:border-b-0">
+      <aside className="border-b bg-card/60 print:hidden md:sticky md:top-0 md:flex md:h-dvh md:w-60 md:shrink-0 md:flex-col md:border-r md:border-b-0">
         <div className="flex items-center gap-2 px-4 pt-4 pb-3">
           <Mark className="size-7 text-primary" />
           <div className="min-w-0 flex-1">

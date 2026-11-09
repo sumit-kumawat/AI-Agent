@@ -265,6 +265,148 @@ const MIGRATIONS: ((sqlite: Sqlite) => void)[] = [
     seed.run("anthropic", "anthropic", "Anthropic", 0, now, now);
     seed.run("google", "google", "Google Gemini", 0, now, now);
   },
+
+  // 7: CONZEX business platform (replaces WHMCS): billing profiles, catalogue,
+  // services, invoices, payments, and custom project requests.
+  (sqlite) => {
+    sqlite.exec(`
+      CREATE TABLE IF NOT EXISTS billing_profiles (
+        user_id TEXT PRIMARY KEY NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        company TEXT, address1 TEXT, address2 TEXT, city TEXT, state TEXT,
+        postcode TEXT, country TEXT, phone TEXT, tax_id TEXT,
+        currency TEXT NOT NULL DEFAULT 'INR',
+        updated_at INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS products (
+        id TEXT PRIMARY KEY NOT NULL,
+        slug TEXT NOT NULL UNIQUE,
+        group_slug TEXT NOT NULL,
+        kind TEXT NOT NULL DEFAULT 'hosting',
+        name TEXT NOT NULL,
+        tagline TEXT NOT NULL DEFAULT '',
+        features TEXT NOT NULL DEFAULT '',
+        featured INTEGER NOT NULL DEFAULT 0,
+        hidden INTEGER NOT NULL DEFAULT 1,
+        sort INTEGER NOT NULL DEFAULT 0,
+        ai_quota_tokens INTEGER,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS products_group_idx ON products (group_slug, sort);
+      CREATE TABLE IF NOT EXISTS product_prices (
+        product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+        currency TEXT NOT NULL,
+        cycle TEXT NOT NULL,
+        amount_minor INTEGER NOT NULL,
+        setup_minor INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (product_id, currency, cycle)
+      );
+      CREATE TABLE IF NOT EXISTS services (
+        id TEXT PRIMARY KEY NOT NULL,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        product_id TEXT REFERENCES products(id) ON DELETE SET NULL,
+        name TEXT NOT NULL,
+        kind TEXT NOT NULL DEFAULT 'hosting',
+        status TEXT NOT NULL,
+        cycle TEXT NOT NULL,
+        currency TEXT NOT NULL,
+        amount_minor INTEGER NOT NULL,
+        label TEXT,
+        next_due_at INTEGER,
+        activated_at INTEGER,
+        cancelled_at INTEGER,
+        cancel_requested_at INTEGER,
+        ai_quota_tokens INTEGER,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS services_user_idx ON services (user_id, created_at);
+      CREATE INDEX IF NOT EXISTS services_due_idx ON services (status, next_due_at);
+      CREATE TABLE IF NOT EXISTS invoices (
+        id TEXT PRIMARY KEY NOT NULL,
+        number TEXT NOT NULL UNIQUE,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        status TEXT NOT NULL,
+        currency TEXT NOT NULL,
+        subtotal_minor INTEGER NOT NULL,
+        tax_rate REAL NOT NULL DEFAULT 0,
+        tax_label TEXT NOT NULL DEFAULT '',
+        tax_minor INTEGER NOT NULL DEFAULT 0,
+        total_minor INTEGER NOT NULL,
+        bill_to TEXT NOT NULL,
+        project_id TEXT,
+        due_at INTEGER NOT NULL,
+        paid_at INTEGER,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS invoices_user_idx ON invoices (user_id, created_at);
+      CREATE INDEX IF NOT EXISTS invoices_status_idx ON invoices (status, due_at);
+      CREATE TABLE IF NOT EXISTS invoice_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        invoice_id TEXT NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL,
+        description TEXT NOT NULL,
+        amount_minor INTEGER NOT NULL,
+        service_id TEXT REFERENCES services(id) ON DELETE SET NULL,
+        period_start INTEGER,
+        period_end INTEGER
+      );
+      CREATE INDEX IF NOT EXISTS invoice_items_invoice_idx ON invoice_items (invoice_id);
+      CREATE INDEX IF NOT EXISTS invoice_items_service_idx ON invoice_items (service_id, period_start);
+      CREATE TABLE IF NOT EXISTS payments (
+        id TEXT PRIMARY KEY NOT NULL,
+        invoice_id TEXT NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+        gateway TEXT NOT NULL,
+        gateway_order_id TEXT UNIQUE,
+        gateway_payment_id TEXT UNIQUE,
+        amount_minor INTEGER NOT NULL,
+        currency TEXT NOT NULL,
+        status TEXT NOT NULL,
+        note TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS payments_invoice_idx ON payments (invoice_id);
+      CREATE TABLE IF NOT EXISTS projects (
+        id TEXT PRIMARY KEY NOT NULL,
+        reference TEXT NOT NULL UNIQUE,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        type TEXT NOT NULL,
+        title TEXT NOT NULL,
+        requirements TEXT NOT NULL,
+        budget TEXT NOT NULL DEFAULT '',
+        timeline TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'submitted',
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS projects_user_idx ON projects (user_id, updated_at);
+      CREATE TABLE IF NOT EXISTS project_updates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        author_type TEXT NOT NULL,
+        author_id TEXT,
+        status TEXT,
+        message TEXT NOT NULL,
+        visible_to_client INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS project_updates_project_idx ON project_updates (project_id, created_at);
+      CREATE TABLE IF NOT EXISTS proposals (
+        id TEXT PRIMARY KEY NOT NULL,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        summary TEXT NOT NULL,
+        currency TEXT NOT NULL,
+        amount_minor INTEGER NOT NULL,
+        status TEXT NOT NULL,
+        invoice_id TEXT REFERENCES invoices(id) ON DELETE SET NULL,
+        created_at INTEGER NOT NULL,
+        responded_at INTEGER
+      );
+      CREATE INDEX IF NOT EXISTS proposals_project_idx ON proposals (project_id, created_at);
+    `);
+  },
 ];
 
 function version(sqlite: Sqlite) {

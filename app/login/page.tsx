@@ -15,7 +15,7 @@ import {
 export const metadata: Metadata = { title: "Sign in" };
 
 function safeCallback(value: string | undefined) {
-  if (!value || !value.startsWith("/") || value.startsWith("//")) return "/chat";
+  if (!value || !value.startsWith("/") || value.startsWith("//") || value.startsWith("/\\")) return "/chat";
   return value;
 }
 

@@ -240,16 +240,31 @@ try {
   // Quota.
   await userRowAction(adminPage, user.email, "Adjust plan and quota");
   await adminPage.waitForSelector('input[name="quota"]');
-  await adminPage.$eval('input[name="plan"]', (input) => (input.value = ""));
-  await adminPage.type('input[name="plan"]', "pro");
+  await adminPage.waitForFunction(() => {
+    const dialog = document.querySelector("[role=dialog]");
+    return dialog && dialog.getAnimations({ subtree: true }).every((animation) => animation.playState === "finished");
+  });
+  await adminPage.$eval('input[name="plan"]', (input) => {
+    input.focus();
+    input.select();
+  });
+  await adminPage.keyboard.type("pro");
   await adminPage.type('input[name="quota"]', "1");
   await clickText(adminPage, "Save", "[role=dialog]");
   await popup(adminPage, "Plan and quota saved");
   await adminPage.waitForSelector("[role=dialog]", { hidden: true });
-  await adminPage.waitForFunction((email) => {
-    const row = [...document.querySelectorAll("tr")].find((tr) => tr.innerText.includes(email));
-    return /Pro/.test(row?.innerText ?? "") && /\/\s*1\b/.test(row?.innerText ?? "");
-  }, {}, user.email);
+  await adminPage
+    .waitForFunction((email) => {
+      const row = [...document.querySelectorAll("tr")].find((tr) => tr.innerText.includes(email));
+      return /Pro/.test(row?.innerText ?? "") && /\/\s*1\b/.test(row?.innerText ?? "");
+    }, {}, user.email)
+    .catch(async (error) => {
+      const row = await adminPage.evaluate(
+        (email) => [...document.querySelectorAll("tr")].find((tr) => tr.innerText.includes(email))?.innerText ?? "(row not found)",
+        user.email,
+      );
+      throw new Error(`plan and quota not shown for the user; row reads: ${row.replace(/\s+/g, " ")}`, { cause: error });
+    });
   const overQuota = await chat(userPage, "hi");
   check(overQuota.status === 429 && /allowance/.test(overQuota.body?.error ?? ""), "user over quota is blocked");
   await userRowAction(adminPage, user.email, "Adjust plan and quota");
