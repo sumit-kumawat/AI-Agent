@@ -37,11 +37,23 @@ export type AdminUserRow = {
   conversations: number;
 };
 
-export function listUsers({ q, page }: { q: string; page: number }) {
+export const USER_STATUSES = ["all", "active", "suspended", "staff", "inactive"] as const;
+export type UserStatus = (typeof USER_STATUSES)[number];
+
+export function listUsers({ q, page, status = "all", plan = "" }: { q: string; page: number; status?: UserStatus; plan?: string }) {
   const like = likePattern(q);
-  const filter = q
-    ? sql`WHERE u.email LIKE ${like} ESCAPE '\\' OR u.name LIKE ${like} ESCAPE '\\' OR u.username LIKE ${like} ESCAPE '\\' OR u.public_id LIKE ${like} ESCAPE '\\'`
-    : sql``;
+  const conditions = [sql`1 = 1`];
+  if (q) {
+    conditions.push(
+      sql`(u.email LIKE ${like} ESCAPE '\\' OR u.name LIKE ${like} ESCAPE '\\' OR u.username LIKE ${like} ESCAPE '\\' OR u.public_id LIKE ${like} ESCAPE '\\')`,
+    );
+  }
+  if (status === "active") conditions.push(sql`u.suspended = 0 AND u.last_active_at >= ${Date.now() - 30 * DAY}`);
+  if (status === "inactive") conditions.push(sql`u.suspended = 0 AND (u.last_active_at IS NULL OR u.last_active_at < ${Date.now() - 30 * DAY})`);
+  if (status === "suspended") conditions.push(sql`u.suspended = 1`);
+  if (status === "staff") conditions.push(sql`u.role IN ('admin', 'superadmin')`);
+  if (plan) conditions.push(sql`u.plan = ${plan}`);
+  const filter = sql`WHERE ${sql.join(conditions, sql` AND `)}`;
   const rows = db.all<AdminUserRow>(sql`
     SELECT u.id, u.public_id AS publicId, u.username, u.name, u.email, u.role, u.suspended, u.plan,
            u.tokens_total AS tokensTotal, u.last_active_at AS lastActiveAt, u.created_at AS createdAt,
@@ -52,37 +64,6 @@ export function listUsers({ q, page }: { q: string; page: number }) {
   `);
   const total = db.get<{ count: number }>(sql`SELECT COUNT(*) AS count FROM users u ${filter}`)?.count ?? 0;
   return { rows, total };
-}
-
-export function overviewStats() {
-  const dayAgo = Date.now() - DAY;
-  const monthStart = new Date();
-  monthStart.setUTCDate(1);
-  monthStart.setUTCHours(0, 0, 0, 0);
-  return db.get<{
-    users: number;
-    admins: number;
-    suspended: number;
-    activeToday: number;
-    conversations: number;
-    tokensToday: number;
-    tokensMonth: number;
-    callsToday: number;
-    rateLimitHits: number;
-    flagged: number;
-  }>(sql`
-    SELECT
-      (SELECT COUNT(*) FROM users) AS users,
-      (SELECT COUNT(*) FROM users WHERE role IN ('admin', 'superadmin')) AS admins,
-      (SELECT COUNT(*) FROM users WHERE suspended = 1) AS suspended,
-      (SELECT COUNT(*) FROM users WHERE last_active_at >= ${dayAgo}) AS activeToday,
-      (SELECT COUNT(*) FROM conversations) AS conversations,
-      (SELECT COALESCE(SUM(total_tokens), 0) FROM usage_events WHERE created_at >= ${dayAgo}) AS tokensToday,
-      (SELECT COALESCE(SUM(total_tokens), 0) FROM usage_events WHERE created_at >= ${monthStart.getTime()}) AS tokensMonth,
-      (SELECT COUNT(*) FROM usage_events WHERE created_at >= ${dayAgo}) AS callsToday,
-      (SELECT COUNT(*) FROM rate_limit_events WHERE created_at >= ${dayAgo}) AS rateLimitHits,
-      (SELECT COUNT(*) FROM messages WHERE flagged = 1) AS flagged
-  `)!;
 }
 
 export function usageTimeline(period: Period) {

@@ -47,9 +47,35 @@ export function AgentRow({
         </div>
         <p className="mt-1 text-sm text-muted-foreground">{agent.description}</p>
         <p className="mt-1 text-xs text-muted-foreground">
-          {running} running · limit {agent.maxConcurrency}
+          {connected ? `${running} running · limit ${agent.maxConcurrency}` : "Requests to this agent are rejected until an adapter is added to the server."}
         </p>
       </div>
+      {connected ? (
+        <AgentLimits agent={agent} limit={limit} setLimit={setLimit} pending={pending} save={save} />
+      ) : (
+        <span className="text-sm text-muted-foreground" data-agent-unavailable={agent.id}>
+          Unavailable
+        </span>
+      )}
+    </div>
+  );
+}
+
+function AgentLimits({
+  agent,
+  limit,
+  setLimit,
+  pending,
+  save,
+}: {
+  agent: { id: string; name: string; enabled: boolean; maxConcurrency: number };
+  limit: string;
+  setLimit: (value: string) => void;
+  pending: boolean;
+  save: (patch: { enabled?: boolean; maxConcurrency?: number }) => void;
+}) {
+  return (
+    <>
       <form
         className="flex items-center gap-2"
         onSubmit={(event) => {
@@ -87,7 +113,7 @@ export function AgentRow({
         />
         {agent.enabled ? "On" : "Off"}
       </label>
-    </div>
+    </>
   );
 }
 

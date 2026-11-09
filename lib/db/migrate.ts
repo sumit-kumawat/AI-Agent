@@ -385,6 +385,22 @@ const MIGRATIONS: ((sqlite: Sqlite) => void)[] = [
     addColumn(sqlite, "conversations", "summary_count", "INTEGER");
     addColumn(sqlite, "conversations", "summary_through", "TEXT");
   },
+
+  // 14: security events (failed and refused sign-ins) for the admin
+  // dashboard. Kept when an account is deleted, like the audit log.
+  (sqlite) => {
+    sqlite.exec(`
+      CREATE TABLE IF NOT EXISTS security_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        type TEXT NOT NULL,
+        email TEXT,
+        user_id TEXT,
+        ip TEXT,
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS security_events_created_idx ON security_events (created_at);
+    `);
+  },
 ];
 
 // No 0/O or 1/I, so IDs survive being read aloud or retyped.

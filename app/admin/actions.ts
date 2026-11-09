@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { killSession, listSessions, getAgent, updateAgent } from "@/lib/agents";
 import { adminAction, assertCanManage, type AdminUser } from "@/lib/admin";
+import { CLEANUP_PARTS, cleanupUserData, userDataSummary } from "@/lib/admin/user-data";
 import { audit } from "@/lib/audit";
 import { db } from "@/lib/db";
 import { adminCount, findUserById, superAdminCount } from "@/lib/db/queries";
@@ -104,6 +105,120 @@ export async function setUserSuspended(id: string, suspended: boolean) {
     if (suspended) endSessionsFor(user.id);
     audit(admin, suspended ? "user.suspend" : "user.reactivate", { type: "user", id: user.id }, { email: user.email });
     revalidatePath("/admin/users");
+    return {};
+  });
+}
+
+const MAX_BULK = 100;
+const idList = z.array(z.string().uuid()).min(1, "Select at least one user.").max(MAX_BULK, `Select at most ${MAX_BULK} users at a time.`);
+
+/** Why `admin` may not delete or clean up `user`, or null when allowed. */
+function cleanupRefusal(admin: AdminUser, user: { id: string; role: Role }, deletingAccount: boolean) {
+  if (user.id === admin.id) return "You cannot delete or clean up your own account here. Use Settings → Account.";
+  if (isStaff(user.role) && admin.role !== "superadmin") return "Only a Super Administrator can act on administrator accounts.";
+  if (deletingAccount && user.role === "superadmin" && superAdminCount() <= 1) return "At least one Super Administrator must remain.";
+  if (deletingAccount && isStaff(user.role) && adminCount() <= 1) return "At least one admin must remain.";
+  return null;
+}
+
+/** What deleting or cleaning up these users would affect, and which of them cannot be. */
+export async function previewUserCleanup(ids: string[]) {
+  return run((admin) => {
+    const parsed = idList.safeParse(ids);
+    if (!parsed.success) fail(parsed.error.issues[0]?.message ?? "Select users.");
+    const users = parsed.data.map((id) => {
+      const summary = userDataSummary(id);
+      if (!summary) return { id, missing: true as const };
+      const role = summary.role as Role;
+      return { ...summary, missing: false as const, refusal: cleanupRefusal(admin, { id, role }, true) };
+    });
+    return { users };
+  });
+}
+
+const cleanupSchema = z.object({
+  ids: idList,
+  parts: z.array(z.enum(CLEANUP_PARTS)).min(1, "Choose what to delete."),
+  /** "DELETE" to remove accounts, "CLEAN UP" otherwise; typed by the admin. */
+  confirmation: z.string(),
+});
+
+/** Deletes accounts or selected data. Usage and audit records are always kept. */
+export async function cleanupUsers(input: z.input<typeof cleanupSchema>) {
+  return run((admin) => {
+    const parsed = cleanupSchema.safeParse(input);
+    if (!parsed.success) fail(parsed.error.issues[0]?.message ?? "Check the selection.");
+    const parts = new Set(parsed.data.parts);
+    const deletingAccount = parts.has("account");
+    const expected = deletingAccount ? "DELETE" : "CLEAN UP";
+    if (parsed.data.confirmation.trim() !== expected) fail(`Type ${expected} to confirm.`);
+    const done: { id: string; email: string }[] = [];
+    const skipped: { id: string; reason: string }[] = [];
+    for (const id of new Set(parsed.data.ids)) {
+      const user = findUserById(id);
+      if (!user) {
+        skipped.push({ id, reason: "Already deleted." });
+        continue;
+      }
+      const refusal = cleanupRefusal(admin, user, deletingAccount);
+      if (refusal) {
+        skipped.push({ id, reason: `${user.email}: ${refusal}` });
+        continue;
+      }
+      if (deletingAccount) endSessionsFor(user.id);
+      const result = cleanupUserData(user.id, parts);
+      if (!result) {
+        skipped.push({ id, reason: "Already deleted." });
+        continue;
+      }
+      audit(admin, deletingAccount ? "user.delete" : "user.cleanup", { type: "user", id: user.id }, {
+        email: user.email,
+        parts: [...parts],
+        removed: result.removed,
+        kept: { usageEvents: result.before.usageEvents, auditEntries: result.before.auditEntries },
+      });
+      done.push({ id: user.id, email: user.email });
+    }
+    revalidatePath("/admin/users");
+    revalidatePath("/admin");
+    return { done, skipped };
+  });
+}
+
+const profileSchema = z.object({
+  name: z.string().trim().min(1, "Enter a name.").max(100),
+  email: z.email("Enter a valid email address.").max(254).transform((value) => value.trim().toLowerCase()),
+});
+
+/** Name and email only: user IDs and usernames are generated and never edited. */
+
+export async function updateUserProfile(id: string, input: z.input<typeof profileSchema>) {
+  return run((admin) => {
+    const user = targetUser(id);
+    assertCanManage(admin, user);
+    const parsed = profileSchema.safeParse(input);
+    if (!parsed.success) fail(parsed.error.issues[0]?.message ?? "Check the form.");
+    const next = parsed.data;
+    const clash = db
+      .select({ id: users.id })
+      .from(users)
+      .where(sql`(${users.email} = ${next.email} OR ${users.username} = ${next.email}) AND ${users.id} != ${user.id}`)
+      .get();
+    if (clash) fail("Another account already uses that email.");
+    const changes = Object.fromEntries(
+      (["name", "email"] as const)
+        .filter((key) => user[key] !== next[key])
+        .map((key) => [key, { from: user[key], to: next[key] }]),
+    );
+    if (Object.keys(changes).length === 0) return {};
+    db.update(users)
+      .set({ ...next, ...(next.email !== user.email ? { sessionVersion: sql`${users.sessionVersion} + 1` } : {}) })
+      .where(eq(users.id, user.id))
+      .run();
+    if (next.email !== user.email) endSessionsFor(user.id);
+    audit(admin, "user.update", { type: "user", id: user.id }, changes);
+    revalidatePath("/admin/users");
+    revalidatePath(`/admin/users/${user.id}`);
     return {};
   });
 }

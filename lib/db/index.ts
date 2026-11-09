@@ -44,3 +44,7 @@ function openDatabase() {
 }
 
 export const db = openDatabase();
+
+/** The SQLite file, for size and health reporting. */
+export const databaseFile = filename;
+export const dataDirectory = dataDir;

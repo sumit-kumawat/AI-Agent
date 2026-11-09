@@ -2,7 +2,7 @@ import NextAuth, { CredentialsSignin } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { compare } from "bcryptjs";
 import { authConfig } from "@/lib/auth.config";
-import { findUserById, findUserByLogin, touchUser } from "@/lib/db/queries";
+import { findUserById, findUserByLogin, recordSecurityEvent, touchUser } from "@/lib/db/queries";
 import { env } from "@/lib/env";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
 import { credentialsSchema } from "@/lib/validators";
@@ -61,15 +61,24 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const context = { endpoint: "sign-in", ip };
         const byIp = ip ? rateLimit(`login:ip:${ip}`, 30, WINDOW, context) : { ok: true };
         const byEmail = rateLimit(`login:email:${parsed.data.email}`, 10, WINDOW, context);
-        if (!byIp.ok || !byEmail.ok) throw new RateLimited();
+        if (!byIp.ok || !byEmail.ok) {
+          recordSecurityEvent({ type: "login_rate_limited", email: parsed.data.email, ip });
+          throw new RateLimited();
+        }
 
         const user = findUserByLogin(parsed.data.email);
         const passwordMatches = await compare(
           parsed.data.password,
           user?.passwordHash ?? DUMMY_HASH,
         );
-        if (!user || !passwordMatches) return null;
-        if (user.suspended) throw new Suspended();
+        if (!user || !passwordMatches) {
+          recordSecurityEvent({ type: "login_failed", email: parsed.data.email, userId: user?.id, ip });
+          return null;
+        }
+        if (user.suspended) {
+          recordSecurityEvent({ type: "login_suspended", email: user.email, userId: user.id, ip });
+          throw new Suspended();
+        }
 
         touchUser(user.id);
         return {

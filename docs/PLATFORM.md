@@ -294,6 +294,40 @@ replaced by the admin sections.
 and forced change, and replays admin actions as a plain Administrator to prove
 the server refuses them.
 
+### Admin overview and user management
+
+- **Overview** (`/admin`) is measured, not estimated: accounts, plans,
+  requests, tokens, errors and content come from the database for 7, 30 or 90
+  days; CPU, memory, uptime, database health, storage and disk come from this
+  server; Ollama status and loaded models from the runtime. It refreshes every
+  15 seconds while the tab is visible (pause or refresh by hand), served by
+  `GET /api/admin/metrics` (admins only). Revenue says "not available" because
+  no payment gateway is connected.
+- **Security events**: failed, suspended and rate-limited sign-ins are recorded
+  in `security_events` (migration 14), shown on the overview with when
+  recording began. Earlier attempts were never stored and are not invented.
+- **Users** (`/admin/users`): filters by status and plan; each row's menu has
+  View details, Edit profile (name and email; usernames and IDs stay
+  generated), Plan and limits, Usage, Activity, role changes, Reset password,
+  Suspend/Reactivate, Remove data… and Delete account…. Select rows for bulk
+  Suspend, Reactivate, Remove data or Delete (up to 100 at once).
+- **User details** (`/admin/users/:id`): profile, plan windows, usage by model
+  and feature, recent requests, admin actions on or by the account and its
+  sign-in problems.
+- **Delete and remove data** first show exactly what will go (conversations,
+  messages, files, IDE workspaces, memories) and require typing `DELETE` or
+  `CLEAN UP`. Usage records and the audit log are always kept. The server
+  refuses your own account, other admins unless you are a Super
+  Administrator, and the last admin or Super Administrator; refused rows are
+  listed and skipped. Every action is audited (`user.delete`, `user.cleanup`,
+  `user.update`).
+- Agents without an adapter in this build (Claude, Codex, Gemini via ACP) are
+  shown as unavailable instead of with an on/off switch.
+
+`npm run e2e:admin` covers the metrics API and its admin-only access, the
+recorded failed sign-in, the dashboard, profile edits, removing data while
+keeping usage records, the typed confirmation and a bulk delete.
+
 ### Plans: Free, Basic, Advance
 
 - Every account is on **Free**, **Basic** or **Advance** (migration 12

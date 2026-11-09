@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, ne, sql } from "drizzle-orm";
 import { db } from "./index";
 import { newPublicId, newUsername, withUniqueRetry } from "./migrate";
-import { conversations, messages, modelConfig, modelSelections, usageEvents, users } from "./schema";
+import { conversations, messages, modelConfig, modelSelections, securityEvents, usageEvents, users } from "./schema";
 
 const MAX_STORED_CHARS = 200_000;
 
@@ -91,6 +91,22 @@ export function currentQuotaPeriod(now = new Date()) {
 
 export function touchUser(userId: string) {
   db.update(users).set({ lastActiveAt: Date.now() }).where(eq(users.id, userId)).run();
+}
+
+/** Failed or refused sign-ins, for the admin dashboard. Never throws: sign-in must not fail because of it. */
+export function recordSecurityEvent(event: {
+  type: "login_failed" | "login_suspended" | "login_rate_limited";
+  email?: string | null;
+  userId?: string | null;
+  ip?: string | null;
+}) {
+  try {
+    db.insert(securityEvents)
+      .values({ type: event.type, email: event.email ?? null, userId: event.userId ?? null, ip: event.ip ?? null, createdAt: Date.now() })
+      .run();
+  } catch (error) {
+    console.error("Failed to record a security event", error);
+  }
 }
 
 export function recordUsage(event: {

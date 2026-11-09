@@ -145,6 +145,15 @@ export const rateLimitEvents = sqliteTable("rate_limit_events", {
   createdAt: integer("created_at").notNull(),
 });
 
+export const securityEvents = sqliteTable("security_events", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  type: text("type", { enum: ["login_failed", "login_suspended", "login_rate_limited"] }).notNull(),
+  email: text("email"),
+  userId: text("user_id"),
+  ip: text("ip"),
+  createdAt: integer("created_at").notNull(),
+});
+
 export const adminAuditLog = sqliteTable("admin_audit_log", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   adminId: text("admin_id").notNull(),

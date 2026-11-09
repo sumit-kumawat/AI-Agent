@@ -1,14 +1,32 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useTransition } from "react";
-import { Copy, MoreHorizontal } from "lucide-react";
+import {
+  Ban,
+  BarChart3,
+  Copy,
+  CreditCard,
+  Eraser,
+  Eye,
+  History,
+  KeyRound,
+  Lock,
+  MoreHorizontal,
+  Pencil,
+  RotateCcw,
+  Trash2,
+  UserCog,
+} from "lucide-react";
 import {
   resetUserPassword,
   setUserRole,
   setUserSuspended,
   updateUserPlan,
+  updateUserProfile,
   type ActionResult,
 } from "@/app/admin/actions";
+import { CleanupDialog } from "@/components/admin/user-cleanup";
 import { useFeedback } from "@/components/feedback";
 import { Button } from "@/components/ui/button";
 import {
@@ -35,6 +53,8 @@ import { isStaff, ROLE_LABEL, ROLES, type Role, type StaffRole } from "@/lib/rol
 type Target = {
   id: string;
   email: string;
+  name: string;
+  username: string;
   role: Role;
   suspended: boolean;
   plan: PlanId;
@@ -60,6 +80,8 @@ export function UserActions({ user, viewerRole }: { user: Target; viewerRole: St
   const [pending, startTransition] = useTransition();
   const [password, setPassword] = useState<string | null>(null);
   const [quotaOpen, setQuotaOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [cleanup, setCleanup] = useState<"delete" | "cleanup" | null>(null);
   const { confirm, report } = useFeedback();
 
   function perform<T extends object>(
@@ -81,8 +103,30 @@ export function UserActions({ user, viewerRole }: { user: Target; viewerRole: St
             <MoreHorizontal />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-52">
+        <DropdownMenuContent align="end" className="w-60">
           <DropdownMenuLabel className="truncate text-xs text-muted-foreground">{user.email}</DropdownMenuLabel>
+          <DropdownMenuItem asChild>
+            <Link href={`/admin/users/${user.id}`}>
+              <Eye /> View details
+            </Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem disabled={locked} onSelect={() => setEditOpen(true)}>
+            <Pencil /> Edit profile
+          </DropdownMenuItem>
+          <DropdownMenuItem disabled={locked} onSelect={() => setQuotaOpen(true)}>
+            <CreditCard /> Plan and limits
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild>
+            <Link href={`/admin/users/${user.id}#usage`}>
+              <BarChart3 /> Usage
+            </Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild>
+            <Link href={`/admin/users/${user.id}#activity`}>
+              <History /> Activity
+            </Link>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           {viewerRole === "superadmin" && !user.self
             ? ROLES.filter((role) => role !== user.role).map((role) => (
                 <DropdownMenuItem
@@ -97,16 +141,15 @@ export function UserActions({ user, viewerRole }: { user: Target; viewerRole: St
                     if (ok) perform(() => setUserRole(user.id, role), "Role updated");
                   }}
                 >
-                  Change role to {ROLE_LABEL[role]}
+                  <UserCog /> Change role to {ROLE_LABEL[role]}
                 </DropdownMenuItem>
               ))
             : null}
           {locked ? (
-            <DropdownMenuItem disabled>Only a Super Administrator can change this account</DropdownMenuItem>
+            <DropdownMenuItem disabled>
+              <Lock /> Only a Super Administrator can change this account
+            </DropdownMenuItem>
           ) : null}
-          <DropdownMenuItem disabled={locked} onSelect={() => setQuotaOpen(true)}>
-            Change plan and limits
-          </DropdownMenuItem>
           <DropdownMenuItem
             disabled={locked}
             onSelect={async () => {
@@ -119,7 +162,7 @@ export function UserActions({ user, viewerRole }: { user: Target; viewerRole: St
               if (ok) perform(() => resetUserPassword(user.id), null, (result) => setPassword(result.password));
             }}
           >
-            Reset password
+            <KeyRound /> Reset password
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
@@ -139,10 +182,26 @@ export function UserActions({ user, viewerRole }: { user: Target; viewerRole: St
               if (ok) perform(() => setUserSuspended(user.id, !user.suspended), user.suspended ? "Account reactivated" : "Account suspended");
             }}
           >
+            {user.suspended ? <RotateCcw /> : <Ban />}
             {user.suspended ? "Reactivate" : "Suspend"}
+          </DropdownMenuItem>
+          <DropdownMenuItem disabled={user.self || locked} onSelect={() => setCleanup("cleanup")} data-user-action="cleanup">
+            <Eraser /> Remove data…
+          </DropdownMenuItem>
+          <DropdownMenuItem variant="destructive" disabled={user.self || locked} onSelect={() => setCleanup("delete")} data-user-action="delete">
+            <Trash2 /> Delete account…
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+
+      <CleanupDialog ids={[user.id]} mode={cleanup ?? "delete"} open={cleanup !== null} onOpenChange={(open) => !open && setCleanup(null)} />
+      <EditDialog
+        user={user}
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        pending={pending}
+        onSave={(input) => perform(() => updateUserProfile(user.id, input), "Profile saved", () => setEditOpen(false))}
+      />
 
       <Dialog open={password !== null} onOpenChange={(open) => !open && setPassword(null)}>
         <DialogContent>
@@ -180,6 +239,55 @@ export function UserActions({ user, viewerRole }: { user: Target; viewerRole: St
         pending={pending}
       />
     </div>
+  );
+}
+
+function EditDialog({
+  user,
+  open,
+  onOpenChange,
+  onSave,
+  pending,
+}: {
+  user: Target;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSave: (input: { name: string; email: string }) => void;
+  pending: boolean;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <form
+          className="space-y-4"
+          data-edit-user={user.id}
+          onSubmit={(event) => {
+            event.preventDefault();
+            const form = new FormData(event.currentTarget);
+            onSave({ name: String(form.get("name") ?? ""), email: String(form.get("email") ?? "") });
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>Edit profile</DialogTitle>
+            <DialogDescription>
+              Changing the email signs the account out everywhere. The username @{user.username} is generated and cannot be changed.
+            </DialogDescription>
+          </DialogHeader>
+          {(["name", "email"] as const).map((field) => (
+            <div key={field} className="space-y-2">
+              <Label htmlFor={`${field}-${user.id}`} className="capitalize">
+                {field}
+              </Label>
+              <Input id={`${field}-${user.id}`} name={field} type={field === "email" ? "email" : "text"} defaultValue={user[field]} required className="h-10" />
+            </div>
+          ))}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button type="submit" disabled={pending}>{pending ? "Saving…" : "Save"}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 

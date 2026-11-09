@@ -249,7 +249,7 @@ try {
   check(killed !== null, "killed session ends the user's stream");
 
   // Plan and personal limits.
-  await userRowAction(adminPage, user.email, "Change plan and limits");
+  await userRowAction(adminPage, user.email, "Plan and limits");
   await adminPage.waitForSelector('input[name="monthly"]');
   await adminPage.waitForFunction(() => {
     const dialog = document.querySelector("[role=dialog]");
@@ -277,7 +277,7 @@ try {
     overQuota.status === 429 && overQuota.body?.plan?.code === "limit_reached" && /allowance/.test(overQuota.body?.error ?? ""),
     "user over a personal limit is blocked with a limit_reached reason",
   );
-  await userRowAction(adminPage, user.email, "Change plan and limits");
+  await userRowAction(adminPage, user.email, "Plan and limits");
   await adminPage.waitForSelector('input[name="monthly"]');
   await adminPage.$eval('input[name="monthly"]', (input) => (input.value = ""));
   await adminPage.type('input[name="monthly"]', "0");
@@ -484,16 +484,101 @@ try {
     resetOpenAi();
   }
 
+  // Dashboard: live metrics from the database and this server, admin only.
+  const customerMetrics = await api(relogged, "/api/admin/metrics?range=7");
+  check([401, 403].includes(customerMetrics.status) || typeof customerMetrics.body !== "object", `metrics API refuses a customer (${customerMetrics.status})`);
+  const metrics = await api(adminPage, "/api/admin/metrics?range=7");
+  check(metrics.status === 200 && metrics.body?.business?.range === 7, "metrics API answers the admin for the chosen range");
+  const counted = withDb((db) => db.prepare("SELECT COUNT(*) AS n FROM users").get().n);
+  check(metrics.body?.business?.users?.total === counted, `user total matches the database (${metrics.body?.business?.users?.total} = ${counted})`);
+  check(metrics.body?.system?.cpu?.cores > 0 && metrics.body?.system?.database?.ok === true, "server CPU and database health are measured");
+  check(metrics.body?.business?.payments?.available === false, "revenue is reported as unavailable, not as zero");
+  const failedLogins = withDb((db) =>
+    db.prepare("SELECT COUNT(*) AS n FROM security_events WHERE type = 'login_failed' AND email = ?").get(admin.email).n,
+  );
+  check(failedLogins >= 1, "the wrong-password sign-in was recorded as a security event");
+  await adminPage.goto(`${base}/admin`, { waitUntil: "networkidle0" });
+  await adminPage.waitForSelector("[data-metric]");
+  check((await adminPage.$$("[data-chart]")).length > 0, "dashboard renders charts");
+  check(Boolean(await adminPage.$("[data-unavailable]")), "dashboard shows an unavailable state for revenue");
+  check((await adminPage.$eval("[data-security-events]", (node) => node.innerText)).includes(admin.email), "dashboard lists the failed sign-in");
+  await adminPage.click("[data-range='90']");
+  await adminPage.waitForFunction(() => document.querySelector("[data-range='90']")?.getAttribute("aria-pressed") === "true");
+  check(true, "dashboard range switches to 90 days");
+  await adminPage.screenshot({ path: `${shots}/admin_dashboard.png`, fullPage: true });
+
+  // User management: edit, detail page, remove data, bulk delete.
+  const extras = [0, 1].map((index) => ({ email: `e2e-extra${index}-${stamp}@harbor.local`, password: `extra-${stamp}-pw` }));
+  for (const extra of extras) {
+    execFileSync(process.execPath, ["--disable-warning=ExperimentalWarning", "--disable-warning=MODULE_TYPELESS_PACKAGE_JSON", "scripts/seed.mjs"], {
+      env: { ...process.env, SEED_USER_EMAIL: extra.email, SEED_USER_PASSWORD: extra.password, ADMIN_EMAIL: "", ADMIN_PASSWORD_HASH: "" },
+      stdio: "ignore",
+    });
+    const page = await session(extra);
+    const reply = await chat(page, "Reply with one word: ok");
+    check(reply.status === 200, `${extra.email.split("-")[1]} has a conversation and a metered request`);
+    extra.id = withDb((db) => db.prepare("SELECT id FROM users WHERE email = ?").get(extra.email).id);
+    await page.browserContext().close();
+  }
+  const usageOf = (id) => withDb((db) => db.prepare("SELECT COUNT(*) AS n FROM usage_events WHERE user_id = ?").get(id).n);
+  const chatsOf = (id) => withDb((db) => db.prepare("SELECT COUNT(*) AS n FROM conversations WHERE user_id = ?").get(id).n);
+
+  await userRowAction(adminPage, extras[0].email, "Edit profile");
+  await adminPage.waitForSelector(`[data-edit-user="${extras[0].id}"]`);
+  await adminPage.$eval(`#name-${extras[0].id}`, (input) => input.select());
+  await adminPage.type(`#name-${extras[0].id}`, "Renamed Extra");
+  await adminPage.click(`[data-edit-user="${extras[0].id}"] button[type=submit]`);
+  await popup(adminPage, "Profile saved");
+  check(withDb((db) => db.prepare("SELECT name FROM users WHERE id = ?").get(extras[0].id).name) === "Renamed Extra", "edit profile saves to the database");
+
+  await adminPage.goto(`${base}/admin/users/${extras[0].id}`, { waitUntil: "networkidle0" });
+  check(Boolean(await adminPage.$(`[data-user-detail="${extras[0].id}"]`)), "user detail page opens");
+  check(Boolean(await adminPage.$("[data-user-requests]")), "user detail page lists the user's requests");
+  await adminPage.screenshot({ path: `${shots}/admin_user_detail.png`, fullPage: true });
+
+  const usageBefore = usageOf(extras[0].id);
+  await userRowAction(adminPage, extras[0].email, "Remove data…");
+  await adminPage.waitForSelector("[data-cleanup-dialog='cleanup'] [data-affected='conversations']");
+  check(
+    (await adminPage.$eval("[data-affected='conversations']", (node) => node.innerText)).startsWith(String(chatsOf(extras[0].id))),
+    "cleanup preview counts the user's conversations",
+  );
+  await adminPage.type("#cleanup-confirm", "clean up");
+  check(await adminPage.$eval("[data-cleanup-confirm]", (button) => button.disabled), "a wrong confirmation phrase keeps the button disabled");
+  await adminPage.$eval("#cleanup-confirm", (input) => input.select());
+  await adminPage.type("#cleanup-confirm", "CLEAN UP");
+  await adminPage.click("[data-cleanup-confirm]");
+  await popup(adminPage, "Data removed for 1 account");
+  check(chatsOf(extras[0].id) === 0, "remove data deletes the conversations");
+  check(withDb((db) => Boolean(db.prepare("SELECT 1 FROM users WHERE id = ?").get(extras[0].id))), "remove data keeps the account");
+  check(usageOf(extras[0].id) === usageBefore && usageBefore > 0, "remove data keeps usage records");
+
+  await adminPage.goto(`${base}/admin/users?q=${encodeURIComponent(`-${stamp}@`)}`, { waitUntil: "networkidle0" });
+  const adminId = withDb((db) => db.prepare("SELECT id FROM users WHERE email = ?").get(admin.email).id);
+  check(await adminPage.$eval(`[data-select-user="${adminId}"]`, (box) => box.disabled), "the signed-in admin cannot be selected");
+  for (const extra of extras) await adminPage.click(`[data-select-user="${extra.id}"]`);
+  await adminPage.waitForSelector("[data-bulk-actions]");
+  await adminPage.click("[data-bulk='delete']");
+  await adminPage.waitForSelector("[data-cleanup-dialog='delete'] [data-affected='conversations']");
+  await adminPage.type("#cleanup-confirm", "DELETE");
+  await adminPage.click("[data-cleanup-confirm]");
+  await popup(adminPage, "2 accounts deleted");
+  check(extras.every((extra) => !withDb((db) => db.prepare("SELECT 1 FROM users WHERE id = ?").get(extra.id))), "bulk delete removes both accounts");
+  check(extras.every((extra) => usageOf(extra.id) > 0), "bulk delete keeps their usage records");
+  const deleteAudit = withDb((db) =>
+    db.prepare("SELECT COUNT(*) AS n FROM admin_audit_log WHERE action = 'user.delete' AND target_id IN (?, ?)").get(extras[0].id, extras[1].id).n,
+  );
+  check(deleteAudit === 2, "each deletion is in the audit log");
+
   // Audit log recorded the actions.
   await adminPage.goto(`${base}/admin/settings?q=${encodeURIComponent("user.")}#audit`, { waitUntil: "networkidle0" });
   const auditText = await adminPage.evaluate(() => document.body.innerText);
-  for (const action of ["user.plan", "user.suspend", "user.password_reset", "user.role"]) {
+  for (const action of ["user.plan", "user.suspend", "user.password_reset", "user.role", "user.update", "user.cleanup", "user.delete"]) {
     check(auditText.includes(action), `audit log has ${action}`);
   }
-  await adminPage.goto(`${base}/admin/settings`, { waitUntil: "networkidle0" });
-  const fullAudit = await adminPage.evaluate(() => document.body.innerText);
   for (const action of ["settings.update", "session.kill", "message.delete", "agent.update", "conversation.content_access"]) {
-    check(fullAudit.includes(action), `audit log has ${action}`);
+    await adminPage.goto(`${base}/admin/settings?q=${encodeURIComponent(action)}#audit`, { waitUntil: "networkidle0" });
+    check((await adminPage.evaluate(() => document.body.innerText)).includes(action), `audit log has ${action}`);
   }
   await adminPage.goto(`${base}/admin/settings?q=${encodeURIComponent("model.enable")}#audit`, { waitUntil: "networkidle0" });
   check((await adminPage.evaluate(() => document.body.innerText)).includes("model.enable"), "audit log has model.enable");
