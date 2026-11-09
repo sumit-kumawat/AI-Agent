@@ -6,11 +6,10 @@ import { signOut } from "next-auth/react";
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import {
   Archive,
-  Boxes,
   CircleHelp,
   Code,
   Gauge,
-  Loader2,
+  Lock,
   LogOut,
   MoreHorizontal,
   PanelLeftClose,
@@ -25,10 +24,11 @@ import {
   Sparkles,
   SquarePen,
   Trash,
-  X,
   type LucideIcon,
 } from "lucide-react";
+import { AdminNav } from "@/components/admin/admin-nav";
 import { useChatChrome } from "@/components/chat/chat-shell";
+import { Kbd } from "@/components/shortcut";
 import { useConversationActions } from "@/components/chat/conversation-actions";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -40,7 +40,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import type { ConversationListItem, SearchResult } from "@/lib/db/queries";
+import type { ConversationListItem } from "@/lib/db/queries";
 
 function subscribeDay(callback: () => void) {
   const timer = window.setInterval(callback, 60_000);
@@ -298,92 +298,6 @@ function ProfileMenu({ onNavigate, collapsed }: { onNavigate?: () => void; colla
 }
 
 /** Inline search over chat titles and messages; results replace the chat list while it is open. */
-function ChatSearch({ onClose, onNavigate }: { onClose: () => void; onNavigate?: () => void }) {
-  const pathname = usePathname();
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState<{ query: string; items: SearchResult[] } | null>(null);
-  const [failed, setFailed] = useState<string | null>(null);
-  const trimmed = query.trim();
-
-  useEffect(() => {
-    if (!trimmed) return;
-    const controller = new AbortController();
-    const timer = window.setTimeout(() => {
-      fetch(`/api/search?q=${encodeURIComponent(trimmed)}`, { signal: controller.signal })
-        .then((response) => (response.ok ? response.json() : Promise.reject(new Error())))
-        .then((data: { results: SearchResult[] }) => {
-          setFailed(null);
-          setResults({ query: trimmed, items: data.results });
-        })
-        .catch((error: unknown) => {
-          if ((error as Error).name !== "AbortError") setFailed(trimmed);
-        });
-    }, 180);
-    return () => {
-      controller.abort();
-      window.clearTimeout(timer);
-    };
-  }, [trimmed]);
-
-  const current = results?.query === trimmed ? results.items : null;
-  return (
-    <div className="space-y-2" data-chat-search>
-      <div className="flex items-center gap-1 rounded-lg border bg-background px-2">
-        <Search className="size-4 shrink-0 text-muted-foreground" />
-        <input
-          autoFocus
-          type="search"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Escape") onClose();
-          }}
-          placeholder="Search chats"
-          aria-label="Search chats"
-          className="h-9 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-        />
-        <Button type="button" variant="ghost" size="icon" className="size-7" onClick={onClose} aria-label="Close search">
-          <X />
-        </Button>
-      </div>
-      {!trimmed ? (
-        <p className="px-2.5 text-sm text-muted-foreground">Search titles and messages.</p>
-      ) : failed === trimmed ? (
-        <p className="px-2.5 text-sm text-destructive">Search failed. Try again.</p>
-      ) : current === null ? (
-        <p className="flex items-center gap-2 px-2.5 text-sm text-muted-foreground">
-          <Loader2 className="size-4 animate-spin" /> Searching…
-        </p>
-      ) : current.length === 0 ? (
-        <p className="px-2.5 text-sm text-muted-foreground">No chats match.</p>
-      ) : (
-        <ul className="space-y-0.5" aria-label="Search results">
-          {current.map((result) => (
-            <li key={result.id}>
-              <Link
-                href={`/chat/${result.id}`}
-                onClick={onNavigate}
-                aria-current={pathname === `/chat/${result.id}` ? "page" : undefined}
-                className={`block rounded-lg px-2.5 py-1.5 text-sm hover:bg-sidebar-accent/70 ${
-                  pathname === `/chat/${result.id}` ? "bg-sidebar-accent" : ""
-                }`}
-              >
-                <span className="flex items-center gap-1.5">
-                  <span className="min-w-0 flex-1 truncate">{result.title}</span>
-                  {result.archived ? <Archive className="size-3.5 shrink-0 text-muted-foreground" aria-label="Archived" /> : null}
-                </span>
-                {result.snippet ? (
-                  <span className="line-clamp-2 text-xs text-muted-foreground">{result.snippet}</span>
-                ) : null}
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
 type NavEntry = {
   label: string;
   icon: LucideIcon;
@@ -391,6 +305,8 @@ type NavEntry = {
   href?: string;
   onSelect?: () => void;
   active?: boolean;
+  /** The plan does not include it; the entry links to the plans page. */
+  locked?: boolean;
 };
 
 export function SidebarBody({
@@ -406,25 +322,23 @@ export function SidebarBody({
   /** Present on desktop, where the sidebar can collapse to the rail. */
   onToggle?: () => void;
 }) {
-  const { admin, usage } = useChatChrome();
+  const { admin, usage, openSearch } = useChatChrome();
   const pathname = usePathname();
-  const [searching, setSearching] = useState(false);
-  const openSearch = () => {
-    if (collapsed) onToggle?.();
-    setSearching(true);
-  };
+  const inAdmin = admin && pathname.startsWith("/admin");
+  const ideLocked = !admin && usage.locked.ide !== undefined;
   const entries: NavEntry[] = [
-    { label: "New chat", icon: SquarePen, shortcut: "⇧⌘O", href: "/chat", active: pathname === "/chat" },
-    { label: "Search chats", icon: Search, onSelect: openSearch, active: searching && !collapsed },
+    { label: "New chat", icon: SquarePen, shortcut: "mod+shift+o", href: "/chat", active: pathname === "/chat" },
+    { label: "Search chats", icon: Search, shortcut: "mod+k", onSelect: openSearch },
     {
-      label: admin ? "Manage models" : "Models",
-      icon: Boxes,
-      href: "/chat/models",
-      active: pathname === "/chat/models",
+      label: "IDE",
+      icon: Code,
+      href: ideLocked ? `/plans?highlight=${usage.locked.ide?.requiredPlan?.id ?? ""}` : "/ide",
+      active: pathname.startsWith("/ide"),
+      locked: ideLocked,
     },
-    ...(!admin || usage.locked.ide ? [] : [{ label: "IDE", icon: Code, href: "/ide", active: pathname.startsWith("/ide") }]),
     { label: "Usage", icon: Gauge, href: "/usage", active: pathname === "/usage" },
     { label: "Plans", icon: Sparkles, href: "/plans", active: pathname === "/plans" },
+    ...(admin ? [{ label: "Admin", icon: Shield, href: "/admin", active: inAdmin }] : []),
   ];
   const item = (active = false) =>
     `flex h-9 w-full items-center gap-3 rounded-lg px-3 text-sm whitespace-nowrap ${
@@ -459,9 +373,8 @@ export function SidebarBody({
               <span className={label} aria-hidden={collapsed}>
                 {entry.label}
               </span>
-              {entry.shortcut && !collapsed ? (
-                <kbd className="hidden text-xs text-muted-foreground lg:inline">{entry.shortcut}</kbd>
-              ) : null}
+              {entry.locked && !collapsed ? <Lock className="size-3.5 text-muted-foreground" aria-label="Not in your plan" /> : null}
+              {entry.shortcut && !collapsed ? <Kbd combo={entry.shortcut} className="hidden lg:inline" /> : null}
             </>
           );
           return (
@@ -499,11 +412,7 @@ export function SidebarBody({
           collapsed ? "pointer-events-none opacity-0" : "opacity-100"
         }`}
       >
-        {searching && !collapsed ? (
-          <ChatSearch onClose={() => setSearching(false)} onNavigate={onNavigate} />
-        ) : (
-          <ConversationList conversations={conversations} onNavigate={onNavigate} />
-        )}
+        {inAdmin ? <AdminNav onNavigate={onNavigate} /> : <ConversationList conversations={conversations} onNavigate={onNavigate} />}
       </nav>
       <div className="shrink-0 border-t px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
         <ProfileMenu onNavigate={onNavigate} collapsed={collapsed} />

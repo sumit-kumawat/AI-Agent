@@ -16,6 +16,7 @@ import {
 import { Menu, Pencil, SquarePen } from "lucide-react";
 import type { ModelOption } from "@/components/chat/model-picker";
 import { jsonFetch, useConversationActions } from "@/components/chat/conversation-actions";
+import { SearchDialog } from "@/components/chat/search-dialog";
 import { SidebarBody } from "@/components/chat/sidebar";
 import { useFeedback } from "@/components/feedback";
 import { isSettingsTab, SettingsDialog, type SettingsTab } from "@/components/settings/settings-dialog";
@@ -52,6 +53,8 @@ type Chrome = {
   /** Saves a preference change; returns whether it stuck. */
   updatePrefs: (patch: Partial<Preferences>, success?: string) => Promise<boolean>;
   openSettings: (tab?: SettingsTab) => void;
+  /** Opens chat search (also Cmd/Ctrl+K). */
+  openSearch: () => void;
 };
 
 const ChatChromeContext = createContext<Chrome | null>(null);
@@ -106,6 +109,7 @@ export function ChatShell({
   const router = useRouter();
   const { notify, toast } = useFeedback();
   const [open, setOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [prefs, setPrefs] = useState(preferences);
   const prefsRef = useRef(prefs);
   const [collapsed, setCollapsed] = useState(initialCollapsed);
@@ -163,7 +167,13 @@ export function ChatShell({
       const mod = event.metaKey || event.ctrlKey;
       if (!mod) return;
       const key = event.key.toLowerCase();
-      if (key === "s" && event.shiftKey) {
+      if (key === "k" && !event.shiftKey && !event.altKey) {
+        // The IDE editor has its own Cmd/Ctrl+K chords.
+        if ((event.target as HTMLElement | null)?.closest?.(".monaco-editor")) return;
+        event.preventDefault();
+        setOpen(false);
+        setSearchOpen((current) => !current);
+      } else if (key === "s" && event.shiftKey) {
         event.preventDefault();
         toggleCollapsed();
       } else if (key === "o" && event.shiftKey) {
@@ -191,6 +201,10 @@ export function ChatShell({
       prefs,
       updatePrefs,
       openSettings,
+      openSearch: () => {
+        setOpen(false);
+        setSearchOpen(true);
+      },
     }),
     [collapsed, toggleCollapsed, models, defaultModel, admin, user, usage, prefs, updatePrefs, openSettings],
   );
@@ -225,6 +239,7 @@ export function ChatShell({
           <div className="min-h-0 flex-1">{children}</div>
         </div>
       </div>
+      <SearchDialog open={searchOpen} onOpenChange={setSearchOpen} recent={conversations} />
       <SettingsDialog tab={settingsTab} onTabChange={(tab) => openSettings(tab)} onClose={closeSettings} />
       </TooltipProvider>
     </ChatChromeContext.Provider>
@@ -242,7 +257,7 @@ export function ChatTopBar({
 }) {
   const { openMenu } = useChatChrome();
   return (
-    <div className="flex min-h-14 items-center gap-1 px-2 pt-[max(0.5rem,env(safe-area-inset-top))] pb-2 sm:px-3">
+    <header data-top-bar className="flex min-h-14 shrink-0 items-center gap-1 px-2 pt-[max(0.5rem,env(safe-area-inset-top))] pb-2 sm:px-3">
       <Button
         type="button"
         variant="ghost"
@@ -263,7 +278,7 @@ export function ChatTopBar({
           <SquarePen />
         </Link>
       </Button>
-    </div>
+    </header>
   );
 }
 

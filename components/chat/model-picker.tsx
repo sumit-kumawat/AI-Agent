@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 import { Boxes, Check, ChevronDown, Cloud, Search, Sparkles } from "lucide-react";
+import type { AutoMode } from "@/lib/model-ref";
 import { useChatChrome } from "@/components/chat/chat-shell";
 import { useFeedback } from "@/components/feedback";
 import { Button } from "@/components/ui/button";
@@ -11,7 +12,6 @@ import { formatBytes } from "@/lib/format";
 import { formatK } from "@/lib/models/capabilities";
 import {
   AUTO_INFO,
-  AUTO_MODES,
   autoKey,
   autoModeOf,
   parseModelRef,
@@ -172,15 +172,18 @@ export function ModelPicker({
   onChange,
   disabled,
   compact = false,
+  mode: optimisation = "balance",
 }: {
   models: ModelOption[];
   value: string | null;
   onChange: (name: string) => void;
   disabled?: boolean;
+  /** The optimisation mode Auto uses; chosen in its own selector. */
+  mode?: AutoMode;
   /** Borderless trigger that opens upward, for use inside the composer. */
   compact?: boolean;
 }) {
-  const { prefs, updatePrefs } = useChatChrome();
+  const { prefs, updatePrefs, admin } = useChatChrome();
   const { confirm } = useFeedback();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -209,25 +212,27 @@ export function ModelPicker({
   }
 
   if (models.length === 0) {
-    return (
+    return admin ? (
       <Button
         asChild
         variant={compact ? "ghost" : "outline"}
         size="sm"
         className={compact ? "h-8 shrink-0 rounded-full px-2.5 text-muted-foreground" : "h-9 shrink-0 md:h-8"}
       >
-        <Link href="/chat/models">
+        <Link href="/admin/models">
           <Boxes />
           Add a model
         </Link>
       </Button>
+    ) : (
+      <span className="px-2.5 text-xs text-muted-foreground" data-no-models>
+        No models available
+      </span>
     );
   }
 
   const needle = query.trim().toLowerCase();
-  const autoModes = AUTO_MODES.filter(
-    (item) => !needle || `auto ${AUTO_INFO[item].label} ${AUTO_INFO[item].description}`.toLowerCase().includes(needle),
-  );
+  const showAuto = !needle || "auto automatic".includes(needle);
   const visible = models.filter((model) => !needle || searchable(model).includes(needle));
   const optionClass = (selected: boolean) =>
     `flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm outline-none hover:bg-accent focus-visible:bg-accent ${
@@ -256,7 +261,7 @@ export function ModelPicker({
           data-model-selection={value ?? ""}
         >
           {mode ? <Sparkles className="opacity-70" /> : null}
-          <span className="truncate">{mode ? `Auto · ${AUTO_INFO[mode].label}` : (current?.name ?? "Choose model")}</span>
+          <span className="truncate">{mode ? "Auto" : (current?.name ?? "Choose model")}</span>
           <ChevronDown className="opacity-60" />
         </Button>
       </PopoverTrigger>
@@ -288,34 +293,25 @@ export function ModelPicker({
           className="min-h-0 flex-1 overflow-y-auto p-1.5"
           onKeyDown={(event) => moveFocus(event, list.current)}
         >
-          {autoModes.length > 0 ? (
+          {showAuto ? (
             <div role="group" aria-label="Auto">
-              <p className="px-2.5 pt-1.5 pb-1 text-xs font-medium text-muted-foreground">Auto</p>
-              {autoModes.map((item) => {
-                const key = autoKey(item);
-                const selected = value === key;
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    role="option"
-                    aria-selected={selected}
-                    data-model-option={key}
-                    onClick={() => void choose(key)}
-                    className={optionClass(selected)}
-                  >
-                    <Sparkles className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block font-medium">
-                        {AUTO_INFO[item].label}
-                        {item === "balance" ? <span className="ml-1.5 text-xs font-normal text-muted-foreground">Default</span> : null}
-                      </span>
-                      <span className="block text-xs text-muted-foreground">{AUTO_INFO[item].description}</span>
-                    </span>
-                    {selected ? <Check className="mt-0.5 size-4 shrink-0" aria-hidden /> : null}
-                  </button>
-                );
-              })}
+              <button
+                type="button"
+                role="option"
+                aria-selected={mode !== null}
+                data-model-option="auto"
+                onClick={() => void choose(autoKey(optimisation))}
+                className={optionClass(mode !== null)}
+              >
+                <Sparkles className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                <span className="min-w-0 flex-1">
+                  <span className="block font-medium">Auto</span>
+                  <span className="block text-xs text-muted-foreground">
+                    Picks a model for each message, optimised for {AUTO_INFO[optimisation].label.toLowerCase()}
+                  </span>
+                </span>
+                {mode !== null ? <Check className="mt-0.5 size-4 shrink-0" aria-hidden /> : null}
+              </button>
             </div>
           ) : null}
           {GROUPS.map((group) => {
@@ -333,17 +329,15 @@ export function ModelPicker({
                       role="option"
                       aria-selected={selected}
                       data-model-option={model.modelId}
+                      data-limitations={model.limitations.join(" ")}
+                      title={model.limitations.length ? `Limitations:\n${model.limitations.map((line) => `• ${line}`).join("\n")}` : undefined}
                       onClick={() => void choose(model.key)}
                       className={optionClass(selected)}
                     >
                       {model.local ? (
-                        <span
-                          className={`mt-1.5 size-2 shrink-0 rounded-full ${model.loaded ? "bg-emerald-500" : "bg-muted-foreground/40"}`}
-                          title={model.loaded ? "Loaded in memory" : "Installed, loads on first use"}
-                          aria-hidden
-                        />
+                        <Boxes className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
                       ) : (
-                        <Cloud className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                        <Cloud className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-label="Cloud model" />
                       )}
                       <span className="min-w-0 flex-1">
                         <span className="flex items-center gap-1.5">
@@ -351,7 +345,6 @@ export function ModelPicker({
                           <span className="shrink-0 text-xs text-muted-foreground">{sizeLabel(model)}</span>
                         </span>
                         <span className="mt-0.5 flex flex-wrap gap-1 text-[10px] text-muted-foreground" data-capabilities>
-                          {model.local ? <span>{model.loaded ? "In memory" : "Ready"}</span> : <span>Healthy</span>}
                           <span data-context-window={model.context.tokens ?? ""} title={contextTitle(model.context)}>
                             {model.context.tokens ? `${formatK(model.context.tokens)} context` : "Context not reported"}
                           </span>
@@ -371,20 +364,22 @@ export function ModelPicker({
               </div>
             );
           })}
-          {autoModes.length === 0 && visible.length === 0 ? (
+          {!showAuto && visible.length === 0 ? (
             <p className="px-2.5 py-6 text-center text-sm text-muted-foreground">No models match.</p>
           ) : null}
         </div>
-        <div className="border-t p-1.5">
-          <Link
-            href="/chat/models"
-            onClick={() => setOpen(false)}
-            className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm hover:bg-accent"
-          >
-            <Boxes className="size-4" />
-            Browse all models
-          </Link>
-        </div>
+        {admin ? (
+          <div className="border-t p-1.5">
+            <Link
+              href="/admin/models"
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm hover:bg-accent"
+            >
+              <Boxes className="size-4" />
+              Manage models
+            </Link>
+          </div>
+        ) : null}
       </PopoverContent>
     </Popover>
   );

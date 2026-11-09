@@ -86,7 +86,7 @@ async function pickerOptions() {
   await page.waitForSelector('[role=listbox][aria-label="Models"]');
   const options = await page.$$eval("[data-model-option]", (nodes) => nodes.map((node) => node.dataset.modelOption));
   await page.keyboard.press("Escape");
-  return options.filter((name) => !name.startsWith("auto:"));
+  return options.filter((name) => name !== "auto");
 }
 
 try {
@@ -195,8 +195,17 @@ try {
     (await page.$eval("[data-plan-card='advance']", (node) => node.querySelector("[data-current-plan]") !== null)) === true,
     "the current plan is marked",
   );
-  const prices = await page.$$eval("[data-price]", (nodes) => nodes.map((node) => node.textContent));
-  check(prices.every((text) => text === "Price not set yet"), "no invented prices");
+  const prices = await page.$$eval("[data-plan-card]", (nodes) =>
+    nodes.map((node) => [node.dataset.planCard, node.querySelector("[data-price]")?.textContent ?? ""]),
+  );
+  const configured = JSON.parse(sql("SELECT value FROM settings WHERE key='plans.config'") || "{}");
+  check(
+    prices.every(([id, text]) => {
+      const price = configured[id]?.price;
+      return price ? text.replace(/[^\d]/g, "").includes(String(Math.round(price.amount))) : text === "Price not set yet";
+    }),
+    `prices come only from the admin's plan settings (${prices.map(([id, text]) => `${id}: ${text}`).join("; ")})`,
+  );
   check(
     (await page.$eval("[data-plan-card='advance'] [data-limit='daily']", (node) => node.textContent)) === "Unlimited",
     "a 0 limit is shown as Unlimited",
@@ -215,11 +224,23 @@ try {
   check((await page.$("aside[aria-label=Sidebar]")) !== null, "the usage page keeps the sidebar");
   await shot("usage_page");
 
-  for (const path of ["/chat", "/chat/models", "/plans", "/usage"]) {
+  for (const path of ["/chat", "/plans", "/usage", "/help"]) {
     await page.goto(`${base}${path}`, { waitUntil: "networkidle0" });
     const nav = await page.$$eval("aside[aria-label=Sidebar] a", (nodes) => nodes.map((node) => node.getAttribute("href")));
-    check(["/chat", "/chat/models", "/usage", "/plans"].every((href) => nav.includes(href)), `${path}: the sidebar carries the app navigation`);
+    check(["/chat", "/usage", "/plans"].every((href) => nav.includes(href)), `${path}: the sidebar carries the app navigation`);
+    check(
+      !nav.some((href) => href?.startsWith("/chat/models") || href?.startsWith("/admin")),
+      `${path}: customers get no model management or admin links`,
+    );
   }
+  await page.goto(`${base}/chat/models`, { waitUntil: "networkidle0" });
+  check(new URL(page.url()).pathname === "/chat", "the old models page sends customers back to chat");
+  const adminModels = await page.goto(`${base}/admin/models`, { waitUntil: "networkidle0" });
+  check(new URL(page.url()).pathname !== "/admin/models" || adminModels.status() >= 400, "customers cannot open admin model management");
+  const pull = await page.evaluate(async () =>
+    (await fetch("/api/models", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "tinyllama" }) })).status,
+  );
+  check(pull === 403 || pull === 401, `the backend refuses model downloads from customers (${pull})`);
 
   check(pageErrors.length === 0, `no page errors${pageErrors.length ? `: ${pageErrors.join(" | ")}` : ""}`);
 } catch (error) {

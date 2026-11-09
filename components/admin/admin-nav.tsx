@@ -5,46 +5,54 @@ import { usePathname } from "next/navigation";
 import {
   Activity,
   Bot,
+  Boxes,
   Cloud,
-  Code,
   LayoutDashboard,
   MessagesSquare,
   Settings,
   Sparkles,
   Telescope,
   Users,
+  type LucideIcon,
 } from "lucide-react";
 
-const LINKS = [
+export const ADMIN_LINKS: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/admin", label: "Overview", icon: LayoutDashboard },
   { href: "/admin/users", label: "Users", icon: Users },
+  { href: "/admin/conversations", label: "Conversations", icon: MessagesSquare },
   { href: "/admin/usage", label: "Usage", icon: Activity },
   { href: "/admin/plans", label: "Plans", icon: Sparkles },
-  { href: "/admin/agents", label: "Agents & models", icon: Bot },
+  { href: "/admin/models", label: "Models", icon: Boxes },
+  { href: "/admin/agents", label: "Agents & routing", icon: Bot },
   { href: "/admin/providers", label: "Providers", icon: Cloud },
   { href: "/admin/research", label: "Research", icon: Telescope },
   { href: "/admin/settings", label: "Settings", icon: Settings },
-  { href: "/admin/conversations", label: "Conversations", icon: MessagesSquare },
-  { href: "/ide", label: "IDE", icon: Code },
 ];
 
-export function AdminNav() {
+export function adminSection(pathname: string) {
+  return [...ADMIN_LINKS].reverse().find((link) => (link.href === "/admin" ? pathname === "/admin" : pathname.startsWith(link.href)));
+}
+
+/** The admin sections, shown in the app sidebar while an admin page is open. */
+export function AdminNav({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
+  const current = adminSection(pathname);
   return (
-    <nav className="flex gap-1 overflow-x-auto md:flex-col md:overflow-visible">
-      {LINKS.map(({ href, label, icon: Icon }) => {
-        const active = href === "/admin" ? pathname === href : pathname.startsWith(href);
+    <nav aria-label="Admin sections" className="space-y-0.5" data-admin-nav>
+      <p className="px-3 pb-1 text-xs font-medium text-muted-foreground">Admin</p>
+      {ADMIN_LINKS.map(({ href, label, icon: Icon }) => {
+        const active = current?.href === href;
         return (
           <Link
             key={href}
             href={href}
-            className={`flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm ${
-              active
-                ? "bg-accent text-accent-foreground"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            onClick={onNavigate}
+            aria-current={active ? "page" : undefined}
+            className={`flex h-9 items-center gap-3 rounded-lg px-3 text-sm ${
+              active ? "bg-sidebar-accent text-sidebar-accent-foreground" : "hover:bg-sidebar-accent/70"
             }`}
           >
-            <Icon className="size-4" />
+            <Icon className="size-4 shrink-0" />
             {label}
           </Link>
         );

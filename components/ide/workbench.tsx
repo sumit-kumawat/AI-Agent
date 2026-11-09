@@ -32,6 +32,8 @@ import { Splitter } from "@/components/ide/splitter";
 import { useIdeTheme } from "@/components/ide/use-ide-theme";
 import { useFeedback } from "@/components/feedback";
 import { useChatChrome } from "@/components/chat/chat-shell";
+import { Kbd } from "@/components/shortcut";
+import { formatShortcut, usePlatform } from "@/lib/shortcuts";
 
 loader.config({ paths: { vs: "/monaco/vs" } });
 
@@ -359,6 +361,9 @@ export function Workbench({
     } else setPanelOpen((open) => !open);
   }, []);
 
+  const platform = usePlatform();
+  const k = useCallback((combo: string) => formatShortcut(combo, platform), [platform]);
+
   const newTerminal = useCallback(() => {
     setPanelTab("terminal");
     setPanelOpen(true);
@@ -373,30 +378,35 @@ export function Workbench({
 
   const commands = useMemo<Command[]>(
     () => [
-      { id: "file.quickOpen", label: "Go to File…", shortcut: "⌘P", run: () => setPalette("files") },
-      { id: "file.save", label: "File: Save", shortcut: "⌘S", run: () => void save() },
-      { id: "file.saveAll", label: "File: Save All", shortcut: "⌥⌘S", run: () => void saveAll() },
+      { id: "file.quickOpen", label: "Go to File…", shortcut: k("mod+p"), run: () => setPalette("files") },
+      { id: "file.save", label: "File: Save", shortcut: k("mod+s"), run: () => void save() },
+      { id: "file.saveAll", label: "File: Save All", shortcut: k("mod+alt+s"), run: () => void saveAll() },
       { id: "editor.close", label: "View: Close Editor", run: () => activeRef.current && void closeTabs([activeRef.current]) },
       { id: "editor.closeAll", label: "View: Close All Editors", run: () => void closeTabs([...tabsRef.current]) },
-      { id: "search.files", label: "Search: Find in Files", shortcut: "⇧⌘F", run: () => showView("search") },
-      { id: "view.explorer", label: "View: Show Explorer", shortcut: "⇧⌘E", run: () => showView("explorer") },
-      { id: "view.sidebar", label: "View: Toggle Sidebar", shortcut: "⌘B", run: () => setSidebarOpen((open) => !open) },
-      { id: "view.panel", label: "View: Toggle Panel", shortcut: "⌃`", run: () => togglePanel() },
+      { id: "search.files", label: "Search: Find in Files", shortcut: k("mod+shift+f"), run: () => showView("search") },
+      { id: "view.explorer", label: "View: Show Explorer", shortcut: k("mod+shift+e"), run: () => showView("explorer") },
+      { id: "view.sidebar", label: "View: Toggle Sidebar", shortcut: k("mod+b"), run: () => setSidebarOpen((open) => !open) },
+      { id: "view.panel", label: "View: Toggle Panel", shortcut: k("ctrl+`"), run: () => togglePanel() },
       { id: "view.problems", label: "View: Show Problems", run: () => togglePanel("problems") },
       { id: "view.output", label: "View: Show Output", run: () => togglePanel("output") },
-      { id: "terminal.new", label: "Terminal: New Terminal", shortcut: "⌃⇧`", run: newTerminal },
+      { id: "terminal.new", label: "Terminal: New Terminal", shortcut: k("ctrl+shift+`"), run: newTerminal },
       { id: "explorer.refresh", label: "Explorer: Refresh", run: () => setExplorerKey((key) => key + 1) },
-      { id: "editor.format", label: "Format Document", shortcut: "⇧⌥F", run: () => runEditorAction("editor.action.formatDocument") },
-      { id: "editor.find", label: "Find", shortcut: "⌘F", run: () => runEditorAction("actions.find") },
-      { id: "editor.replace", label: "Replace", shortcut: "⌥⌘F", run: () => runEditorAction("editor.action.startFindReplaceAction") },
-      { id: "editor.gotoLine", label: "Go to Line…", shortcut: "⌃G", run: () => runEditorAction("editor.action.gotoLine") },
-      { id: "editor.definition", label: "Go to Definition", shortcut: "F12", run: () => runEditorAction("editor.action.revealDefinition") },
-      { id: "editor.references", label: "Find All References", shortcut: "⇧F12", run: () => runEditorAction("editor.action.referenceSearch.trigger") },
-      { id: "editor.rename", label: "Rename Symbol", shortcut: "F2", run: () => runEditorAction("editor.action.rename") },
+      { id: "editor.format", label: "Format Document", shortcut: k("shift+alt+f"), run: () => runEditorAction("editor.action.formatDocument") },
+      { id: "editor.find", label: "Find", shortcut: k("mod+f"), run: () => runEditorAction("actions.find") },
+      {
+        id: "editor.replace",
+        label: "Replace",
+        shortcut: platform === "mac" ? k("mod+alt+f") : k("ctrl+h"),
+        run: () => runEditorAction("editor.action.startFindReplaceAction"),
+      },
+      { id: "editor.gotoLine", label: "Go to Line…", shortcut: k("ctrl+g"), run: () => runEditorAction("editor.action.gotoLine") },
+      { id: "editor.definition", label: "Go to Definition", shortcut: k("f12"), run: () => runEditorAction("editor.action.revealDefinition") },
+      { id: "editor.references", label: "Find All References", shortcut: k("shift+f12"), run: () => runEditorAction("editor.action.referenceSearch.trigger") },
+      { id: "editor.rename", label: "Rename Symbol", shortcut: k("f2"), run: () => runEditorAction("editor.action.rename") },
       { id: "editor.foldAll", label: "Fold All", run: () => runEditorAction("editor.foldAll") },
       { id: "editor.unfoldAll", label: "Unfold All", run: () => runEditorAction("editor.unfoldAll") },
       { id: "editor.minimap", label: "View: Toggle Minimap", run: () => setMinimap((on) => !on) },
-      { id: "editor.wordWrap", label: "View: Toggle Word Wrap", shortcut: "⌥Z", run: () => setWordWrap((on) => !on) },
+      { id: "editor.wordWrap", label: "View: Toggle Word Wrap", shortcut: k("alt+z"), run: () => setWordWrap((on) => !on) },
       {
         id: "theme.toggle",
         label: `Preferences: Switch to ${theme === "dark" ? "Light" : "Dark"} Theme`,
@@ -405,7 +415,7 @@ export function Workbench({
       { id: "nav.workspaces", label: "Go to Workspaces", run: () => router.push("/ide") },
       { id: "nav.chat", label: "Go to Chat", run: () => router.push("/chat") },
     ],
-    [closeTabs, newTerminal, router, runEditorAction, save, saveAll, setTheme, showView, theme, togglePanel],
+    [closeTabs, k, newTerminal, platform, router, runEditorAction, save, saveAll, setTheme, showView, theme, togglePanel],
   );
 
   // Workbench keyboard shortcuts. Ctrl-only chords are left to the shell when a terminal has focus.
@@ -479,14 +489,14 @@ export function Workbench({
           >
             <Search className="size-3.5" />
             <span className="truncate">Search files in {workspace.name}</span>
-            <kbd className="ml-auto font-sans">⌘P</kbd>
+            <Kbd combo="mod+p" className="ml-auto" />
           </button>
           <button
             type="button"
             onClick={() => setPalette("commands")}
             className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
             aria-label="Command palette"
-            title="Command palette (⇧⌘P)"
+            title={`Command palette (${k("mod+shift+p")})`}
           >
             <CommandIcon className="size-4" />
           </button>
@@ -540,7 +550,7 @@ export function Workbench({
               className={activityButton(sidebarOpen && view === "explorer")}
               onClick={() => (sidebarOpen && view === "explorer" ? setSidebarOpen(false) : showView("explorer"))}
               aria-label="Explorer"
-              title="Explorer (⇧⌘E)"
+              title={`Explorer (${k("mod+shift+e")})`}
             >
               <Files className="size-5" />
             </button>
@@ -549,7 +559,7 @@ export function Workbench({
               className={activityButton(sidebarOpen && view === "search")}
               onClick={() => (sidebarOpen && view === "search" ? setSidebarOpen(false) : showView("search"))}
               aria-label="Search"
-              title="Search (⇧⌘F)"
+              title={`Search (${k("mod+shift+f")})`}
             >
               <Search className="size-5" />
             </button>
@@ -558,7 +568,7 @@ export function Workbench({
               className={`${activityButton(panelOpen)} mt-auto`}
               onClick={() => togglePanel()}
               aria-label="Toggle panel"
-              title="Toggle panel (⌃`)"
+              title={`Toggle panel (${k("ctrl+`")})`}
             >
               <PanelBottom className="size-5" />
             </button>
@@ -798,13 +808,13 @@ function EmptyEditor({ onQuickOpen, onCommands, onTerminal }: { onQuickOpen: () 
   return (
     <div className="flex h-full flex-col items-center justify-center gap-1">
       <button type="button" className={row} onClick={onQuickOpen}>
-        Go to file <kbd className="font-sans text-xs">⌘P</kbd>
+        Go to file <Kbd combo="mod+p" />
       </button>
       <button type="button" className={row} onClick={onCommands}>
-        Show all commands <kbd className="font-sans text-xs">⇧⌘P</kbd>
+        Show all commands <Kbd combo="mod+shift+p" />
       </button>
       <button type="button" className={row} onClick={onTerminal}>
-        New terminal <kbd className="font-sans text-xs">⌃⇧`</kbd>
+        New terminal <Kbd combo="ctrl+shift+`" />
       </button>
     </div>
   );

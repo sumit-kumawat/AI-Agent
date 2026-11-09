@@ -43,9 +43,9 @@ export const AUTO_MODES = ["intelligence", "balance", "cost"] as const;
 export type AutoMode = (typeof AUTO_MODES)[number];
 
 export const AUTO_INFO: Record<AutoMode, { label: string; description: string }> = {
-  intelligence: { label: "Intelligence", description: "Strongest model for the task, even if slower" },
-  balance: { label: "Balance", description: "Good answers at a sensible speed" },
-  cost: { label: "Cost", description: "Smallest model that fits, fastest and lightest" },
+  intelligence: { label: "Intelligence", description: "Favours reasoning and answer quality for complex tasks, even if slower" },
+  balance: { label: "Balance", description: "Balances quality, speed and resource use" },
+  cost: { label: "Cost", description: "Smallest local model that fits the task: fastest and lightest" },
 };
 
 export const DEFAULT_SELECTION = "auto:balance";

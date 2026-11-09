@@ -217,7 +217,7 @@ export const attachments = sqliteTable(
     conversationId: text("conversation_id").references(() => conversations.id, { onDelete: "cascade" }),
     messageId: text("message_id"),
     name: text("name").notNull(),
-    kind: text("kind", { enum: ["image", "pdf", "docx", "xlsx", "csv", "text", "code"] }).notNull(),
+    kind: text("kind", { enum: ["image", "pdf", "docx", "xlsx", "pptx", "csv", "text", "code", "rtf", "zip"] }).notNull(),
     mime: text("mime").notNull(),
     size: integer("size").notNull(),
     sha256: text("sha256").notNull(),

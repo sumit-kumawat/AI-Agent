@@ -4,6 +4,7 @@ import { Check } from "lucide-react";
 import { useChatChrome } from "@/components/chat/chat-shell";
 import { Row, Segmented, Select, Toggle } from "@/components/settings/controls";
 import { ACCENTS, type Preferences } from "@/lib/preferences-schema";
+import { useShortcut } from "@/lib/shortcuts";
 
 const SWATCH: Record<Preferences["accent"], string> = {
   teal: "#10a37f",
@@ -35,6 +36,7 @@ const LANGUAGES = [
 
 export function GeneralTab() {
   const { prefs, updatePrefs } = useChatChrome();
+  const sendKey = useShortcut("mod+enter");
   return (
     <div>
       <Row label="Theme" description="System follows your device setting.">
@@ -114,7 +116,7 @@ export function GeneralTab() {
       </Row>
       <Row
         label="Enter sends the message"
-        description="When off, Enter adds a new line and Ctrl/⌘+Enter sends."
+        description={`When off, Enter adds a new line and ${sendKey} sends.`}
         htmlFor="settings-enter"
       >
         <Toggle

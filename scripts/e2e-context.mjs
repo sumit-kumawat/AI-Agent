@@ -195,8 +195,12 @@ try {
   const visible = await page.$eval("[data-role=assistant]", (node) => node.textContent);
   check(visible.includes(NO_BROWSING), "the fixed message is shown with the reply");
   const limitations = async () => {
-    await page.goto(`${base}/chat/models`, { waitUntil: "networkidle0" });
-    return page.$eval(`[data-installed-model="${MODEL}"] [data-limitations]`, (node) => node.textContent);
+    await page.goto(`${base}/chat`, { waitUntil: "networkidle0" });
+    await page.click('button[aria-label="Choose model"]');
+    await page.waitForSelector(`[data-model-option="${MODEL}"]`);
+    const text = await page.$eval(`[data-model-option="${MODEL}"]`, (node) => node.dataset.limitations);
+    await page.keyboard.press("Escape");
+    return text;
   };
   check(/Cannot visit websites/.test(await limitations()), "model descriptions say websites cannot be visited");
   setLinkReading(true);

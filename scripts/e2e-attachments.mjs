@@ -100,6 +100,27 @@ async function xlsx() {
   return Buffer.from(await book.xlsx.writeBuffer());
 }
 
+async function pptx(slides) {
+  const zip = new JSZip();
+  zip.file("[Content_Types].xml", '<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>');
+  zip.file("ppt/presentation.xml", '<?xml version="1.0" encoding="UTF-8"?><p:presentation xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"/>');
+  slides.forEach((text, index) =>
+    zip.file(
+      `ppt/slides/slide${index + 1}.xml`,
+      `<?xml version="1.0" encoding="UTF-8"?><p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><p:cSld><p:spTree><p:sp><p:txBody><a:p><a:r><a:t>${text}</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>`,
+    ),
+  );
+  return zip.generateAsync({ type: "nodebuffer" });
+}
+
+async function archive() {
+  const zip = new JSZip();
+  zip.file("project/config/settings.json", JSON.stringify({ name: "orchid", port: 8471 }, null, 2));
+  zip.file("project/README.md", "# Orchid\n\nA small service.");
+  zip.file("project/logo.png", png(8, 8, [0, 0, 255]));
+  return zip.generateAsync({ type: "nodebuffer" });
+}
+
 const filler = (n) =>
   Array.from({ length: n }, (_, i) => `Paragraph ${i + 1}. The committee discussed routine budget items, scheduling and minutes.`).join("\n\n");
 const longText = `${filler(300)}\n\nImportant: the warehouse access code is ZEBRA-7781 and it changes every quarter.\n\n${filler(300)}`;
@@ -114,6 +135,11 @@ const files = {
   "minutes.txt": Buffer.from(longText),
   "fake.png": Buffer.from("this is not really an image"),
   "tool.exe": Buffer.from("MZ binary"),
+  "deck.pptx": await pptx(["Roadmap 2027", "The launch date is 9 May."]),
+  "project.zip": await archive(),
+  "memo.rtf": Buffer.from("{\\rtf1\\ansi{\\fonttbl{\\f0 Arial;}}\\f0 The memo says the budget is approved.\\par Thanks.}"),
+  Dockerfile: Buffer.from("FROM node:22-alpine\nWORKDIR /app\n"),
+  "old.doc": Buffer.from("legacy"),
 };
 for (const [name, bytes] of Object.entries(files)) fs.writeFileSync(path.join(dir, name), bytes);
 const file = (name) => path.join(dir, name);
@@ -191,21 +217,30 @@ try {
 
   // Server-side validation and extraction.
   const results = {};
-  for (const name of ["report.pdf", "letter.docx", "budget.xlsx", "notes.csv", "util.py", "red.png"]) {
+  for (const name of ["report.pdf", "letter.docx", "budget.xlsx", "notes.csv", "util.py", "red.png", "deck.pptx", "project.zip", "memo.rtf", "Dockerfile"]) {
     results[name] = await apiUpload(name);
   }
   check(
     Object.values(results).every((result) => result.status === 201),
-    `PDF, Word, Excel, CSV, code and PNG uploads are accepted (${Object.entries(results).map(([n, r]) => `${n}:${r.status}`).join(", ")})`,
+    `PDF, Word, Excel, CSV, code, PNG, PowerPoint, ZIP, RTF and Dockerfile uploads are accepted (${Object.entries(results).map(([n, r]) => `${n}:${r.status}`).join(", ")})`,
   );
   check(results["report.pdf"].body?.attachment?.pages === 1 && results["report.pdf"].body.attachment.chars > 20, "PDF text and page count are extracted");
   check(results["letter.docx"].body?.attachment?.chars > 20, "Word text is extracted");
   check(results["budget.xlsx"].body?.attachment?.chars > 10, "spreadsheet cells are extracted");
   check(results["red.png"].body?.attachment?.kind === "image" && results["red.png"].body.attachment.mime === "image/png", "PNG is recognised by its bytes");
+  check(results["deck.pptx"].body?.attachment?.pages === 2 && results["deck.pptx"].body.attachment.chars > 20, "PowerPoint slide text and slide count are extracted");
+  check(
+    results["project.zip"].body?.attachment?.chars > 40 && /images, nested archives/.test(results["project.zip"].body.attachment.warning ?? ""),
+    "a ZIP is listed and its text files are read; the image inside is listed only",
+  );
+  check(results["memo.rtf"].body?.attachment?.chars > 20 && results["memo.rtf"].body.attachment.chars < 60, "RTF text is extracted without its markup");
+  check(results.Dockerfile.body?.attachment?.kind === "code", "files without an extension such as Dockerfile are read as code");
+  const legacy = await apiUpload("old.doc");
+  check(legacy.status === 422 && /Save it as \.docx/.test(legacy.body?.error ?? ""), `old formats say what to do instead (${legacy.body?.error})`);
   const fake = await apiUpload("fake.png");
   check(fake.status === 422 && /damaged or is not/i.test(fake.body?.error ?? ""), `a text file named .png is refused (${fake.status}: ${fake.body?.error})`);
   const exe = await apiUpload("tool.exe");
-  check(exe.status === 422 && /not supported/i.test(exe.body?.error ?? ""), `unsupported types are refused (${exe.body?.error})`);
+  check(exe.status === 422 && /cannot be attached/i.test(exe.body?.error ?? ""), `unsupported types are refused (${exe.body?.error})`);
   const pdfId = results["report.pdf"].body.attachment.id;
   const download = await page.evaluate(async (id) => {
     const response = await fetch(`/api/attachments/${id}`);
@@ -238,6 +273,9 @@ try {
   );
   const sendDisabled = await page.$eval('button[aria-label="Send message"]', (node) => node.disabled);
   check(sendDisabled, "send waits until failed files are removed or replaced");
+  const extensions = await page.$$eval("[data-attachment] [data-extension]", (nodes) => nodes.map((node) => node.dataset.extension).sort().join(","));
+  check(extensions === ".csv,.pdf,.png", `each card shows the file's extension (${extensions})`);
+  check(Boolean(await page.$('[data-upload-status="ready"]')), "ready files show their type and size");
   await shot("tray_error");
   await page.click('button[aria-label="Replace fake.png"]');
   const replaceInput = await page.$("[data-attachment-tray] input[type=file]");
@@ -290,6 +328,18 @@ try {
   const longReply = await lastReply();
   check(longReply.toUpperCase().includes("ZEBRA-7781"), `a long file is answered from its relevant section (${longReply.slice(0, 80)})`);
   check(/answered from \d+ of \d+ sections/.test(longReply), "the reply says it read only part of a long file");
+
+  // Several files at once, including a ZIP: the answer comes from a file inside the archive.
+  await openChatWith(model);
+  await (await page.$("input[data-file-input]")).uploadFile(file("project.zip"), file("deck.pptx"));
+  await waitReady(2);
+  await ask("Which port is set in settings.json inside the attached archive? Reply with just the number.");
+  await page.waitForFunction(() => location.pathname !== "/chat");
+  await waitIdle();
+  check((await lastReply()).includes("8471"), `a file inside a ZIP is read with other files (${(await lastReply()).slice(0, 80)})`);
+  await ask("What is the launch date in the attached presentation? Reply briefly.");
+  await waitIdle();
+  check(/9 May|May 9/i.test(await lastReply()), `the presentation is read in the same chat (${(await lastReply()).slice(0, 80)})`);
 
   // Images: refused for text-only models, read by a vision model.
   await openChatWith(model);

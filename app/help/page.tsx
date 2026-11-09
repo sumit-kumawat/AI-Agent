@@ -1,17 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-export const metadata: Metadata = { title: "Help" };
+import { AppLayout } from "@/components/app-layout";
+import { PageFrame } from "@/components/page-frame";
+import { ShortcutTable } from "@/components/shortcut-table";
+import { auth } from "@/lib/auth";
 
-const SHORTCUTS = [
-  ["⌘/Ctrl + K", "Search chats"],
-  ["⌘/Ctrl + Shift + O", "New chat"],
-  ["⌘/Ctrl + Shift + S", "Collapse or expand the sidebar"],
-  ["⌘/Ctrl + ,", "Open settings"],
-  ["Enter", "Send (configurable in Settings → General)"],
-  ["Shift + Enter", "New line"],
-  ["Esc", "Close a dialog or cancel an edit"],
-];
+export const metadata: Metadata = { title: "Help" };
+export const dynamic = "force-dynamic";
 
 const TOPICS = [
   {
@@ -36,7 +32,7 @@ const TOPICS = [
   },
   {
     title: "Models",
-    body: "The menu in the message box lists models that are actually available. Local models run on this server. Cloud models (marked Cloud) appear only after an admin has connected that provider and checked it, and only once you allow them. Allowing cloud models sends the conversation, your custom instructions and your saved memories to that provider.",
+    body: "The model menu in the message box lists Auto and the models your plan includes. Auto picks a model for each message using the optimisation chosen at the top right: Intelligence, Balance (the default) or Cost. Local models run on this server. Cloud models (marked Cloud) appear only after an admin has connected that provider and checked it, and only once you allow them. Allowing cloud models sends the conversation, your custom instructions and your saved memories to that provider.",
   },
   {
     title: "Your data",
@@ -44,16 +40,35 @@ const TOPICS = [
   },
 ];
 
-export default function HelpPage() {
+export default async function HelpPage() {
+  const session = await auth();
+  if (session?.user) {
+    return (
+      <AppLayout>
+        <PageFrame title="Help">
+          <HelpContent />
+        </PageFrame>
+      </AppLayout>
+    );
+  }
   return (
     <main className="mx-auto w-full max-w-3xl px-5 py-8">
-      <Link href="/chat" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+      <Link href="/login" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="size-4" />
-        Back to chat
+        Sign in
       </Link>
       <h1 className="mt-6 font-heading text-3xl">Help</h1>
+      <div className="mt-8">
+        <HelpContent />
+      </div>
+    </main>
+  );
+}
 
-      <section className="mt-8 grid gap-4">
+function HelpContent() {
+  return (
+    <>
+      <section className="grid gap-4">
         {TOPICS.map((topic) => (
           <article key={topic.title} className="rounded-2xl border bg-card p-5">
             <h2 className="font-medium">{topic.title}</h2>
@@ -64,22 +79,13 @@ export default function HelpPage() {
 
       <section className="mt-8">
         <h2 className="font-medium">Keyboard shortcuts</h2>
-        <dl className="mt-3 divide-y rounded-2xl border">
-          {SHORTCUTS.map(([keys, action]) => (
-            <div key={keys} className="flex items-center justify-between gap-4 px-4 py-2.5 text-sm">
-              <dt className="text-muted-foreground">{action}</dt>
-              <dd>
-                <kbd className="rounded-md border bg-muted px-2 py-0.5 font-mono text-xs">{keys}</kbd>
-              </dd>
-            </div>
-          ))}
-        </dl>
+        <ShortcutTable />
       </section>
 
       <section className="mt-8 rounded-2xl border bg-card p-5">
         <h2 className="font-medium">Contact</h2>
         <p className="mt-1.5 text-sm text-muted-foreground">For account or access problems, contact your administrator.</p>
       </section>
-    </main>
+    </>
   );
 }

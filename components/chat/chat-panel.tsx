@@ -8,6 +8,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { ChatTopBar, EditableTitle, useChatChrome } from "@/components/chat/chat-shell";
 import { useAttachments } from "@/components/chat/attachments";
 import { Composer } from "@/components/chat/composer";
+import { OptimisationSelector, useOptimisation } from "@/components/chat/optimisation";
 import { ContextMeter, useContextSnapshot } from "@/components/chat/context-meter";
 import { useConversationActions } from "@/components/chat/conversation-actions";
 import { AssistantMessage, UserMessage } from "@/components/chat/message";
@@ -172,6 +173,7 @@ export function ChatPanel({
       : null;
   const model = pickModel(models, prefs.cloudModels, picked, conversationKey, preferred);
   const selected = models.find((option) => option.key === model) ?? null;
+  const optimisation = useOptimisation(model, setPicked);
   useWarmModel(selected?.local ? selected.modelId : null);
   const [continuable, setContinuable] = useState(false);
 
@@ -308,7 +310,18 @@ export function ChatPanel({
             <EditableTitle key={title} id={conversationId} title={title} />
           )
         }
-        actions={temporary ? null : <ConversationMenu id={conversationId} title={title} pinned={pinned} />}
+        actions={
+          <>
+            <OptimisationSelector
+              mode={optimisation.mode}
+              auto={optimisation.auto}
+              onChange={optimisation.change}
+              onUseAuto={optimisation.switchToAuto}
+              disabled={busy}
+            />
+            {temporary ? null : <ConversationMenu id={conversationId} title={title} pinned={pinned} />}
+          </>
+        }
       />
       {archived ? (
         <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-3 px-4 pb-2 text-sm text-muted-foreground">
@@ -417,6 +430,7 @@ export function ChatPanel({
         models={models}
         model={model}
         onModelChange={setPicked}
+        mode={optimisation.mode}
         sendWithEnter={prefs.sendWithEnter}
         note={temporary ? "Temporary chat: not saved to history or memory." : undefined}
         files={files}

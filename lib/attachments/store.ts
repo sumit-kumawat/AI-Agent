@@ -7,6 +7,7 @@ import {
   kindForName,
   limitFor,
   MAX_FILES_PER_MESSAGE,
+  unsupportedReason,
   USER_STORAGE_BYTES,
   type AttachmentInfo,
 } from "@/lib/attachments/types";
@@ -88,7 +89,7 @@ export async function saveUpload(
 ) {
   const name = cleanName(file.name);
   const kind = kindForName(name);
-  if (!kind) throw new FileRejected(`${name}: this file type is not supported.`);
+  if (!kind) throw new FileRejected(unsupportedReason(name));
   const limit = limitFor(kind);
   if (file.bytes.length > limit) {
     throw new FileRejected(`${name} is ${formatBytes(file.bytes.length)}. The limit for this type is ${formatBytes(limit)}.`);

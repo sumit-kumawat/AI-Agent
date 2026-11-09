@@ -6,6 +6,7 @@ import { useState } from "react";
 import { ChatTopBar, useChatChrome } from "@/components/chat/chat-shell";
 import { useAttachments } from "@/components/chat/attachments";
 import { Composer } from "@/components/chat/composer";
+import { OptimisationSelector, useOptimisation } from "@/components/chat/optimisation";
 import { ContextMeter, useContextSnapshot } from "@/components/chat/context-meter";
 import { jsonFetch } from "@/components/chat/conversation-actions";
 import { pickModel, selectionBody, usePreferredModel, useWarmModel } from "@/components/chat/model-picker";
@@ -64,6 +65,7 @@ export function StartChat({ temporary }: { temporary: boolean }) {
   const [picked, setPicked] = useState<string | null>(null);
   const model = pickModel(models, prefs.cloudModels, picked, preferred);
   const selected = models.find((option) => option.key === model) ?? null;
+  const optimisation = useOptimisation(model, setPicked);
   useWarmModel(selected?.local ? selected.modelId : null);
   const [input, setInput] = useState("");
   const [pending, setPending] = useState(false);
@@ -99,6 +101,14 @@ export function StartChat({ temporary }: { temporary: boolean }) {
       <ChatTopBar
         title={temporary ? "Temporary chat" : null}
         actions={
+          <>
+          <OptimisationSelector
+            mode={optimisation.mode}
+            auto={optimisation.auto}
+            onChange={optimisation.change}
+            onUseAuto={optimisation.switchToAuto}
+            disabled={pending}
+          />
           <Button
             type="button"
             variant={temporary ? "secondary" : "ghost"}
@@ -111,6 +121,7 @@ export function StartChat({ temporary }: { temporary: boolean }) {
             <Timer />
             <span className="hidden sm:inline">Temporary</span>
           </Button>
+          </>
         }
       />
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:justify-center">
@@ -127,6 +138,7 @@ export function StartChat({ temporary }: { temporary: boolean }) {
             models={models}
             model={model}
             onModelChange={setPicked}
+            mode={optimisation.mode}
             error={error}
             sendWithEnter={prefs.sendWithEnter}
             note={temporary ? "Temporary chat: not saved to history or memory." : undefined}

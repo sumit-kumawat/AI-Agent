@@ -261,33 +261,53 @@ try {
   await page.waitForFunction(() => document.querySelector('section[aria-label="Pinned"]'));
   check(true, "pinned chat appears under Pinned");
 
-  // ⌘K no longer opens anything; search lives inline in the sidebar.
+  // Cmd/Ctrl+K opens a compact search; the sidebar and header stay as they are.
+  const chrome = () =>
+    page.evaluate(() => ({
+      sidebar: document.querySelector("aside[aria-label=Sidebar]")?.getBoundingClientRect().width ?? 0,
+      header: document.querySelector("[data-top-bar]")?.getBoundingClientRect().height ?? 0,
+    }));
+  const before = await chrome();
   await page.keyboard.down("Meta");
   await page.keyboard.press("k");
   await page.keyboard.up("Meta");
-  await sleep(300);
+  await page.waitForSelector("[data-search-dialog] input");
+  const during = await chrome();
   check(
-    !(await page.$('[role="dialog"]')) && !(await page.$('input[aria-label="Search chats"]')),
-    "⌘K opens no overlay",
+    during.sidebar === before.sidebar && during.header === before.header && before.sidebar > 200,
+    "⌘K opens search without hiding the sidebar or header",
   );
-  await page.evaluate(() =>
-    [...document.querySelectorAll("button")].find((node) => node.textContent?.includes("Search chats"))?.click(),
+  check(
+    await page.evaluate(() => ![...document.querySelectorAll("[data-state=open]")].some((node) => getComputedStyle(node).position === "fixed" && node.getBoundingClientRect().width >= window.innerWidth)),
+    "the search has no full-screen overlay",
   );
-  await page.waitForSelector("[data-chat-search] input");
-  await page.type("[data-chat-search] input", "hello");
+  check(
+    (await page.$eval("[data-search-dialog]", (node) => node.textContent)).includes("Recent chats"),
+    "empty search lists recent chats",
+  );
+  await page.type("[data-search-dialog] input", "hello");
   await page.waitForFunction(
-    (value) => document.querySelector("[data-chat-search]")?.textContent?.includes(value),
+    (value) => document.querySelector("[data-search-dialog]")?.textContent?.includes(value),
     {},
     title.slice(0, 20),
   );
-  check(true, "sidebar search finds a chat by message text");
+  check(true, "search finds a chat by message text");
   await shot("search");
-  await page.$eval("[data-chat-search] input", (node) => node.select());
-  await page.type("[data-chat-search] input", "zzqqxxnomatch");
-  await page.waitForFunction(() => document.querySelector("[data-chat-search]")?.textContent?.includes("No chats match"));
+  await page.$eval("[data-search-dialog] input", (node) => node.select());
+  await page.type("[data-search-dialog] input", "zzqqxxnomatch");
+  await page.waitForFunction(() => document.querySelector("[data-search-dialog]")?.textContent?.includes("No chats match"));
   check(true, "search shows an empty state");
   await page.keyboard.press("Escape");
-  await page.waitForSelector("[data-chat-search]", { hidden: true });
+  await page.waitForSelector("[data-search-dialog]", { hidden: true });
+  await page.evaluate(() =>
+    [...document.querySelectorAll("aside button")].find((node) => node.textContent?.includes("Search chats"))?.click(),
+  );
+  await page.waitForSelector("[data-search-dialog] input");
+  check(true, "the sidebar Search chats entry opens the same search");
+  await page.keyboard.press("Escape");
+  await page.waitForSelector("[data-search-dialog]", { hidden: true });
+  const label = await page.$eval("aside [data-shortcut]", (node) => node.textContent);
+  check(/⌘|Ctrl/.test(label ?? ""), `shortcut labels follow the visitor's OS (${label})`);
   await sleep(300);
 
   // Archive from the chat menu, restore from Settings → Data controls.

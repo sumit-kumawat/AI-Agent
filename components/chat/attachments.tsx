@@ -3,28 +3,30 @@
 import {
   AlertCircle,
   File,
+  FileArchive,
   FileCode,
   FileImage,
   FileSpreadsheet,
   FileText,
   Loader2,
+  Presentation,
   RefreshCw,
+  TriangleAlert,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
-  ACCEPT,
+  displayExtension,
   KIND_LABEL,
   kindForName,
   limitFor,
   MAX_FILES_PER_MESSAGE,
+  unsupportedReason,
   type AttachmentInfo,
   type AttachmentKind,
 } from "@/lib/attachments/types";
 import { formatBytes } from "@/lib/format";
-
-export { ACCEPT };
 
 export type PendingFile = {
   key: string;
@@ -127,7 +129,7 @@ export function useAttachments(initial: AttachmentInfo[] = []) {
         const key = crypto.randomUUID();
         const base = { key, name: file.name, size: file.size, kind, progress: 0 };
         if (!kind) {
-          next.push({ ...base, status: "error", error: "This file type is not supported." });
+          next.push({ ...base, status: "error", error: unsupportedReason(file.name) });
         } else if (file.size === 0) {
           next.push({ ...base, status: "error", error: "This file is empty." });
         } else if (file.size > limitFor(kind)) {
@@ -194,22 +196,55 @@ export function useAttachments(initial: AttachmentInfo[] = []) {
 
 export type Attachments = ReturnType<typeof useAttachments>;
 
+const KIND_STYLE: Record<AttachmentKind, { icon: typeof File; tone: string }> = {
+  image: { icon: FileImage, tone: "bg-violet-500/10 text-violet-600" },
+  pdf: { icon: FileText, tone: "bg-red-500/10 text-red-600" },
+  docx: { icon: FileText, tone: "bg-blue-500/10 text-blue-600" },
+  rtf: { icon: FileText, tone: "bg-blue-500/10 text-blue-600" },
+  xlsx: { icon: FileSpreadsheet, tone: "bg-emerald-500/10 text-emerald-600" },
+  csv: { icon: FileSpreadsheet, tone: "bg-emerald-500/10 text-emerald-600" },
+  pptx: { icon: Presentation, tone: "bg-orange-500/10 text-orange-600" },
+  text: { icon: FileText, tone: "bg-slate-500/10 text-slate-600" },
+  code: { icon: FileCode, tone: "bg-amber-500/10 text-amber-700" },
+  zip: { icon: FileArchive, tone: "bg-yellow-500/10 text-yellow-700" },
+};
+
 export function KindIcon({ kind, className }: { kind: AttachmentKind | null; className?: string }) {
-  const Icon =
-    kind === "image"
-      ? FileImage
-      : kind === "xlsx" || kind === "csv"
-        ? FileSpreadsheet
-        : kind === "code"
-          ? FileCode
-          : kind === "pdf" || kind === "docx" || kind === "text"
-            ? FileText
-            : File;
+  const Icon = kind ? KIND_STYLE[kind].icon : File;
   return <Icon className={className} />;
 }
 
+/** A coloured tile with the file-type icon. */
+export function KindTile({ kind }: { kind: AttachmentKind | null }) {
+  return (
+    <span className={`flex size-10 shrink-0 items-center justify-center rounded-lg ${kind ? KIND_STYLE[kind].tone : "bg-muted text-muted-foreground"}`}>
+      <KindIcon kind={kind} className="size-5" />
+    </span>
+  );
+}
+
+/** The file name with its extension always visible, even when the rest is cut short. */
+export function FileName({ name, className = "" }: { name: string; className?: string }) {
+  const extension = displayExtension(name);
+  const stem = extension ? name.slice(0, -extension.length) : name;
+  return (
+    <span className={`relative flex min-w-0 text-sm font-medium ${className}`} title={name}>
+      <span className="sr-only">{name}</span>
+      <span className="truncate" aria-hidden>
+        {stem}
+      </span>
+      {extension ? (
+        <span className="shrink-0" data-extension={extension} aria-hidden>
+          {extension}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
 function describe(kind: AttachmentKind | null, size: number, pages?: number | null) {
-  return [kind ? KIND_LABEL[kind] : "File", pages ? `${pages} page${pages === 1 ? "" : "s"}` : null, formatBytes(size)]
+  const unit = kind === "pptx" ? "slide" : "page";
+  return [kind ? KIND_LABEL[kind] : "File", pages ? `${pages} ${unit}${pages === 1 ? "" : "s"}` : null, formatBytes(size)]
     .filter(Boolean)
     .join(" · ");
 }
@@ -223,7 +258,6 @@ export function AttachmentTray({ files, disabled }: { files: Attachments; disabl
       <input
         ref={replaceInput}
         type="file"
-        accept={ACCEPT}
         className="hidden"
         onChange={(event) => {
           const file = event.target.files?.[0];
@@ -243,30 +277,27 @@ export function AttachmentTray({ files, disabled }: { files: Attachments; disabl
             // eslint-disable-next-line @next/next/no-img-element -- local blob or same-origin preview
             <img src={item.preview} alt="" className="size-10 shrink-0 rounded-lg object-cover" />
           ) : (
-            <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted">
-              <KindIcon kind={item.kind} className="size-5 text-muted-foreground" />
-            </span>
+            <KindTile kind={item.kind} />
           )}
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium" title={item.name}>
-              {item.name}
-            </p>
+            <FileName name={item.name} />
             {item.status === "error" ? (
               <p className="flex items-center gap-1 text-xs text-destructive" role="alert" title={item.error}>
-                <AlertCircle className="size-3 shrink-0" />
-                <span className="truncate">{item.error}</span>
+                <AlertCircle className="mt-0.5 size-3 shrink-0 self-start" />
+                <span className="line-clamp-2">{item.error}</span>
               </p>
             ) : item.status === "uploading" ? (
-              <div className="mt-1.5 flex items-center gap-2" aria-label={`Uploading ${Math.round(item.progress * 100)}%`}>
-                <div className="h-1 flex-1 overflow-hidden rounded-full bg-muted">
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground" data-upload-status={item.progress >= 1 ? "reading" : "uploading"}>
+                <Loader2 className="size-3 shrink-0 animate-spin" />
+                <span className="shrink-0">{item.progress >= 1 ? "Reading…" : `${Math.round(item.progress * 100)}%`}</span>
+                <div className="h-1 min-w-6 flex-1 overflow-hidden rounded-full bg-muted">
                   <div className="h-full rounded-full bg-primary transition-[width]" style={{ width: `${Math.max(4, item.progress * 100)}%` }} />
                 </div>
-                <Loader2 className="size-3 animate-spin text-muted-foreground" />
               </div>
             ) : (
-              <p className="truncate text-xs text-muted-foreground" title={item.info?.warning ?? undefined}>
-                {item.info?.warning ? "⚠ " : ""}
-                {describe(item.kind, item.size, item.info?.pages)}
+              <p className="flex items-center gap-1 text-xs text-muted-foreground" title={item.info?.warning ?? undefined} data-upload-status="ready">
+                {item.info?.warning ? <TriangleAlert className="size-3 shrink-0 text-amber-600" aria-label="Note" /> : null}
+                <span className="truncate">{describe(item.kind, item.size, item.info?.pages)}</span>
               </p>
             )}
           </div>
@@ -328,14 +359,12 @@ export function MessageAttachments({ files }: { files: AttachmentInfo[] }) {
             className="flex w-56 items-center gap-2.5 rounded-2xl border bg-background p-2 hover:bg-muted"
             title={file.warning ? `${file.name}\n${file.warning}` : file.name}
           >
-            <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted">
-              <KindIcon kind={file.kind} className="size-5 text-muted-foreground" />
-            </span>
+            <KindTile kind={file.kind} />
             <span className="min-w-0 text-left">
-              <span className="block truncate text-sm font-medium">{file.name}</span>
-              <span className="block truncate text-xs text-muted-foreground">
-                {file.warning ? "⚠ " : ""}
-                {describe(file.kind, file.size, file.pages)}
+              <FileName name={file.name} />
+              <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                {file.warning ? <TriangleAlert className="size-3 shrink-0 text-amber-600" aria-label="Note" /> : null}
+                <span className="truncate">{describe(file.kind, file.size, file.pages)}</span>
               </span>
             </span>
           </a>

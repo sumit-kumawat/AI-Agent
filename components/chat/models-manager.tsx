@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { Check, Download, Search, Trash } from "lucide-react";
-import { ChatTopBar, useChatChrome } from "@/components/chat/chat-shell";
+import { useChatChrome } from "@/components/chat/chat-shell";
 import { setPreferredModel, usePreferredModel, type ModelOption } from "@/components/chat/model-picker";
 import { contextLabel, formatK } from "@/lib/models/capabilities";
 import { useFeedback } from "@/components/feedback";
@@ -199,13 +199,15 @@ export function ModelsManager({
   }
 
   return (
-    <div className="flex h-full flex-col">
-      <ChatTopBar
-        title="Models"
-        detail={admin ? "Download, choose, and remove models" : "Choose the model for new chats"}
-      />
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-        <div className="mx-auto w-full max-w-5xl space-y-10 px-3 py-6 sm:px-6">
+    <div>
+      <div className="mb-6">
+        <h1 className="font-heading text-3xl">Models</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Installed local models with what Ollama reports about them, downloads from the library, and removal. Which plans may use each model is set under Plans.
+        </p>
+      </div>
+      <div>
+        <div className="space-y-10">
           {ollamaError ? (
             <p className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm">
               {ollamaError}

@@ -1,4 +1,4 @@
-import type { AttachmentKind } from "@/lib/attachments/types";
+import { kindForName, type AttachmentKind } from "@/lib/attachments/types";
 import { inspectZip } from "@/lib/attachments/zip";
 
 /** Text kept per file. Longer documents are marked truncated; the assistant is told. */
@@ -137,6 +137,129 @@ async function readXlsx(buffer: Buffer) {
   return { text: sheets.join("\n\n"), sheets: workbook.worksheets.length, clipped };
 }
 
+function xmlText(xml: string) {
+  return xml
+    .replace(/<\/a:p>/g, "\n")
+    .replace(/<a:t[^>]*>([^<]*)<\/a:t>/g, "$1\u0000")
+    .replace(/<[^>]+>/g, "")
+    .replaceAll("\u0000", "")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&");
+}
+
+async function readPptx(buffer: Buffer) {
+  checkOffice(buffer, "ppt/presentation.xml", "presentation");
+  const { default: JSZip } = await import("jszip");
+  try {
+    const zip = await withTimeout(JSZip.loadAsync(buffer), "This presentation");
+    const number = (path: string) => Number(/(\d+)\.xml$/.exec(path)?.[1] ?? 0);
+    const slides = Object.keys(zip.files)
+      .filter((path) => /^ppt\/slides\/slide\d+\.xml$/.test(path))
+      .sort((a, b) => number(a) - number(b));
+    const parts: string[] = [];
+    for (const path of slides) {
+      const body = xmlText(await zip.file(path)!.async("string")).trim();
+      const notesPath = `ppt/notesSlides/notesSlide${number(path)}.xml`;
+      const notes = zip.file(notesPath) ? xmlText(await zip.file(notesPath)!.async("string")).trim() : "";
+      parts.push(`[Slide ${number(path)}]\n${body}${notes ? `\nSpeaker notes: ${notes}` : ""}`);
+    }
+    return { text: parts.join("\n\n"), slides: slides.length };
+  } catch (error) {
+    if (error instanceof FileRejected) throw error;
+    throw new FileRejected("This presentation is damaged and could not be read.");
+  }
+}
+
+/** Plain text from RTF: control words and groups such as fonts and pictures are dropped. */
+function rtfText(source: string) {
+  if (!source.startsWith("{\\rtf")) throw new FileRejected("This file is not valid RTF.");
+  const out: string[] = [];
+  const skip: boolean[] = [false];
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index]!;
+    if (char === "{") {
+      skip.push(skip.at(-1)!);
+      continue;
+    }
+    if (char === "}") {
+      if (skip.length > 1) skip.pop();
+      continue;
+    }
+    if (char === "\\") {
+      const rest = source.slice(index + 1);
+      const word = /^([a-z]+)(-?\d+)? ?/i.exec(rest);
+      if (word) {
+        index += word[0].length;
+        const name = word[1]!;
+        if (["fonttbl", "colortbl", "stylesheet", "info", "pict", "header", "footer", "object"].includes(name)) skip[skip.length - 1] = true;
+        else if (!skip.at(-1) && (name === "par" || name === "line")) out.push("\n");
+        else if (!skip.at(-1) && name === "tab") out.push("\t");
+        else if (!skip.at(-1) && name === "u" && word[2]) out.push(String.fromCharCode(Number(word[2]) & 0xffff));
+        continue;
+      }
+      const hex = /^'([0-9a-f]{2})/i.exec(rest);
+      if (hex) {
+        if (!skip.at(-1)) out.push(String.fromCharCode(parseInt(hex[1]!, 16)));
+        index += 3;
+        continue;
+      }
+      if (rest[0] === "*") skip[skip.length - 1] = true;
+      else if (!skip.at(-1) && rest[0]) out.push(rest[0]);
+      index += 1;
+      continue;
+    }
+    if (!skip.at(-1) && char !== "\r" && char !== "\n") out.push(char);
+  }
+  return out.join("");
+}
+
+const ZIP_MAX_ENTRIES = 300;
+const ZIP_MAX_READ = 60;
+const ZIP_ENTRY_BYTES = 20 * 1024 * 1024;
+
+/** Lists a ZIP and reads the supported files inside it, one level deep. */
+async function readZip(buffer: Buffer) {
+  const listing = inspectZip(buffer);
+  if (!listing.ok) throw new FileRejected("This ZIP file is damaged or is not really a ZIP file.");
+  if (listing.uncompressed > MAX_UNZIPPED_BYTES) throw new FileRejected("This ZIP expands to more than 200 MB and cannot be read.");
+  if (listing.entries.length > ZIP_MAX_ENTRIES) throw new FileRejected(`This ZIP has more than ${ZIP_MAX_ENTRIES} entries.`);
+  const { default: JSZip } = await import("jszip");
+  let zip: InstanceType<typeof JSZip>;
+  try {
+    zip = await withTimeout(JSZip.loadAsync(buffer), "This ZIP");
+  } catch (error) {
+    if (error instanceof FileRejected) throw error;
+    throw new FileRejected("This ZIP is damaged or password-protected.");
+  }
+  const files = Object.values(zip.files).filter((entry) => !entry.dir && !/(^|\/)(__MACOSX|\.DS_Store)/.test(entry.name));
+  const sections: string[] = [];
+  const skipped: string[] = [];
+  let read = 0;
+  for (const entry of files) {
+    const kind = kindForName(entry.name);
+    if (!kind || kind === "zip" || kind === "image" || read >= ZIP_MAX_READ) {
+      skipped.push(entry.name);
+      continue;
+    }
+    try {
+      const bytes = Buffer.from(await withTimeout(entry.async("uint8array"), "This ZIP"));
+      if (bytes.length > ZIP_ENTRY_BYTES) throw new FileRejected("too large");
+      const inner = await extract(kind, bytes);
+      if (inner.text) {
+        sections.push(`[File in archive: ${entry.name}]\n${inner.text}`);
+        read += 1;
+      } else skipped.push(entry.name);
+    } catch {
+      skipped.push(entry.name);
+    }
+  }
+  const header = `[Archive contents: ${files.length} file${files.length === 1 ? "" : "s"}]\n${files.map((entry) => `- ${entry.name}`).join("\n")}`;
+  return { text: [header, ...sections].join("\n\n"), read, skipped: skipped.length, total: files.length };
+}
+
 /**
  * Checks that the bytes match the claimed type and pulls out the text the
  * assistant can read. Throws FileRejected with a message for the person.
@@ -144,6 +267,36 @@ async function readXlsx(buffer: Buffer) {
 export async function extract(kind: AttachmentKind, buffer: Buffer): Promise<Extracted> {
   if (buffer.length === 0) throw new FileRejected("This file is empty.");
   switch (kind) {
+    case "pptx": {
+      const deck = await readPptx(buffer);
+      const capped = cap(deck.text);
+      return {
+        mime: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        ...capped,
+        pages: deck.slides,
+        warning: capped.text.replace(/\[Slide \d+\]/g, "").trim() ? (capped.truncated ? "Very long; only the first part can be read." : null) : "This presentation has no text.",
+      };
+    }
+    case "rtf": {
+      const decoded = buffer.toString("latin1");
+      const capped = cap(rtfText(decoded));
+      return { mime: "application/rtf", ...capped, pages: null, warning: capped.text ? null : "This document has no text." };
+    }
+    case "zip": {
+      const archive = await readZip(buffer);
+      const capped = cap(archive.text);
+      return {
+        mime: "application/zip",
+        ...capped,
+        pages: null,
+        warning:
+          archive.read === 0
+            ? "No readable files inside; only the file list can be used."
+            : archive.skipped
+              ? `Read ${archive.read} of ${archive.total} files; images, nested archives and unsupported files are listed only.`
+              : null,
+      };
+    }
     case "image": {
       const match = IMAGE_SIGNATURES.find((signature) => signature.test(buffer));
       if (!match) throw new FileRejected("This image is damaged or is not a PNG, JPEG, GIF or WebP file.");

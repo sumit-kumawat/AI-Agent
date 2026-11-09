@@ -3,9 +3,10 @@
 import { ArrowUp, Lock, Paperclip, Square, Telescope, X } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { ACCEPT, AttachmentTray, type Attachments } from "@/components/chat/attachments";
+import { AttachmentTray, type Attachments } from "@/components/chat/attachments";
+import { SUPPORTED_SUMMARY } from "@/lib/attachments/types";
 import { ModelPicker, type ModelOption } from "@/components/chat/model-picker";
-import { autoModeOf } from "@/lib/model-ref";
+import { autoModeOf, type AutoMode } from "@/lib/model-ref";
 import type { UsageSummary } from "@/lib/plans/types";
 import type { ResearchStatus } from "@/components/chat/research";
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,7 @@ export function Composer({
   research,
   locked,
   meter,
+  mode,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -42,7 +44,7 @@ export function Composer({
   model: string | null;
   onModelChange: (name: string) => void;
   error?: string | null;
-  /** When false, Enter inserts a newline and Ctrl/⌘+Enter sends. */
+  /** When false, Enter inserts a newline and Cmd/Ctrl+Enter sends. */
   sendWithEnter?: boolean;
   note?: string;
   /** Enables attaching files. */
@@ -53,6 +55,8 @@ export function Composer({
   locked?: UsageSummary["locked"];
   /** The context meter, shown beside the send button. */
   meter?: ReactNode;
+  /** The optimisation mode Auto uses. */
+  mode?: AutoMode;
 }) {
   const files = locked?.attachments ? undefined : attachments;
   const textarea = useRef<HTMLTextAreaElement>(null);
@@ -132,7 +136,7 @@ export function Composer({
         }`}
         data-dragging={dragging || undefined}
       >
-        {files ? <AttachmentTray files={files} disabled={busy || pending} /> : null}
+        {files ? <AttachmentTray files={files} disabled={pending} /> : null}
         <textarea
           ref={textarea}
           value={value}
@@ -164,7 +168,6 @@ export function Composer({
                   ref={picker}
                   type="file"
                   multiple
-                  accept={ACCEPT}
                   className="hidden"
                   data-file-input
                   onChange={(event) => {
@@ -178,13 +181,26 @@ export function Composer({
                   size="icon"
                   className="size-9 shrink-0 rounded-full text-muted-foreground"
                   aria-label="Attach files"
-                  title="Attach files (PDF, Word, Excel, CSV, text, code, images)"
-                  disabled={busy || pending}
+                  title={`Attach files: ${SUPPORTED_SUMMARY}. You can also drop or paste them.`}
+                  disabled={pending}
                   onClick={() => picker.current?.click()}
                 >
                   <Paperclip />
                 </Button>
               </>
+            ) : attachments && locked?.attachments ? (
+              <Button
+                asChild
+                variant="ghost"
+                size="icon"
+                className="size-9 shrink-0 rounded-full text-muted-foreground"
+                data-attachments-locked={locked.attachments.requiredPlan?.id ?? ""}
+                title={locked.attachments.message}
+              >
+                <Link href={`/plans?highlight=${locked.attachments.requiredPlan?.id ?? ""}`} aria-label={`Attach files: ${locked.attachments.message}`}>
+                  <Paperclip />
+                </Link>
+              </Button>
             ) : null}
             {research && locked?.research ? (
               <Button
@@ -226,7 +242,7 @@ export function Composer({
                 {researching ? <X className="size-3.5" aria-hidden /> : null}
               </Button>
             ) : null}
-            <ModelPicker models={models} value={model} onChange={onModelChange} disabled={busy} compact />
+            <ModelPicker models={models} value={model} onChange={onModelChange} disabled={busy} compact mode={mode} />
           </div>
           {meter}
           {busy ? (

@@ -196,7 +196,13 @@ headless Chrome, including a fake SearXNG that returns a private address
 
 ### Model selection
 
-- **Auto** is the default: `Auto · Balance`. Each turn is classified from the
+- **Two controls.** The model picker in the composer offers Auto plus the
+  models the user's plan allows, each with capability labels and its
+  limitations on hover. The optimisation selector at the top right of the chat
+  (Intelligence, Balance, Cost; Balance by default, stored in `harbor-mode`)
+  decides how Auto routes; with a manually chosen model it is kept for when
+  Auto is turned back on.
+- **Auto** is the default: Auto with Balance. Each turn is classified from the
   latest message, its files and the length of the chat (`lib/models/router.ts`):
   coding, reasoning or general, with a 0–1 complexity score. Models are scored
   from their parameter count, what they were trained for (coder, reasoning,
@@ -209,16 +215,28 @@ headless Chrome, including a fake SearXNG that returns a private address
   - **Cost** takes the lightest model that fits, e.g. `gemma3:1b` for chat
     or `qwen2.5-coder:1.5b` for code.
   - Images always go to a model that can read them (`gemma3:4b`).
-- **Manual**: any installed model can be picked from the same menu, which
-  has search, groups (General, Reasoning, Coding, Cloud), capability badges and
-  whether the model is in memory. Only installed models, or cloud models that
-  passed their last check, are listed.
+- **Manual**: any installed model the plan allows can be picked from the same
+  menu, which has search, groups (General, Reasoning, Coding, Cloud) and
+  capability badges. Only installed models, or cloud models that passed their
+  last check, are listed. Downloading, removing and configuring models is in
+  the admin panel (`/admin/models`, `/admin/agents`); `/api/models` refuses
+  those changes from non-admins, and `/chat/models` redirects.
 - **Switching** keeps the conversation: history is stored on the server and
   sent to whichever model answers next. A chat remembers its Auto mode
   (`conversations.model_mode`), each reply says which model answered and why,
   and every automatic choice is recorded in `model_selections` (migration 10).
-- **⌘K** no longer opens a search overlay; "Search chats" in the sidebar opens
-  an inline search over titles and messages. ⇧⌘O, ⇧⌘S and ⌘, still work.
+- **Cmd/Ctrl+K** (or "Search chats" in the sidebar) opens a compact search
+  panel over titles and messages with recent chats when empty. It has no
+  backdrop, the sidebar and header stay as they are, and Escape returns to the
+  page. Shortcut labels are chosen in the browser from the visitor's OS
+  (`lib/shortcuts.ts`): ⌘ and ⇧ on macOS, Ctrl and Shift elsewhere.
+
+### Layout
+
+Every signed-in page, including admin, Help, Plans, Usage and the IDE
+workspace list, renders inside the same shell: the fixed sidebar and a header
+bar, with one scrolling content column. On `/admin` the sidebar's chat list is
+replaced by the admin sections.
 
 `npm run e2e:models` checks the menu and sends real turns in each mode.
 

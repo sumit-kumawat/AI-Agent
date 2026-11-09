@@ -92,7 +92,7 @@ export default async function AdminAgentsPage() {
       <Section
         title="Model availability"
         description="Disabled models disappear from every user's picker and are rejected by the chat API."
-        actions={<Link href="/chat/models" className="text-sm underline">Download more models</Link>}
+        actions={<Link href="/admin/models" className="text-sm underline">Download more models</Link>}
       >
         <TableCard>
           {!inventory.ok ? (

@@ -136,24 +136,43 @@ try {
   const trigger = 'button[aria-label="Choose model"]';
   check(
     (await page.$eval(trigger, (node) => node.dataset.modelSelection)) === "auto:balance",
-    "Auto · Balance is the default selection",
+    "Auto with Balance is the default selection",
   );
-  check((await page.$eval(trigger, (node) => node.textContent)).includes("Auto · Balance"), "trigger shows Auto · Balance");
+  const optimisation = "[data-optimisation]";
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const chooseMode = async (mode) => {
+    await page.waitForSelector("[data-optimisation-option]", { hidden: true });
+    await page.click(optimisation);
+    const option = await page.waitForSelector(`[data-optimisation-option="${mode}"]`, { visible: true });
+    await sleep(150);
+    await option.click();
+    await page.waitForSelector("[data-optimisation-option]", { hidden: true });
+  };
+  check(
+    (await page.$eval(trigger, (node) => node.textContent.trim())) === "Auto" &&
+      (await page.$eval(optimisation, (node) => node.dataset.optimisation)) === "balance",
+    "the model picker shows Auto and the separate optimisation selector shows Balance",
+  );
+  const headerHasSelector = await page.$eval(optimisation, (node) => !node.closest("form"));
+  check(headerHasSelector, "the optimisation selector sits in the header, not inside the composer");
+  await page.click(optimisation);
+  await page.waitForSelector("[data-optimisation-option]");
+  const modes = await page.$$eval("[data-optimisation-option]", (nodes) => nodes.map((node) => node.dataset.optimisationOption));
+  check(modes.join(",") === "intelligence,balance,cost", "optimisation offers Intelligence, Balance and Cost");
+  await page.keyboard.press("Escape");
   await page.click(trigger);
   await page.waitForSelector('[role=listbox][aria-label="Models"]');
   const options = await page.$$eval("[data-model-option]", (nodes) => nodes.map((node) => node.dataset.modelOption));
-  check(
-    ["auto:intelligence", "auto:balance", "auto:cost"].every((key) => options.includes(key)),
-    "Auto offers Intelligence, Balance and Cost",
-  );
+  check(options.filter((key) => key.startsWith("auto")).join(",") === "auto", "the model picker has one Auto entry, not the modes");
   const missing = wanted.filter((name) => !options.includes(name));
   check(missing.length === 0, `all 8 local models are listed${missing.length ? ` (missing ${missing.join(", ")})` : ""}`);
-  const notInstalled = options.filter((name) => !name.startsWith("auto:") && !installed.models.includes(name));
+  const notInstalled = options.filter((name) => name !== "auto" && !installed.models.includes(name));
   check(notInstalled.length === 0, "only installed models are listed as selectable");
   check(
-    (await page.$eval('[data-model-option="auto:balance"]', (node) => node.getAttribute("aria-selected"))) === "true",
+    (await page.$eval('[data-model-option="auto"]', (node) => node.getAttribute("aria-selected"))) === "true",
     "the current selection is marked",
   );
+  check(!(await page.$('[role=listbox][aria-label="Models"] a[href="/chat/models"]')), "customers get no model management link");
   const groupOf = (name) =>
     page.$eval(`[data-model-option="${name}"]`, (node) => node.closest("[role=group]")?.getAttribute("aria-label"));
   check((await groupOf("qwen2.5-coder:14b")) === "Coding", "coder models are grouped under Coding");
@@ -204,16 +223,24 @@ try {
   await page.keyboard.press("Backspace");
   await page.keyboard.press("ArrowDown");
   check(
-    (await page.evaluate(() => document.activeElement?.dataset.modelOption)) === "auto:intelligence",
+    (await page.evaluate(() => document.activeElement?.dataset.modelOption)) === "auto",
     "arrow keys move from search into the list",
   );
   await page.click('[data-model-option="llama3.2:1b"]');
   await page.waitForFunction(() => document.querySelector('button[aria-label="Choose model"]')?.textContent?.includes("llama3.2:1b"));
-  check(true, "manual selection updates the trigger");
+  check(
+    (await page.$eval(optimisation, (node) => node.dataset.optimisationActive)) === "false",
+    "manual selection updates the trigger and marks the optimisation as applying to Auto only",
+  );
+  await chooseMode("cost");
+  check((await page.$eval(trigger, (node) => node.dataset.modelSelection)).includes("llama3.2:1b"), "changing the mode keeps a manual model");
   await page.click(trigger);
-  await page.click('[data-model-option="auto:cost"]');
-  await page.waitForFunction(() => document.querySelector('button[aria-label="Choose model"]')?.textContent?.includes("Auto · Cost"));
-  check(true, "switching back to Auto works");
+  await page.click('[data-model-option="auto"]');
+  await page.waitForFunction(() => document.querySelector('button[aria-label="Choose model"]')?.dataset.modelSelection === "auto:cost");
+  check(true, "switching back to Auto uses the chosen mode (Cost)");
+  await chooseMode("balance");
+  await page.waitForFunction(() => document.querySelector('button[aria-label="Choose model"]')?.dataset.modelSelection === "auto:balance");
+  check(true, "with Auto on, the optimisation selector changes the routing mode");
 
   // ---------- routing ----------
   const quick = "Say hello in one word.";
@@ -268,7 +295,8 @@ try {
   // The chat remembers its Auto mode.
   await page.goto(`${base}/chat/${intelligence.conversationId}`, { waitUntil: "networkidle0" });
   check(
-    (await page.$eval(trigger, (node) => node.textContent)).includes("Auto · Intelligence"),
+    (await page.$eval(trigger, (node) => node.dataset.modelSelection)) === "auto:intelligence" &&
+      (await page.$eval(optimisation, (node) => node.dataset.optimisation)) === "intelligence",
     "a chat reopens in the Auto mode it used",
   );
   check(

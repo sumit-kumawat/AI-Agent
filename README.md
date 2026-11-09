@@ -162,7 +162,7 @@ Rate limits are kept in memory. That is correct for one server process. If you r
 | `app/api/register/route.ts` | Creates a user |
 | `app/api/health/route.ts` | Health check |
 | `app/api/models` | List, download, remove, and preload models |
-| `app/chat/models` | Models page and library |
+| `app/admin/models` | Models page and library (admin) |
 | `lib/model-catalog.ts` | The 1B to 70B model library |
 | `app/api/auth/[...nextauth]/route.ts` | Auth.js handlers |
 | `lib/auth.config.ts` | Session settings with no database access |
