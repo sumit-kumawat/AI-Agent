@@ -125,18 +125,21 @@ export function usageByModel(period: Period) {
   return db.all<{
     model: string;
     agentId: string;
+    providerId: string | null;
     calls: number;
     tokens: number;
+    costMicro: number | null;
     avgMs: number;
     errors: number;
     blocked: number;
   }>(sql`
-    SELECT model, agent_id AS agentId, COUNT(*) AS calls, SUM(total_tokens) AS tokens,
+    SELECT model, agent_id AS agentId, provider_id AS providerId, COUNT(*) AS calls,
+           SUM(total_tokens) AS tokens, SUM(cost_micro) AS costMicro,
            CAST(AVG(CASE WHEN status = 'ok' THEN duration_ms END) AS INTEGER) AS avgMs,
            SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS errors,
            SUM(CASE WHEN status = 'blocked' THEN 1 ELSE 0 END) AS blocked
     FROM usage_events WHERE created_at >= ${since}
-    GROUP BY model, agent_id ORDER BY calls DESC
+    GROUP BY model, agent_id, provider_id ORDER BY calls DESC
   `);
 }
 

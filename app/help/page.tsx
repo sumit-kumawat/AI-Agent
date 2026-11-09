@@ -37,6 +37,10 @@ const TOPICS = [
     body: "In Settings → Personalization, tell the assistant what to call you, what you do, and how to respond, and pick a personality and answer length. These apply to every new reply while custom instructions are on.",
   },
   {
+    title: "Models",
+    body: "The menu in the message box lists models that are actually available. Local models run on this server. Cloud models (marked Cloud) appear only after an admin has connected that provider and checked it, and only once you allow them. Allowing cloud models sends the conversation, your custom instructions and your saved memories to that provider.",
+  },
+  {
     title: "Your data",
     body: "Export everything you own as JSON from Settings → Data controls. You can delete all chats there, and delete your account from Settings → Account. Administrators cannot read your chats without recording a reason in the audit log.",
   },

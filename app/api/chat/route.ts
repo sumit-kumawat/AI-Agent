@@ -22,7 +22,8 @@ import { addMemory, explicitMemory, MemoryError, relevantMemories } from "@/lib/
 import { findBlockedKeyword } from "@/lib/moderation";
 import { getPreferences } from "@/lib/preferences";
 import { buildInstructions } from "@/lib/prompt";
-import { findInstalled, getChatModel, getUserInventory, resolveModel } from "@/lib/ollama";
+import { noteProviderFailure, resolveChatTarget } from "@/lib/providers/catalog";
+import { costMicro, languageModel, safeProviderError } from "@/lib/providers/engine";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
 import { getSettings } from "@/lib/settings";
 import { textFromParts } from "@/lib/text";
@@ -111,24 +112,27 @@ export async function POST(request: Request) {
 
   // Everything below that can reject runs before history is touched, so a
   // refused request never rewrites the stored conversation.
-  const inventory = await getUserInventory();
-  const requested = parsed.data.model;
-  if (inventory.ok && requested && !findInstalled(inventory.models, requested)) {
-    return Response.json(
-      { error: `Model "${requested}" is not available. Pick another model.` },
-      { status: 400 },
-    );
+  const prefs = getPreferences(user.id);
+  const resolved = await resolveChatTarget({
+    requestedProvider: parsed.data.providerId,
+    requestedModel: parsed.data.model,
+    conversationProvider: conversation.providerId,
+    conversationModel: conversation.model,
+    allowCloud: prefs.cloudModels,
+  });
+  if (!resolved.ok) {
+    return Response.json({ error: resolved.error }, { status: resolved.status });
   }
-  const modelName = inventory.ok
-    ? resolveModel(inventory.models, requested, conversation.model)
-    : null;
+  const chosen = resolved.target.model;
+  const modelName = chosen.modelId;
 
   if (findBlockedKeyword(latestUser.content)) {
     recordUsage({
       userId: user.id,
       conversationId: conversation.id,
       agentId: AGENT_ID,
-      model: modelName ?? "none",
+      model: modelName,
+      providerId: chosen.providerId,
       inputTokens: 0,
       outputTokens: 0,
       durationMs: 0,
@@ -156,7 +160,7 @@ export async function POST(request: Request) {
       userId: user.id,
       userEmail: user.email,
       conversationId: conversation.id,
-      model: modelName ?? "unknown",
+      model: modelName,
     },
     request.signal,
   );
@@ -167,7 +171,6 @@ export async function POST(request: Request) {
   syncTranscript(conversation.id, transcript, { replace: parsed.data.edit === true });
   maybeSetTitle(conversation.id, conversation.title, latestUser.content);
 
-  const prefs = getPreferences(user.id);
   const remembering = !conversation.temporary && prefs.memoryEnabled;
   let savedMemory: string | undefined;
   const fact = remembering && transcript.at(-1)?.role === "user" ? explicitMemory(latestUser.content) : null;
@@ -189,15 +192,16 @@ export async function POST(request: Request) {
     temporary: conversation.temporary,
   });
 
-  if (!inventory.ok || !modelName) {
-    agent.end();
-    return Response.json(
-      { error: inventory.ok ? "No chat models are available. Ask an admin to enable one." : inventory.error },
-      { status: 503 },
-    );
+  if (modelName !== conversation.model || (conversation.providerId ?? "ollama") !== chosen.providerId) {
+    setConversationModel(conversation.id, modelName, chosen.providerId);
   }
-  if (modelName !== conversation.model) {
-    setConversationModel(conversation.id, modelName);
+
+  let chatModel: ReturnType<typeof languageModel>;
+  try {
+    chatModel = languageModel(chosen.providerId, modelName);
+  } catch (error) {
+    agent.end();
+    return Response.json({ error: safeProviderError(chosen.providerId, error) }, { status: 503 });
   }
 
   const cleanMessages: UIMessage[] = transcript.map((message) => ({
@@ -218,11 +222,13 @@ export async function POST(request: Request) {
   const meta: ChatMessageMeta = {
     createdAt: startedAt,
     model: modelName,
+    provider: chosen.providerName,
+    ...(resolved.target.fallbackFrom ? { fallbackFrom: resolved.target.fallbackFrom.name } : {}),
     ...(savedMemory ? { memory: savedMemory } : {}),
   };
 
   const result = streamText({
-    model: getChatModel(modelName),
+    model: chatModel,
     instructions,
     messages: modelMessages,
     maxOutputTokens: 4096,
@@ -241,8 +247,12 @@ export async function POST(request: Request) {
       onError: (error) => {
         failed = true;
         agent.end();
-        console.error("Ollama stream failed", error);
-        return `${modelName} stopped responding. Check that Ollama is running, or pick a smaller model.`;
+        noteProviderFailure(chosen.providerId);
+        const detail = safeProviderError(chosen.providerId, error);
+        console.error("Chat stream failed", chosen.providerId, modelName, detail);
+        return chosen.local
+          ? `${modelName} stopped responding. Check that Ollama is running, or pick a smaller model.`
+          : `${chosen.providerName} did not respond. ${detail}`;
       },
       onFinish: async ({ responseMessage, isAborted }) => {
         agent.end();
@@ -259,7 +269,12 @@ export async function POST(request: Request) {
           saveAssistantMessage(conversation.id, {
             id: responseMessage.id || crypto.randomUUID(),
             content,
-            meta: { model: meta.model, memory: meta.memory },
+            meta: {
+              model: meta.model,
+              provider: meta.provider,
+              fallbackFrom: meta.fallbackFrom,
+              memory: meta.memory,
+            },
           });
         } catch (error) {
           console.error("Failed to save the assistant reply", error);
@@ -271,8 +286,15 @@ export async function POST(request: Request) {
             conversationId: conversation.id,
             agentId: AGENT_ID,
             model: modelName,
+            providerId: chosen.providerId,
             inputTokens: usage?.inputTokens ?? estimateTokens(promptChars),
             outputTokens: usage?.outputTokens ?? estimateTokens(content.length),
+            costMicro: costMicro(
+              chosen.providerId,
+              modelName,
+              usage?.inputTokens ?? estimateTokens(promptChars),
+              usage?.outputTokens ?? estimateTokens(content.length),
+            ),
             durationMs: Date.now() - startedAt,
             status: failed ? "error" : isAborted ? "aborted" : "ok",
           });

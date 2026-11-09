@@ -19,6 +19,9 @@
     "db:push": "drizzle-kit push"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.140",
+    "@ai-sdk/google": "^3.0.143",
+    "@ai-sdk/openai": "^3.0.139",
     "@ai-sdk/openai-compatible": "^3.0.86",
     "@ai-sdk/react": "^4.0.168",
     "@monaco-editor/react": "^4.7.0",

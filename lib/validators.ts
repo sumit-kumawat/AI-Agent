@@ -49,9 +49,12 @@ export const modelNameSchema = z
   .max(200)
   .regex(/^[a-z0-9][a-z0-9._\-/]*(:[a-z0-9._\-]+)?$/i, "Not a valid model name.");
 
+export const providerIdSchema = z.string().regex(/^[a-z0-9][a-z0-9-]{0,40}$/);
+
 export const chatRequestSchema = z.object({
   conversationId: z.uuid(),
   model: modelNameSchema.optional(),
+  providerId: providerIdSchema.optional(),
   /** The user edited an earlier message, so the stored thread is replaced from that point. */
   edit: z.boolean().optional(),
   messages: z

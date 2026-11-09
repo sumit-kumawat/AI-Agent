@@ -1,24 +1,38 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { disabledModelNames } from "@/lib/db/queries";
 import { env } from "@/lib/env";
+import { getOllamaBaseOverride } from "@/lib/providers/store";
 
 export function ollamaRoot() {
-  return env.OLLAMA_BASE_URL.replace(/\/$/, "").replace(/\/v1$/, "");
+  let override = "";
+  try {
+    override = getOllamaBaseOverride() ?? "";
+  } catch {
+    override = "";
+  }
+  return (override || env.OLLAMA_BASE_URL).replace(/\/$/, "").replace(/\/v1$/, "");
 }
 
 export function getModelName() {
   return env.OLLAMA_MODEL;
 }
 
-export const ollama = createOpenAICompatible({
-  name: "ollama",
-  baseURL: `${ollamaRoot()}/v1`,
-  apiKey: process.env.OLLAMA_API_KEY ?? "ollama",
-  includeUsage: true,
-});
+const clients = new Map<string, ReturnType<typeof createOpenAICompatible>>();
 
+/** A client for the current Ollama address, so an admin base-URL change takes effect. */
 export function getChatModel(name: string) {
-  return ollama.chatModel(name);
+  const baseURL = `${ollamaRoot()}/v1`;
+  let client = clients.get(baseURL);
+  if (!client) {
+    client = createOpenAICompatible({
+      name: "ollama",
+      baseURL,
+      apiKey: process.env.OLLAMA_API_KEY ?? "ollama",
+      includeUsage: true,
+    });
+    clients.set(baseURL, client);
+  }
+  return client.chatModel(name);
 }
 
 export type InstalledModel = {

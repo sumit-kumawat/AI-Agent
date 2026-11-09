@@ -45,6 +45,8 @@ export const preferencesSchema = z.object({
   memoryEnabled: z.boolean().catch(true),
   referenceHistory: z.boolean().catch(true),
   sendWithEnter: z.boolean().catch(true),
+  /** The user agreed that cloud models may receive their chats, instructions and memories. */
+  cloudModels: z.boolean().catch(false),
 });
 
 export type Preferences = z.infer<typeof preferencesSchema>;
@@ -66,6 +68,7 @@ export const preferencesPatchSchema = z
     memoryEnabled: z.boolean(),
     referenceHistory: z.boolean(),
     sendWithEnter: z.boolean(),
+    cloudModels: z.boolean(),
   })
   .partial()
   .strict();

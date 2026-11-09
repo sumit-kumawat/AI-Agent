@@ -229,6 +229,7 @@ export function AssistantMessage({
   createdAt,
   model,
   memory,
+  note,
   feedback = null,
   persisted = false,
   onRegenerate,
@@ -241,6 +242,7 @@ export function AssistantMessage({
   createdAt?: number;
   model?: string;
   memory?: string;
+  note?: string;
   feedback?: 1 | -1 | null;
   /** The reply is saved, so it can be rated. */
   persisted?: boolean;
@@ -250,6 +252,7 @@ export function AssistantMessage({
   const { openSettings } = useChatChrome();
   return (
     <div className="group flex flex-col gap-1" data-role="assistant">
+      {note ? <p className="mb-1 text-xs text-muted-foreground">{note}</p> : null}
       {memory ? (
         <button
           type="button"

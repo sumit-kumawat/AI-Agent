@@ -101,6 +101,18 @@ export function GeneralTab() {
         />
       </Row>
       <Row
+        label="Allow cloud models"
+        description="Off by default. Turning it on lets a chat send your messages, custom instructions and saved memories to a provider an admin has connected, such as OpenAI."
+        htmlFor="settings-cloud"
+      >
+        <Toggle
+          id="settings-cloud"
+          label="Allow cloud models"
+          checked={prefs.cloudModels}
+          onChange={(cloudModels) => void updatePrefs({ cloudModels })}
+        />
+      </Row>
+      <Row
         label="Enter sends the message"
         description="When off, Enter adds a new line and Ctrl/⌘+Enter sends."
         htmlFor="settings-enter"

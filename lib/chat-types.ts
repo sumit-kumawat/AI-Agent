@@ -4,6 +4,9 @@ import type { UIMessage } from "ai";
 export type ChatMessageMeta = {
   createdAt?: number;
   model?: string;
+  provider?: string;
+  /** Set when a failing provider was replaced by the configured fallback. */
+  fallbackFrom?: string;
   /** The fact saved to memory by the user message this replies to. */
   memory?: string;
   feedback?: 1 | -1 | null;

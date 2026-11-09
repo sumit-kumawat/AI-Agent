@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   Activity,
   Bot,
+  Cloud,
   Code,
   LayoutDashboard,
   MessagesSquare,
@@ -17,6 +18,7 @@ const LINKS = [
   { href: "/admin/users", label: "Users", icon: Users },
   { href: "/admin/usage", label: "Usage", icon: Activity },
   { href: "/admin/agents", label: "Agents & models", icon: Bot },
+  { href: "/admin/providers", label: "Providers", icon: Cloud },
   { href: "/admin/settings", label: "Settings", icon: Settings },
   { href: "/admin/conversations", label: "Conversations", icon: MessagesSquare },
   { href: "/ide", label: "IDE", icon: Code },

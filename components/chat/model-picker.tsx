@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { useEffect, useSyncExternalStore } from "react";
-import { Boxes, ChevronDown } from "lucide-react";
+import { Boxes, ChevronDown, Cloud } from "lucide-react";
+import { useChatChrome } from "@/components/chat/chat-shell";
+import { useFeedback } from "@/components/feedback";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -15,9 +17,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { formatBytes } from "@/lib/format";
-import type { InstalledModel } from "@/lib/ollama";
+import { parseModelRef, type ModelOption } from "@/lib/model-ref";
 
-export type ModelOption = Pick<InstalledModel, "name" | "parameterSize" | "size">;
+export type { ModelOption };
 
 const STORAGE_KEY = "harbor-model";
 const CHANGE_EVENT = "harbor-model-change";
@@ -53,17 +55,29 @@ export function setPreferredModel(name: string) {
   window.dispatchEvent(new Event(CHANGE_EVENT));
 }
 
-/** First candidate that is installed, else the first installed model. */
+function matches(model: ModelOption, candidate: string) {
+  if (model.key === candidate) return true;
+  const ref = parseModelRef(candidate);
+  if (!ref || ref.providerId !== model.providerId) return false;
+  return (
+    model.modelId === ref.modelId ||
+    model.modelId === `${ref.modelId}:latest` ||
+    ref.modelId === `${model.modelId}:latest`
+  );
+}
+
+/** First candidate the user may use. Cloud models are skipped until they are allowed. */
 export function pickModel(
   models: ModelOption[],
+  allowCloud: boolean,
   ...candidates: (string | null | undefined)[]
 ) {
   for (const candidate of candidates) {
-    if (candidate && models.some((model) => model.name === candidate)) {
-      return candidate;
-    }
+    if (!candidate) continue;
+    const match = models.find((model) => matches(model, candidate));
+    if (match && (match.local || allowCloud)) return match.key;
   }
-  return models[0]?.name ?? null;
+  return models.find((model) => model.local)?.key ?? (allowCloud ? (models[0]?.key ?? null) : null);
 }
 
 /** Asks the server to load the model so the first reply starts quickly. */
@@ -92,6 +106,26 @@ export function ModelPicker({
   /** Borderless trigger that opens upward, for use inside the composer. */
   compact?: boolean;
 }) {
+  const { prefs, updatePrefs } = useChatChrome();
+  const { confirm } = useFeedback();
+  const current = models.find((model) => model.key === value);
+
+  async function choose(key: string) {
+    const option = models.find((model) => model.key === key);
+    if (!option) return;
+    if (!option.local && !prefs.cloudModels) {
+      const ok = await confirm({
+        title: `Send chats to ${option.providerName}?`,
+        description: `Messages in this chat, your custom instructions and your saved memories will be sent to ${option.providerName}. They leave this server.`,
+        confirmLabel: "Allow",
+      });
+      if (!ok) return;
+      if (!(await updatePrefs({ cloudModels: true }))) return;
+    }
+    setPreferredModel(key);
+    onChange(key);
+  }
+
   if (models.length === 0) {
     return (
       <Button
@@ -122,7 +156,7 @@ export function ModelPicker({
           }
           aria-label="Choose model"
         >
-          <span className="truncate">{value ?? "Choose model"}</span>
+          <span className="truncate">{current?.name ?? "Choose model"}</span>
           <ChevronDown className="opacity-60" />
         </Button>
       </DropdownMenuTrigger>
@@ -131,24 +165,24 @@ export function ModelPicker({
         side={compact ? "top" : "bottom"}
         className="w-72 max-w-[calc(100vw-1.5rem)]"
       >
-        <DropdownMenuLabel className="text-xs text-muted-foreground">
-          Installed models
-        </DropdownMenuLabel>
-        <DropdownMenuRadioGroup
-          value={value ?? ""}
-          onValueChange={(name) => {
-            setPreferredModel(name);
-            onChange(name);
-          }}
-        >
-          {models.map((model) => (
-            <DropdownMenuRadioItem key={model.name} value={model.name} className="py-2">
-              <span className="min-w-0 flex-1 truncate">{model.name}</span>
-              <span className="shrink-0 text-xs text-muted-foreground">
-                {model.parameterSize ?? formatBytes(model.size)}
-              </span>
-            </DropdownMenuRadioItem>
-          ))}
+        <DropdownMenuRadioGroup value={value ?? ""} onValueChange={(key) => void choose(key)}>
+          {models.map((model, index) => {
+            const header = index === 0 || models[index - 1]?.providerId !== model.providerId;
+            return (
+              <div key={model.key}>
+                {header ? (
+                  <DropdownMenuLabel className="text-xs text-muted-foreground">{model.providerName}</DropdownMenuLabel>
+                ) : null}
+                <DropdownMenuRadioItem value={model.key} className="py-2">
+                  {model.local ? null : <Cloud className="size-3.5 text-muted-foreground" />}
+                  <span className="min-w-0 flex-1 truncate">{model.name}</span>
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    {model.local ? (model.parameterSize ?? (formatBytes(model.size) || "Local")) : "Cloud"}
+                  </span>
+                </DropdownMenuRadioItem>
+              </div>
+            );
+          })}
         </DropdownMenuRadioGroup>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild className="py-2">

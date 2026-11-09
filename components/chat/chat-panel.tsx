@@ -10,6 +10,7 @@ import { Composer } from "@/components/chat/composer";
 import { useConversationActions } from "@/components/chat/conversation-actions";
 import { AssistantMessage, UserMessage } from "@/components/chat/message";
 import { pickModel, usePreferredModel, useWarmModel } from "@/components/chat/model-picker";
+import { modelKey } from "@/lib/model-ref";
 import { Greeting } from "@/components/chat/start-chat";
 import { Button } from "@/components/ui/button";
 import {
@@ -125,6 +126,7 @@ export function ChatPanel({
   conversationId,
   title,
   conversationModel,
+  conversationProvider,
   pinned,
   archived,
   temporary,
@@ -133,6 +135,7 @@ export function ChatPanel({
   conversationId: string;
   title: string;
   conversationModel: string | null;
+  conversationProvider: string | null;
   pinned: boolean;
   archived: boolean;
   temporary: boolean;
@@ -143,8 +146,12 @@ export function ChatPanel({
   const actions = useConversationActions();
   const preferred = usePreferredModel();
   const [picked, setPicked] = useState<string | null>(null);
-  const model = pickModel(models, picked, conversationModel, preferred, defaultModel);
-  useWarmModel(model);
+  const conversationKey = conversationModel
+    ? modelKey(conversationProvider ?? "ollama", conversationModel)
+    : null;
+  const model = pickModel(models, prefs.cloudModels, picked, conversationKey, preferred, defaultModel);
+  const selected = models.find((option) => option.key === model) ?? null;
+  useWarmModel(selected?.local ? selected.modelId : null);
   const [continuable, setContinuable] = useState(false);
 
   const transport = useMemo(
@@ -182,7 +189,10 @@ export function ChatPanel({
   const sentDraft = useRef(false);
   const { scroller, content, atBottom, scrollToBottom } = useStickToBottom();
   const busy = status === "submitted" || status === "streaming";
-  const requestBody = useMemo(() => (model ? { model } : {}), [model]);
+  const requestBody = useMemo(
+    () => (selected ? { model: selected.modelId, providerId: selected.providerId } : {}),
+    [selected],
+  );
 
   // The server names the chat from the first message; show it while the reply streams.
   const untitled = title === "New chat";
@@ -293,6 +303,11 @@ export function ChatPanel({
                     createdAt={meta.createdAt}
                     model={meta.model}
                     memory={meta.memory}
+                    note={
+                      meta.fallbackFrom
+                        ? `${meta.fallbackFrom} was unavailable, so this reply came from ${meta.model ?? "the fallback model"}.`
+                        : undefined
+                    }
                     feedback={meta.feedback ?? null}
                     persisted={!(last && busy)}
                     onRegenerate={last && !busy ? retry : undefined}

@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { ChatShell } from "@/components/chat/chat-shell";
 import { isAdmin } from "@/lib/admin";
 import { findUserById, listConversations, quotaState } from "@/lib/db/queries";
-import { checkOllama, getUserInventory, resolveModel } from "@/lib/ollama";
+import { listSelectableModels, preferredModel } from "@/lib/providers/catalog";
 import { getPreferences } from "@/lib/preferences";
 import { requireUser } from "@/lib/session";
 
@@ -16,10 +16,7 @@ export default async function ChatLayout({
   const sessionUser = await requireUser();
   const user = findUserById(sessionUser.id!);
   if (!user) redirect("/login");
-  const [inventory, ollama] = await Promise.all([getUserInventory(), checkOllama()]);
-  const models = inventory.ok
-    ? inventory.models.map(({ name, parameterSize, size }) => ({ name, parameterSize, size }))
-    : [];
+  const catalog = await listSelectableModels();
   const quota = quotaState(user.id);
 
   return (
@@ -34,10 +31,10 @@ export default async function ChatLayout({
         usage: { used: quota?.used ?? 0, limit: quota?.limit ?? null },
       }}
       preferences={getPreferences(user.id)}
-      models={models}
-      defaultModel={inventory.ok ? resolveModel(inventory.models) : null}
+      models={catalog.models}
+      defaultModel={preferredModel(catalog.models)?.key ?? null}
       admin={isAdmin(user)}
-      ollamaMessage={ollama.ok ? null : ollama.error}
+      ollamaMessage={catalog.warning}
     >
       {children}
     </ChatShell>

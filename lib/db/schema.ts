@@ -1,4 +1,4 @@
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, primaryKey, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 // Tables are created and upgraded by ./migrate.ts on startup. Keep the two in sync.
 
@@ -33,6 +33,8 @@ export const conversations = sqliteTable(
       .references(() => users.id, { onDelete: "cascade" }),
     title: text("title").notNull(),
     model: text("model"),
+    /** Which provider `model` belongs to. Null on chats from before providers existed (Ollama). */
+    providerId: text("provider_id"),
     pinnedAt: integer("pinned_at"),
     archivedAt: integer("archived_at"),
     /** Temporary chats stay out of history, search and memory. */
@@ -109,6 +111,9 @@ export const usageEvents = sqliteTable("usage_events", {
   outputTokens: integer("output_tokens").notNull().default(0),
   totalTokens: integer("total_tokens").notNull().default(0),
   durationMs: integer("duration_ms").notNull().default(0),
+  providerId: text("provider_id"),
+  /** Estimated cost in millionths of a US dollar. Null when the model has no price. */
+  costMicro: integer("cost_micro"),
   status: text("status", { enum: ["ok", "aborted", "error", "blocked"] }).notNull(),
   createdAt: integer("created_at").notNull(),
 });
@@ -142,6 +147,40 @@ export const agentConfig = sqliteTable("agent_config", {
   maxConcurrency: integer("max_concurrency").notNull().default(4),
   updatedAt: integer("updated_at").notNull(),
 });
+
+export const providers = sqliteTable("providers", {
+  id: text("id").primaryKey(),
+  kind: text("kind", { enum: ["ollama", "openai", "anthropic", "google", "compatible"] }).notNull(),
+  name: text("name").notNull(),
+  baseUrl: text("base_url"),
+  /** AES-256-GCM ciphertext. Never send this to the browser. */
+  apiKeyEnc: text("api_key_enc"),
+  /** Last four characters of the key, safe to display. */
+  apiKeyHint: text("api_key_hint"),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(false),
+  healthOk: integer("health_ok", { mode: "boolean" }),
+  healthAt: integer("health_at"),
+  healthError: text("health_error"),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+export const providerModels = sqliteTable(
+  "provider_models",
+  {
+    providerId: text("provider_id")
+      .notNull()
+      .references(() => providers.id, { onDelete: "cascade" }),
+    modelId: text("model_id").notNull(),
+    enabled: integer("enabled", { mode: "boolean" }).notNull().default(false),
+    /** False when the provider's last check no longer lists this model. */
+    available: integer("available", { mode: "boolean" }).notNull().default(true),
+    inputPerMillion: real("input_per_million"),
+    outputPerMillion: real("output_per_million"),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.providerId, table.modelId] })],
+);
 
 export const modelConfig = sqliteTable("model_config", {
   name: text("name").primaryKey(),

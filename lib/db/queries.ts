@@ -111,13 +111,21 @@ export function recordUsage(event: {
   outputTokens: number;
   durationMs: number;
   status: "ok" | "aborted" | "error" | "blocked";
+  providerId?: string | null;
+  costMicro?: number | null;
 }) {
   const total = event.inputTokens + event.outputTokens;
   const now = Date.now();
   const period = currentQuotaPeriod();
   db.transaction((tx) => {
     tx.insert(usageEvents)
-      .values({ ...event, totalTokens: total, createdAt: now })
+      .values({
+        ...event,
+        providerId: event.providerId ?? null,
+        costMicro: event.costMicro ?? null,
+        totalTokens: total,
+        createdAt: now,
+      })
       .run();
     tx.update(users)
       .set({
@@ -421,6 +429,7 @@ export function createConversation(
   userId: string,
   model: string | null = null,
   temporary = false,
+  providerId: string | null = null,
 ) {
   const now = Date.now();
   const id = crypto.randomUUID();
@@ -430,6 +439,7 @@ export function createConversation(
       userId,
       title: temporary ? "Temporary chat" : "New chat",
       model,
+      providerId,
       temporary,
       createdAt: now,
       updatedAt: now,
@@ -438,9 +448,9 @@ export function createConversation(
   return { id, title: temporary ? "Temporary chat" : "New chat", model, temporary, updatedAt: now };
 }
 
-export function setConversationModel(id: string, model: string) {
+export function setConversationModel(id: string, model: string, providerId: string | null) {
   db.update(conversations)
-    .set({ model })
+    .set({ model, providerId })
     .where(eq(conversations.id, id))
     .run();
 }

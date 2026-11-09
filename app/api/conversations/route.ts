@@ -5,8 +5,8 @@ import {
   listArchivedConversations,
   listConversations,
 } from "@/lib/db/queries";
-import { findInstalled, getUserInventory } from "@/lib/ollama";
-import { modelNameSchema } from "@/lib/validators";
+import { listSelectableModels } from "@/lib/providers/catalog";
+import { modelNameSchema, providerIdSchema } from "@/lib/validators";
 
 export const runtime = "nodejs";
 
@@ -20,6 +20,7 @@ export const GET = handler(async (request) => {
 
 const createSchema = z.object({
   model: modelNameSchema.optional(),
+  providerId: providerIdSchema.optional(),
   temporary: z.boolean().optional(),
 });
 
@@ -27,11 +28,23 @@ export const POST = handler(async (request) => {
   const user = await apiUser(request);
   const body = await parseBody(request, createSchema);
   let model: string | null = null;
+  let providerId: string | null = null;
   if (body.model) {
-    const inventory = await getUserInventory();
-    model = inventory.ok ? (findInstalled(inventory.models, body.model)?.name ?? null) : null;
+    const { models } = await listSelectableModels();
+    const wantedProvider = body.providerId ?? "ollama";
+    const match = models.find(
+      (option) =>
+        option.providerId === wantedProvider &&
+        (option.modelId === body.model ||
+          option.modelId === `${body.model}:latest` ||
+          body.model === `${option.modelId}:latest`),
+    );
+    if (match) {
+      model = match.modelId;
+      providerId = match.providerId;
+    }
   }
-  return Response.json(createConversation(user.id, model, body.temporary ?? false), {
+  return Response.json(createConversation(user.id, model, body.temporary ?? false, providerId), {
     status: 201,
   });
 });

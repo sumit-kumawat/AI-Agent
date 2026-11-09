@@ -31,6 +31,14 @@ export function formatBytes(bytes: number) {
 }
 
 /** 1234 -> "1.2K", 2500000 -> "2.5M". */
+/** `costMicro` is millionths of a US dollar. Null means the model has no price set. */
+export function formatUsdMicro(micro: number | null | undefined) {
+  if (micro === null || micro === undefined) return "—";
+  const usd = micro / 1_000_000;
+  if (usd === 0) return "$0.00";
+  return usd < 0.01 ? `$${usd.toFixed(4)}` : `$${usd.toFixed(2)}`;
+}
+
 export function formatCompact(value: number | null | undefined) {
   return new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(value ?? 0);
 }

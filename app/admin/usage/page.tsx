@@ -25,7 +25,7 @@ import {
   usageTimeline,
   type Period,
 } from "@/lib/db/admin-queries";
-import { formatCompact, formatDateTime, formatNumber } from "@/lib/format";
+import { formatCompact, formatDateTime, formatNumber, formatUsdMicro } from "@/lib/format";
 
 export const metadata = { title: "Usage" };
 
@@ -53,6 +53,7 @@ export default async function AdminUsagePage({
   const limits = rateLimitLog(limitPage);
   const totalTokens = timeline.reduce((sum, row) => sum + row.tokens, 0);
   const totalCalls = timeline.reduce((sum, row) => sum + row.calls, 0);
+  const totalCost = byModel.reduce((sum, row) => sum + (row.costMicro ?? 0), 0);
   const peak = Math.max(1, ...timeline.map((row) => row.tokens));
 
   return (
@@ -79,9 +80,10 @@ export default async function AdminUsagePage({
         }
       />
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <StatCard label="Tokens" value={formatCompact(totalTokens)} hint={range.label} />
         <StatCard label="Model calls" value={formatNumber(totalCalls)} />
+        <StatCard label="Estimated cost" value={formatUsdMicro(totalCost)} hint="From model prices" />
         <StatCard label="Active users" value={formatNumber(byUser.total)} />
         <StatCard
           label="Avg tokens per call"
@@ -161,20 +163,22 @@ export default async function AdminUsagePage({
               <TableHeader>
                 <TableRow>
                   <TableHead className="pl-4">Model</TableHead>
-                  <TableHead>Agent</TableHead>
+                  <TableHead>Provider</TableHead>
                   <TableHead className="text-right">Calls</TableHead>
                   <TableHead className="text-right">Tokens</TableHead>
+                  <TableHead className="text-right">Cost</TableHead>
                   <TableHead className="text-right">Avg reply</TableHead>
                   <TableHead className="pr-4 text-right">Errors / blocked</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {byModel.map((row) => (
-                  <TableRow key={`${row.agentId}:${row.model}`}>
+                  <TableRow key={`${row.providerId ?? ""}:${row.agentId}:${row.model}`}>
                     <TableCell className="pl-4 font-mono text-xs">{row.model}</TableCell>
-                    <TableCell className="text-muted-foreground">{row.agentId}</TableCell>
+                    <TableCell className="text-muted-foreground">{row.providerId ?? row.agentId}</TableCell>
                     <TableCell className="text-right tabular-nums">{formatNumber(row.calls)}</TableCell>
                     <TableCell className="text-right tabular-nums">{formatNumber(row.tokens)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{formatUsdMicro(row.costMicro)}</TableCell>
                     <TableCell className="text-right tabular-nums">
                       {row.avgMs ? `${(row.avgMs / 1000).toFixed(1)}s` : "–"}
                     </TableCell>

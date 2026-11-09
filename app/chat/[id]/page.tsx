@@ -26,6 +26,7 @@ export default async function ConversationPage({ params }: PageProps<"/chat/[id]
       conversationId={conversation.id}
       title={conversation.title}
       conversationModel={conversation.model}
+      conversationProvider={conversation.providerId}
       pinned={conversation.pinnedAt !== null}
       archived={conversation.archivedAt !== null}
       temporary={conversation.temporary}

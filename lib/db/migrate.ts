@@ -223,6 +223,48 @@ const MIGRATIONS: ((sqlite: Sqlite) => void)[] = [
         SELECT content, id, conversation_id FROM messages;
     `);
   },
+
+  // 6: model providers. Keys are stored encrypted by the app; this migration
+  // only adds the columns. Ollama starts enabled so existing chats keep working.
+  (sqlite) => {
+    addColumn(sqlite, "conversations", "provider_id", "TEXT");
+    addColumn(sqlite, "usage_events", "provider_id", "TEXT");
+    addColumn(sqlite, "usage_events", "cost_micro", "INTEGER");
+    const now = Date.now();
+    sqlite.exec(`
+      CREATE TABLE IF NOT EXISTS providers (
+        id TEXT PRIMARY KEY,
+        kind TEXT NOT NULL,
+        name TEXT NOT NULL,
+        base_url TEXT,
+        api_key_enc TEXT,
+        api_key_hint TEXT,
+        enabled INTEGER NOT NULL DEFAULT 0,
+        health_ok INTEGER,
+        health_at INTEGER,
+        health_error TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS provider_models (
+        provider_id TEXT NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
+        model_id TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 0,
+        available INTEGER NOT NULL DEFAULT 1,
+        input_per_million REAL,
+        output_per_million REAL,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (provider_id, model_id)
+      );
+    `);
+    const seed = sqlite.prepare(
+      `INSERT OR IGNORE INTO providers (id, kind, name, enabled, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+    );
+    seed.run("ollama", "ollama", "Ollama", 1, now, now);
+    seed.run("openai", "openai", "OpenAI", 0, now, now);
+    seed.run("anthropic", "anthropic", "Anthropic", 0, now, now);
+    seed.run("google", "google", "Google Gemini", 0, now, now);
+  },
 ];
 
 function version(sqlite: Sqlite) {

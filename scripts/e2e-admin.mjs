@@ -6,7 +6,9 @@
 //   CHROME_PATH=/path/to/chrome E2E_URL=http://host:3000 npm run e2e:admin
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import path from "node:path";
 import bcrypt from "bcryptjs";
+import Database from "better-sqlite3";
 import puppeteer from "puppeteer-core";
 
 const base = (process.env.E2E_URL ?? "http://localhost:3000").replace(/\/$/, "");
@@ -182,7 +184,7 @@ try {
     (await adminPage.evaluate(() => document.body.innerText)).includes("A Product Of"),
     "Conzex credit shows in the admin panel",
   );
-  for (const path of ["/admin", "/admin/users", "/admin/usage", "/admin/agents", "/admin/settings", "/admin/conversations"]) {
+  for (const path of ["/admin", "/admin/users", "/admin/usage", "/admin/agents", "/admin/providers", "/admin/settings", "/admin/conversations"]) {
     const response = await adminPage.goto(`${base}${path}`, { waitUntil: "networkidle0" });
     check(response.status() === 200 && adminPage.url().endsWith(path), `admin opens ${path}`);
     await adminPage.screenshot({ path: `${shots}/${path.replaceAll("/", "_").slice(1) || "admin"}.png`, fullPage: true });
@@ -355,6 +357,106 @@ try {
   await relogged.goto(`${base}/admin/users`, { waitUntil: "networkidle0" });
   check(!relogged.url().includes("/admin"), "demoted user loses /admin immediately");
 
+  // Providers: a saved key is encrypted, a failed check stays failed, and a
+  // cloud model is refused until the user allows it.
+  const secret = "sk-test-conzex-phase5-key";
+  const dbFile = path.join(process.env.DATA_DIR ?? "data", "harbor.db");
+    const withDb = (fn) => {
+    const db = new Database(dbFile);
+    db.pragma("busy_timeout = 5000");
+    try {
+      return fn(db);
+    } finally {
+      db.close();
+    }
+  };
+  const resetOpenAi = () =>
+    withDb((db) => {
+      db.prepare(
+        `UPDATE providers SET api_key_enc=NULL, api_key_hint=NULL, enabled=0, health_ok=NULL, health_at=NULL, health_error=NULL WHERE id='openai'`,
+      ).run();
+      db.prepare(`DELETE FROM provider_models WHERE provider_id='openai' AND model_id='gpt-test-blocked'`).run();
+    });
+  try {
+    await adminPage.goto(`${base}/admin/providers`, { waitUntil: "networkidle0" });
+    const openaiStatus = await adminPage.$eval(
+      '[data-provider="openai"] [data-provider-status]',
+      (node) => node.textContent,
+    );
+    check(openaiStatus === "Off", "OpenAI starts turned off");
+    for (const id of ["ollama", "openai", "anthropic", "google"]) {
+      check(Boolean(await adminPage.$(`[data-provider="${id}"]`)), `providers page shows ${id}`);
+    }
+    await adminPage.click('[data-provider="openai"] [role=switch]');
+    await adminPage.evaluate(() => {
+      const card = document.querySelector('[data-provider="openai"]');
+      [...card.querySelectorAll("button")].find((button) => button.textContent.trim() === "Save")?.click();
+    });
+    await adminPage.waitForFunction(() => document.body.innerText.includes("Provider saved"));
+    await adminPage.goto(`${base}/admin/providers`, { waitUntil: "networkidle0" });
+    check(
+      (await adminPage.$eval('[data-provider="openai"] [data-provider-status]', (node) => node.textContent)) ===
+        "Needs an API key",
+      "an enabled cloud provider without a key is not ready",
+    );
+    await adminPage.type('[data-provider="openai"] input[name="apiKey"]', secret);
+    await adminPage.evaluate(() => {
+      const card = document.querySelector('[data-provider="openai"]');
+      [...card.querySelectorAll("button")].find((button) => button.textContent.trim() === "Save")?.click();
+    });
+    await adminPage.waitForFunction(() => document.body.innerText.includes("Provider saved"));
+    await adminPage.goto(`${base}/admin/providers`, { waitUntil: "networkidle0" });
+    const placeholder = await adminPage.$eval(
+      '[data-provider="openai"] input[name="apiKey"]',
+      (node) => node.placeholder,
+    );
+    const html = await adminPage.content();
+    check(placeholder.includes("…") && !placeholder.includes(secret), "a saved key is shown only as a hint");
+    check(!html.includes(secret), "the API key is not in the page");
+    const stored = withDb((db) => db.prepare(`SELECT api_key_enc FROM providers WHERE id='openai'`).get());
+    check(
+      typeof stored?.api_key_enc === "string" && stored.api_key_enc.startsWith("v1.") && !stored.api_key_enc.includes(secret),
+      "the API key is encrypted at rest",
+    );
+    await adminPage.evaluate(() => {
+      const card = document.querySelector('[data-provider="openai"]');
+      [...card.querySelectorAll("button")].find((button) => button.textContent.trim() === "Check connection")?.click();
+    });
+    await popup(adminPage, "Connection failed");
+    const afterCheck = await adminPage.$eval(
+      '[data-provider="openai"] [data-provider-status]',
+      (node) => node.textContent,
+    );
+    check(afterCheck !== "Ready" && afterCheck !== "Local", "a failed check is not shown as ready");
+    await adminPage.goto(`${base}/chat`, { waitUntil: "networkidle0" });
+    await adminPage.click('button[aria-label="Choose model"]');
+    await adminPage.waitForSelector("[role=menu]");
+    const menu = await adminPage.$eval("[role=menu]", (node) => node.innerText);
+    check(!menu.includes("OpenAI") && !menu.includes("gpt-test"), "chat only lists models that passed a check");
+    withDb((db) => {
+      db.prepare(
+        `UPDATE providers SET enabled=1, health_ok=1, health_at=?, health_error=NULL WHERE id='openai'`,
+      ).run(Date.now());
+      db.prepare(
+        `INSERT INTO provider_models (provider_id, model_id, enabled, available, input_per_million, output_per_million, updated_at)
+         VALUES ('openai', 'gpt-test-blocked', 1, 1, NULL, NULL, ?)`,
+      ).run(Date.now());
+    });
+    const created = await api(adminPage, "/api/conversations", { method: "POST", body: "{}" });
+    const blocked = await api(adminPage, "/api/chat", {
+      method: "POST",
+      body: JSON.stringify({
+        conversationId: created.body?.id,
+        providerId: "openai",
+        model: "gpt-test-blocked",
+        messages: [{ id: crypto.randomUUID(), role: "user", parts: [{ type: "text", text: "hi" }] }],
+      }),
+    });
+    check(blocked.status === 403 && String(blocked.body?.error ?? "").includes("Allow cloud models"), "a cloud model is refused until the user allows it");
+  } finally {
+    resetOpenAi();
+  }
+
   // Audit log recorded the actions.
   await adminPage.goto(`${base}/admin/settings?q=${encodeURIComponent("user.")}#audit`, { waitUntil: "networkidle0" });
   const auditText = await adminPage.evaluate(() => document.body.innerText);
@@ -363,9 +465,15 @@ try {
   }
   await adminPage.goto(`${base}/admin/settings`, { waitUntil: "networkidle0" });
   const fullAudit = await adminPage.evaluate(() => document.body.innerText);
-  for (const action of ["settings.update", "session.kill", "message.delete", "model.enable", "agent.update", "conversation.content_access"]) {
+  for (const action of ["settings.update", "session.kill", "message.delete", "agent.update", "conversation.content_access"]) {
     check(fullAudit.includes(action), `audit log has ${action}`);
   }
+  await adminPage.goto(`${base}/admin/settings?q=${encodeURIComponent("model.enable")}#audit`, { waitUntil: "networkidle0" });
+  check((await adminPage.evaluate(() => document.body.innerText)).includes("model.enable"), "audit log has model.enable");
+  await adminPage.goto(`${base}/admin/settings?q=${encodeURIComponent("provider.")}#audit`, { waitUntil: "networkidle0" });
+  const providerAudit = await adminPage.evaluate(() => document.body.innerText);
+  check(providerAudit.includes("provider.update") && providerAudit.includes("provider.health"), "provider changes are audited");
+  check(!providerAudit.includes(secret), "the audit log does not contain the API key");
 
 } catch (error) {
   failures += 1;

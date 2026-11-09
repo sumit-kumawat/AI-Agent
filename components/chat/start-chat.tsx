@@ -56,21 +56,22 @@ export function StartChat({ temporary }: { temporary: boolean }) {
   const { models, defaultModel, prefs } = useChatChrome();
   const preferred = usePreferredModel();
   const [picked, setPicked] = useState<string | null>(null);
-  const model = pickModel(models, picked, preferred, defaultModel);
-  useWarmModel(model);
+  const model = pickModel(models, prefs.cloudModels, picked, preferred, defaultModel);
+  const selected = models.find((option) => option.key === model) ?? null;
+  useWarmModel(selected?.local ? selected.modelId : null);
   const [input, setInput] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function start(text: string) {
     const trimmed = text.trim();
-    if (!trimmed || pending || !model) return;
+    if (!trimmed || pending || !selected) return;
     setPending(true);
     setError(null);
     try {
       const conversation = await jsonFetch<{ id: string }>("/api/conversations", {
         method: "POST",
-        body: JSON.stringify({ model, temporary }),
+        body: JSON.stringify({ model: selected.modelId, providerId: selected.providerId, temporary }),
       });
       sessionStorage.setItem(`harbor-draft:${conversation.id}`, trimmed);
       router.push(`/chat/${conversation.id}`);
