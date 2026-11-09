@@ -1,5 +1,7 @@
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { ChatShell } from "@/components/chat/chat-shell";
+import { SIDEBAR_COOKIE } from "@/lib/sidebar";
 import { isAdmin } from "@/lib/admin";
 import { findUserById, listConversations, quotaState } from "@/lib/db/queries";
 import { listSelectableModels, preferredModel } from "@/lib/providers/catalog";
@@ -18,6 +20,7 @@ export default async function ChatLayout({
   if (!user) redirect("/login");
   const catalog = await listSelectableModels();
   const quota = quotaState(user.id);
+  const collapsed = (await cookies()).get(SIDEBAR_COOKIE)?.value === "1";
 
   return (
     <ChatShell
@@ -35,6 +38,7 @@ export default async function ChatLayout({
       defaultModel={preferredModel(catalog.models)?.key ?? null}
       admin={isAdmin(user)}
       ollamaMessage={catalog.warning}
+      initialCollapsed={collapsed}
     >
       {children}
     </ChatShell>

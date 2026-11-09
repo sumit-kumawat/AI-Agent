@@ -353,7 +353,7 @@ try {
   await button("Delete account", "[data-settings]");
   await popup("Delete your account?", { button: "Continue" });
   await popup("Confirm with your password", { input: user.password, button: "Delete account" });
-  await page.waitForFunction(() => location.pathname === "/", { timeout: 30_000 });
+  await page.waitForFunction(() => location.pathname === "/login", { timeout: 30_000 });
   deleted = true;
   check(true, "account can be deleted from settings");
 } catch (error) {

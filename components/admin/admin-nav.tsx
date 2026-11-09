@@ -5,24 +5,22 @@ import { usePathname } from "next/navigation";
 import {
   Activity,
   Bot,
-  ClipboardList,
   Cloud,
   Code,
   LayoutDashboard,
   MessagesSquare,
-  Receipt,
   Settings,
+  Telescope,
   Users,
 } from "lucide-react";
 
 const LINKS = [
   { href: "/admin", label: "Overview", icon: LayoutDashboard },
   { href: "/admin/users", label: "Users", icon: Users },
-  { href: "/admin/billing", label: "Billing", icon: Receipt },
-  { href: "/admin/projects", label: "Requests", icon: ClipboardList },
   { href: "/admin/usage", label: "Usage", icon: Activity },
   { href: "/admin/agents", label: "Agents & models", icon: Bot },
   { href: "/admin/providers", label: "Providers", icon: Cloud },
+  { href: "/admin/research", label: "Research", icon: Telescope },
   { href: "/admin/settings", label: "Settings", icon: Settings },
   { href: "/admin/conversations", label: "Conversations", icon: MessagesSquare },
   { href: "/ide", label: "IDE", icon: Code },

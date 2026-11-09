@@ -188,6 +188,46 @@ export const modelConfig = sqliteTable("model_config", {
   updatedAt: integer("updated_at").notNull(),
 });
 
+export const attachments = sqliteTable(
+  "attachments",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** Null until the file is sent with a message; unsent files are swept after a day. */
+    conversationId: text("conversation_id").references(() => conversations.id, { onDelete: "cascade" }),
+    messageId: text("message_id"),
+    name: text("name").notNull(),
+    kind: text("kind", { enum: ["image", "pdf", "docx", "xlsx", "csv", "text", "code"] }).notNull(),
+    mime: text("mime").notNull(),
+    size: integer("size").notNull(),
+    sha256: text("sha256").notNull(),
+    textChars: integer("text_chars").notNull().default(0),
+    pages: integer("pages"),
+    truncated: integer("truncated", { mode: "boolean" }).notNull().default(false),
+    warning: text("warning"),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [
+    index("attachments_user_idx").on(table.userId, table.createdAt),
+    index("attachments_conversation_idx").on(table.conversationId, table.createdAt),
+  ],
+);
+
+/** Extracted text in ~1,500-character sections, indexed for retrieval by `attachment_chunks_fts`. */
+export const attachmentChunks = sqliteTable(
+  "attachment_chunks",
+  {
+    attachmentId: text("attachment_id")
+      .notNull()
+      .references(() => attachments.id, { onDelete: "cascade" }),
+    seq: integer("seq").notNull(),
+    content: text("content").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.attachmentId, table.seq] })],
+);
+
 export const workspaces = sqliteTable("workspaces", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
@@ -196,191 +236,6 @@ export const workspaces = sqliteTable("workspaces", {
   createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
   createdAt: integer("created_at").notNull(),
   openedAt: integer("opened_at"),
-});
-
-export const billingProfiles = sqliteTable("billing_profiles", {
-  userId: text("user_id")
-    .primaryKey()
-    .references(() => users.id, { onDelete: "cascade" }),
-  company: text("company"),
-  address1: text("address1"),
-  address2: text("address2"),
-  city: text("city"),
-  state: text("state"),
-  postcode: text("postcode"),
-  /** ISO 3166-1 alpha-2. */
-  country: text("country"),
-  phone: text("phone"),
-  /** GSTIN or other tax registration number. */
-  taxId: text("tax_id"),
-  currency: text("currency", { enum: ["INR", "USD"] }).notNull().default("INR"),
-  updatedAt: integer("updated_at").notNull(),
-});
-
-export const products = sqliteTable("products", {
-  id: text("id").primaryKey(),
-  slug: text("slug").notNull().unique(),
-  /** Website catalogue group, such as "vps-hosting". */
-  groupSlug: text("group_slug").notNull(),
-  /** "ai" plans set the member's chat plan and token quota while paid. */
-  kind: text("kind", { enum: ["hosting", "ai"] }).notNull().default("hosting"),
-  name: text("name").notNull(),
-  tagline: text("tagline").notNull().default(""),
-  /** One feature per line. */
-  features: text("features").notNull().default(""),
-  featured: integer("featured", { mode: "boolean" }).notNull().default(false),
-  hidden: integer("hidden", { mode: "boolean" }).notNull().default(true),
-  sort: integer("sort").notNull().default(0),
-  aiQuotaTokens: integer("ai_quota_tokens"),
-  createdAt: integer("created_at").notNull(),
-  updatedAt: integer("updated_at").notNull(),
-});
-
-export const productPrices = sqliteTable(
-  "product_prices",
-  {
-    productId: text("product_id")
-      .notNull()
-      .references(() => products.id, { onDelete: "cascade" }),
-    currency: text("currency", { enum: ["INR", "USD"] }).notNull(),
-    cycle: text("cycle", {
-      enum: ["monthly", "quarterly", "semiannually", "annually", "biennially", "triennially", "onetime"],
-    }).notNull(),
-    /** Paise or cents. */
-    amountMinor: integer("amount_minor").notNull(),
-    setupMinor: integer("setup_minor").notNull().default(0),
-  },
-  (table) => [primaryKey({ columns: [table.productId, table.currency, table.cycle] })],
-);
-
-export const services = sqliteTable(
-  "services",
-  {
-    id: text("id").primaryKey(),
-    userId: text("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    productId: text("product_id").references(() => products.id, { onDelete: "set null" }),
-    /** Product name when ordered, so renaming a product does not rewrite history. */
-    name: text("name").notNull(),
-    kind: text("kind", { enum: ["hosting", "ai"] }).notNull().default("hosting"),
-    status: text("status", { enum: ["pending", "active", "suspended", "cancelled"] }).notNull(),
-    cycle: text("cycle").notNull(),
-    currency: text("currency", { enum: ["INR", "USD"] }).notNull(),
-    amountMinor: integer("amount_minor").notNull(),
-    /** Customer-supplied label, such as the domain the service is for. */
-    label: text("label"),
-    nextDueAt: integer("next_due_at"),
-    activatedAt: integer("activated_at"),
-    cancelledAt: integer("cancelled_at"),
-    cancelRequestedAt: integer("cancel_requested_at"),
-    aiQuotaTokens: integer("ai_quota_tokens"),
-    createdAt: integer("created_at").notNull(),
-    updatedAt: integer("updated_at").notNull(),
-  },
-  (table) => [index("services_user_idx").on(table.userId, table.createdAt)],
-);
-
-export const invoices = sqliteTable(
-  "invoices",
-  {
-    id: text("id").primaryKey(),
-    number: text("number").notNull().unique(),
-    userId: text("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    status: text("status", { enum: ["unpaid", "paid", "cancelled"] }).notNull(),
-    currency: text("currency", { enum: ["INR", "USD"] }).notNull(),
-    subtotalMinor: integer("subtotal_minor").notNull(),
-    taxRate: real("tax_rate").notNull().default(0),
-    taxLabel: text("tax_label").notNull().default(""),
-    taxMinor: integer("tax_minor").notNull().default(0),
-    totalMinor: integer("total_minor").notNull(),
-    /** JSON snapshot of the customer's billing details when issued. */
-    billTo: text("bill_to").notNull(),
-    projectId: text("project_id"),
-    dueAt: integer("due_at").notNull(),
-    paidAt: integer("paid_at"),
-    createdAt: integer("created_at").notNull(),
-    updatedAt: integer("updated_at").notNull(),
-  },
-  (table) => [index("invoices_user_idx").on(table.userId, table.createdAt)],
-);
-
-export const invoiceItems = sqliteTable("invoice_items", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  invoiceId: text("invoice_id")
-    .notNull()
-    .references(() => invoices.id, { onDelete: "cascade" }),
-  kind: text("kind", { enum: ["new", "renewal", "setup", "proposal", "manual"] }).notNull(),
-  description: text("description").notNull(),
-  amountMinor: integer("amount_minor").notNull(),
-  serviceId: text("service_id").references(() => services.id, { onDelete: "set null" }),
-  periodStart: integer("period_start"),
-  periodEnd: integer("period_end"),
-});
-
-export const payments = sqliteTable("payments", {
-  id: text("id").primaryKey(),
-  invoiceId: text("invoice_id")
-    .notNull()
-    .references(() => invoices.id, { onDelete: "cascade" }),
-  gateway: text("gateway", { enum: ["razorpay", "manual"] }).notNull(),
-  gatewayOrderId: text("gateway_order_id").unique(),
-  gatewayPaymentId: text("gateway_payment_id").unique(),
-  amountMinor: integer("amount_minor").notNull(),
-  currency: text("currency").notNull(),
-  status: text("status", { enum: ["created", "captured", "failed"] }).notNull(),
-  note: text("note"),
-  createdAt: integer("created_at").notNull(),
-  updatedAt: integer("updated_at").notNull(),
-});
-
-export const projects = sqliteTable(
-  "projects",
-  {
-    id: text("id").primaryKey(),
-    reference: text("reference").notNull().unique(),
-    userId: text("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    type: text("type").notNull(),
-    title: text("title").notNull(),
-    requirements: text("requirements").notNull(),
-    budget: text("budget").notNull().default(""),
-    timeline: text("timeline").notNull().default(""),
-    status: text("status").notNull().default("submitted"),
-    createdAt: integer("created_at").notNull(),
-    updatedAt: integer("updated_at").notNull(),
-  },
-  (table) => [index("projects_user_idx").on(table.userId, table.updatedAt)],
-);
-
-export const projectUpdates = sqliteTable("project_updates", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  projectId: text("project_id")
-    .notNull()
-    .references(() => projects.id, { onDelete: "cascade" }),
-  authorType: text("author_type", { enum: ["client", "staff", "system"] }).notNull(),
-  authorId: text("author_id"),
-  status: text("status"),
-  message: text("message").notNull(),
-  visibleToClient: integer("visible_to_client", { mode: "boolean" }).notNull().default(true),
-  createdAt: integer("created_at").notNull(),
-});
-
-export const proposals = sqliteTable("proposals", {
-  id: text("id").primaryKey(),
-  projectId: text("project_id")
-    .notNull()
-    .references(() => projects.id, { onDelete: "cascade" }),
-  summary: text("summary").notNull(),
-  currency: text("currency", { enum: ["INR", "USD"] }).notNull(),
-  amountMinor: integer("amount_minor").notNull(),
-  status: text("status", { enum: ["sent", "accepted", "declined", "withdrawn"] }).notNull(),
-  invoiceId: text("invoice_id").references(() => invoices.id, { onDelete: "set null" }),
-  createdAt: integer("created_at").notNull(),
-  respondedAt: integer("responded_at"),
 });
 
 export const settings = sqliteTable("settings", {

@@ -1,10 +1,11 @@
 "use client";
 
-import { ArrowUp, Square } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { ArrowUp, Paperclip, Square, Telescope, X } from "lucide-react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { ACCEPT, AttachmentTray, type Attachments } from "@/components/chat/attachments";
 import { ModelPicker, type ModelOption } from "@/components/chat/model-picker";
+import type { ResearchStatus } from "@/components/chat/research";
 import { Button } from "@/components/ui/button";
-import { BRAND } from "@/lib/brand";
 
 const MAX_HEIGHT = 208;
 
@@ -21,6 +22,8 @@ export function Composer({
   error,
   sendWithEnter = true,
   note,
+  files,
+  research,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -37,9 +40,34 @@ export function Composer({
   /** When false, Enter inserts a newline and Ctrl/⌘+Enter sends. */
   sendWithEnter?: boolean;
   note?: string;
+  /** Enables attaching files. */
+  files?: Attachments;
+  /** Enables the Deep Research toggle. */
+  research?: { on: boolean; onChange: (on: boolean) => void; status: ResearchStatus | null };
 }) {
   const textarea = useRef<HTMLTextAreaElement>(null);
-  const canSend = value.trim().length > 0 && model !== null && !busy && !pending;
+  const picker = useRef<HTMLInputElement>(null);
+  const [dragging, setDragging] = useState(false);
+  const [fileProblem, setFileProblem] = useState<string | null>(null);
+  const selected = models.find((option) => option.key === model);
+  const hasImage = files?.items.some((item) => item.kind === "image") ?? false;
+  const blocked =
+    files?.uploading
+      ? "Waiting for files to finish uploading…"
+      : files?.failed
+        ? "Remove or replace the files that could not be attached."
+        : hasImage && selected && !selected.vision
+          ? `${selected.name} cannot read images. Pick a model marked “Images”, or remove the image.`
+          : null;
+  const researching = research?.on === true;
+  const hasContent = researching ? value.trim().length > 0 : value.trim().length > 0 || (files?.ready.length ?? 0) > 0;
+  const canSend = hasContent && !blocked && model !== null && !busy && !pending;
+
+  function addFiles(list: FileList | File[]) {
+    if (!files) return;
+    const problem = files.add([...list]);
+    setFileProblem(problem);
+  }
 
   useLayoutEffect(() => {
     const node = textarea.current;
@@ -55,7 +83,9 @@ export function Composer({
   }, []);
 
   function submit() {
-    if (canSend) onSubmit(value);
+    if (!canSend) return;
+    setFileProblem(null);
+    onSubmit(value);
   }
 
   return (
@@ -65,12 +95,40 @@ export function Composer({
         event.preventDefault();
         submit();
       }}
+      onDragEnter={(event) => {
+        if (files && event.dataTransfer.types.includes("Files")) setDragging(true);
+      }}
+      onDragOver={(event) => {
+        if (!files || !event.dataTransfer.types.includes("Files")) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "copy";
+      }}
+      onDragLeave={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false);
+      }}
+      onDrop={(event) => {
+        if (!files || event.dataTransfer.files.length === 0) return;
+        event.preventDefault();
+        setDragging(false);
+        addFiles(event.dataTransfer.files);
+      }}
     >
-      <div className="rounded-3xl border bg-card shadow-sm transition-colors focus-within:border-ring/60">
+      <div
+        className={`rounded-3xl border bg-card shadow-sm transition-colors focus-within:border-ring/60 ${
+          dragging ? "border-primary bg-primary/5" : ""
+        }`}
+        data-dragging={dragging || undefined}
+      >
+        {files ? <AttachmentTray files={files} disabled={busy || pending} /> : null}
         <textarea
           ref={textarea}
           value={value}
           onChange={(event) => onChange(event.target.value)}
+          onPaste={(event) => {
+            if (!files || event.clipboardData.files.length === 0) return;
+            event.preventDefault();
+            addFiles(event.clipboardData.files);
+          }}
           onKeyDown={(event) => {
             if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
             const modified = event.metaKey || event.ctrlKey;
@@ -79,14 +137,67 @@ export function Composer({
               submit();
             }
           }}
-          placeholder={`Message ${BRAND.product}`}
+          placeholder={dragging ? "Drop files to attach" : researching ? "What should I research?" : "Ask anything"}
           aria-label="Message"
           enterKeyHint="send"
           rows={1}
           className="block max-h-52 min-h-12 w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-base leading-6 outline-none placeholder:text-muted-foreground md:text-[15px]"
         />
         <div className="flex items-center justify-between gap-2 px-2 pb-2">
-          <ModelPicker models={models} value={model} onChange={onModelChange} disabled={busy} compact />
+          <div className="flex min-w-0 items-center gap-1">
+            {files ? (
+              <>
+                <input
+                  ref={picker}
+                  type="file"
+                  multiple
+                  accept={ACCEPT}
+                  className="hidden"
+                  data-file-input
+                  onChange={(event) => {
+                    if (event.target.files) addFiles(event.target.files);
+                    event.target.value = "";
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-9 shrink-0 rounded-full text-muted-foreground"
+                  aria-label="Attach files"
+                  title="Attach files (PDF, Word, Excel, CSV, text, code, images)"
+                  disabled={busy || pending}
+                  onClick={() => picker.current?.click()}
+                >
+                  <Paperclip />
+                </Button>
+              </>
+            ) : null}
+            {research ? (
+              <Button
+                type="button"
+                variant={researching ? "secondary" : "ghost"}
+                size="sm"
+                className={`h-9 shrink-0 rounded-full ${researching ? "text-primary" : "text-muted-foreground"}`}
+                aria-pressed={researching}
+                data-research-toggle
+                disabled={busy || pending || (!researching && research.status?.available !== true)}
+                title={
+                  research.status === null
+                    ? "Checking research sources…"
+                    : research.status.available
+                      ? "Deep Research: searches the web, reads sources and writes a cited report"
+                      : (research.status.reason ?? "Deep Research is unavailable")
+                }
+                onClick={() => research.onChange(!researching)}
+              >
+                <Telescope />
+                <span className="hidden sm:inline">Deep Research</span>
+                {researching ? <X className="size-3.5" aria-hidden /> : null}
+              </Button>
+            ) : null}
+            <ModelPicker models={models} value={model} onChange={onModelChange} disabled={busy} compact />
+          </div>
           {busy ? (
             <Button
               type="button"
@@ -110,14 +221,17 @@ export function Composer({
           )}
         </div>
       </div>
-      {error ? (
-        <p className="mt-2 text-center text-sm text-destructive">{error}</p>
+      {error || fileProblem ? (
+        <p className="mt-2 text-center text-sm text-destructive" role="alert">
+          {error ?? fileProblem}
+        </p>
+      ) : blocked && hasContent ? (
+        <p className="mt-2 text-center text-xs text-muted-foreground" data-composer-blocked>
+          {blocked}
+        </p>
       ) : (
         <p className="mt-2 hidden text-center text-xs text-muted-foreground sm:block">
-          {note ??
-            (sendWithEnter
-              ? "Replies can be wrong; check important information. Enter to send, Shift+Enter for a new line."
-              : "Replies can be wrong; check important information. Ctrl/⌘+Enter to send.")}
+          {note ?? "Replies can be wrong. Check important information."}
         </p>
       )}
     </form>

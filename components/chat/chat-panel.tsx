@@ -6,12 +6,14 @@ import { Archive, ArrowDown, EllipsisVertical, Pin, PinOff, Timer, Trash } from 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ChatTopBar, EditableTitle, useChatChrome } from "@/components/chat/chat-shell";
+import { useAttachments } from "@/components/chat/attachments";
 import { Composer } from "@/components/chat/composer";
 import { useConversationActions } from "@/components/chat/conversation-actions";
 import { AssistantMessage, UserMessage } from "@/components/chat/message";
 import { pickModel, usePreferredModel, useWarmModel } from "@/components/chat/model-picker";
 import { modelKey } from "@/lib/model-ref";
-import { Greeting } from "@/components/chat/start-chat";
+import { Greeting, readDraft } from "@/components/chat/start-chat";
+import { useResearchStatus } from "@/components/chat/research";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -20,11 +22,22 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import type { AttachmentInfo } from "@/lib/attachments/types";
 import type { ChatMessage } from "@/lib/chat-types";
+import type { ResearchData } from "@/lib/research/types";
 import { textFromParts } from "@/lib/text";
 
-function sentNow() {
-  return { createdAt: Date.now() };
+function sentNow(attachments: AttachmentInfo[] = []) {
+  return attachments.length ? { createdAt: Date.now(), attachments } : { createdAt: Date.now() };
+}
+
+/** Live progress while streaming, or the saved copy after a reload. */
+function researchOf(message: ChatMessage): ResearchData | undefined {
+  for (let index = message.parts.length - 1; index >= 0; index -= 1) {
+    const part = message.parts[index]!;
+    if (part.type === "data-research") return part.data;
+  }
+  return message.metadata?.research;
 }
 
 function messageText(message: ChatMessage) {
@@ -186,6 +199,9 @@ export function ChatPanel({
     },
   });
   const [input, setInput] = useState("");
+  const files = useAttachments();
+  const [research, setResearch] = useState(false);
+  const { status: researchStatus } = useResearchStatus();
   const sentDraft = useRef(false);
   const { scroller, content, atBottom, scrollToBottom } = useStickToBottom();
   const busy = status === "submitted" || status === "streaming";
@@ -202,41 +218,63 @@ export function ChatPanel({
 
   useEffect(() => {
     if (sentDraft.current) return;
-    const key = `harbor-draft:${conversationId}`;
-    const draft = sessionStorage.getItem(key);
-    if (!draft) return;
     const timer = window.setTimeout(() => {
       if (sentDraft.current) return;
+      const draft = readDraft(conversationId);
+      if (!draft) return;
       sentDraft.current = true;
-      sessionStorage.removeItem(key);
-      void sendMessage({ text: draft, metadata: sentNow() }, { body: requestBody });
+      void sendMessage(
+        { text: draft.text, metadata: sentNow(draft.attachments) },
+        { body: draft.research ? { ...requestBody, research: true } : requestBody },
+      );
     }, 0);
     return () => window.clearTimeout(timer);
   }, [conversationId, sendMessage, requestBody]);
 
-  function send(text: string, edit = false) {
+  function send(text: string, options: { edit?: boolean; attachments?: AttachmentInfo[]; research?: boolean } = {}) {
     setContinuable(false);
     scrollToBottom();
-    void sendMessage({ text, metadata: sentNow() }, { body: edit ? { ...requestBody, edit: true } : requestBody });
+    void sendMessage(
+      { text, metadata: sentNow(options.attachments) },
+      {
+        body: {
+          ...requestBody,
+          ...(options.edit ? { edit: true } : {}),
+          ...(options.research ? { research: true } : {}),
+        },
+      },
+    );
   }
 
   function submit(text: string) {
     const trimmed = text.trim();
-    if (!trimmed || busy) return;
-    send(trimmed);
+    if ((!trimmed && files.ready.length === 0) || (research && !trimmed) || busy) return;
+    send(trimmed, { attachments: files.ready, research });
+    files.clear();
+    setResearch(false);
     setInput("");
   }
 
+  /** The reply that followed message `index` was a research report, so redoing it should research again. */
+  const wasResearch = (index: number) => {
+    const reply = messages[index + 1];
+    return reply?.role === "assistant" && Boolean(researchOf(reply));
+  };
+
   function editAt(index: number, text: string) {
     if (busy) return;
+    const attachments = messages[index]?.metadata?.attachments ?? [];
+    const again = wasResearch(index);
     setMessages(messages.slice(0, index));
-    send(text, true);
+    send(text, { edit: true, attachments, research: again });
   }
 
   function retry() {
     setContinuable(false);
     scrollToBottom();
-    void regenerate({ body: requestBody });
+    const last = messages.at(-1);
+    const again = last?.role === "assistant" ? Boolean(researchOf(last)) : false;
+    void regenerate({ body: again ? { ...requestBody, research: true } : requestBody });
   }
 
   const lastIndex = messages.length - 1;
@@ -277,7 +315,7 @@ export function ChatPanel({
             className="mx-auto flex w-full max-w-3xl flex-col gap-[var(--chat-gap)] px-4 pt-4 pb-10"
           >
             {messages.length === 0 && !busy ? (
-              <Greeting onPick={submit} temporary={temporary} />
+              <Greeting temporary={temporary} />
             ) : (
               messages.map((message, index) => {
                 const text = messageText(message);
@@ -288,25 +326,34 @@ export function ChatPanel({
                       key={message.id}
                       text={text}
                       createdAt={meta.createdAt}
+                      attachments={meta.attachments}
                       onEdit={busy ? undefined : (next) => editAt(index, next)}
                     />
                   );
                 }
                 const last = index === lastIndex;
+                const report = researchOf(message);
                 return (
                   <AssistantMessage
                     key={message.id}
                     id={message.id}
                     text={text}
+                    research={report}
+                    question={report ? messageText(messages[index - 1] ?? message) : undefined}
                     streaming={last && status === "streaming"}
                     last={last && !busy}
                     createdAt={meta.createdAt}
                     model={meta.model}
                     memory={meta.memory}
                     note={
-                      meta.fallbackFrom
-                        ? `${meta.fallbackFrom} was unavailable, so this reply came from ${meta.model ?? "the fallback model"}.`
-                        : undefined
+                      [
+                        meta.fallbackFrom
+                          ? `${meta.fallbackFrom} was unavailable, so this reply came from ${meta.model ?? "the fallback model"}.`
+                          : null,
+                        ...(meta.fileNotes ?? []),
+                      ]
+                        .filter(Boolean)
+                        .join(" ") || undefined
                     }
                     feedback={meta.feedback ?? null}
                     persisted={!(last && busy)}
@@ -351,6 +398,8 @@ export function ChatPanel({
         onModelChange={setPicked}
         sendWithEnter={prefs.sendWithEnter}
         note={temporary ? "Temporary chat: not saved to history or memory." : undefined}
+        files={files}
+        research={{ on: research, onChange: setResearch, status: researchStatus }}
       />
     </div>
   );

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import {
   Archive,
   Boxes,
@@ -12,6 +12,7 @@ import {
   LogOut,
   MoreHorizontal,
   PanelLeftClose,
+  PanelLeftOpen,
   Pencil,
   Pin,
   PinOff,
@@ -21,12 +22,12 @@ import {
   SlidersHorizontal,
   SquarePen,
   Trash,
+  type LucideIcon,
 } from "lucide-react";
-import { Mark } from "@/components/brand";
 import { useChatChrome } from "@/components/chat/chat-shell";
 import { useConversationActions } from "@/components/chat/conversation-actions";
-import { ConzexCredit } from "@/components/conzex-credit";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -35,7 +36,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { BRAND } from "@/lib/brand";
 import type { ConversationListItem } from "@/lib/db/queries";
 
 function subscribeDay(callback: () => void) {
@@ -217,27 +217,41 @@ function ConversationList({
   );
 }
 
-function ProfileMenu({ onNavigate }: { onNavigate?: () => void }) {
+/** Shows `label` beside the icon rail when the sidebar is collapsed. */
+function RailTip({ label, show, children }: { label: string; show: boolean; children: ReactNode }) {
+  if (!show) return children;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent side="right">{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function ProfileMenu({ onNavigate, collapsed }: { onNavigate?: () => void; collapsed: boolean }) {
   const { user, admin, openSettings } = useChatChrome();
   const initial = (user.name || user.email || "?").trim().charAt(0).toUpperCase();
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          data-profile-menu
-          className="flex w-full items-center gap-2 rounded-lg p-1.5 text-left hover:bg-sidebar-accent"
-        >
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-medium text-primary-foreground">
-            {initial}
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-medium">{user.name || "Signed in"}</span>
-            <span className="block truncate text-xs text-muted-foreground">{user.email}</span>
-          </span>
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent side="top" align="start" className="w-[--radix-dropdown-menu-trigger-width] min-w-56">
+      <RailTip label={user.name || user.email} show={collapsed}>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            data-profile-menu
+            aria-label="Account menu"
+            className="flex h-11 w-full items-center gap-3 rounded-lg px-1.5 text-left hover:bg-sidebar-accent"
+          >
+            <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-medium text-primary-foreground">
+              {initial}
+            </span>
+            <span className={`min-w-0 flex-1 transition-opacity ${collapsed ? "opacity-0" : "opacity-100"}`} aria-hidden={collapsed}>
+              <span className="block truncate text-sm font-medium">{user.name || "Signed in"}</span>
+              <span className="block truncate text-xs text-muted-foreground">{user.email}</span>
+            </span>
+          </button>
+        </DropdownMenuTrigger>
+      </RailTip>
+      <DropdownMenuContent side={collapsed ? "right" : "top"} align={collapsed ? "end" : "start"} className="min-w-56">
         <DropdownMenuLabel className="truncate font-normal text-muted-foreground">{user.email}</DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={() => { onNavigate?.(); openSettings("personalization"); }}>
@@ -276,7 +290,7 @@ function ProfileMenu({ onNavigate }: { onNavigate?: () => void }) {
           </>
         ) : null}
         <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={() => void signOut({ callbackUrl: "/" })}>
+        <DropdownMenuItem onSelect={() => void signOut({ callbackUrl: "/login" })}>
           <LogOut />
           Log out
         </DropdownMenuItem>
@@ -285,77 +299,119 @@ function ProfileMenu({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
+type NavEntry = {
+  label: string;
+  icon: LucideIcon;
+  shortcut?: string;
+  href?: string;
+  onSelect?: () => void;
+  active?: boolean;
+};
+
 export function SidebarBody({
   conversations,
   onNavigate,
-  onCollapse,
+  collapsed = false,
+  onToggle,
 }: {
   conversations: ConversationListItem[];
   onNavigate?: () => void;
-  onCollapse?: () => void;
+  /** Icon rail: icons only, labels in tooltips. */
+  collapsed?: boolean;
+  /** Present on desktop, where the sidebar can collapse to the rail. */
+  onToggle?: () => void;
 }) {
   const { admin, openSearch } = useChatChrome();
   const pathname = usePathname();
-  const navItem = (active: boolean) =>
-    `flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-sm ${
+  const entries: NavEntry[] = [
+    { label: "New chat", icon: SquarePen, shortcut: "⇧⌘O", href: "/chat", active: pathname === "/chat" },
+    { label: "Search chats", icon: Search, shortcut: "⌘K", onSelect: openSearch },
+    {
+      label: admin ? "Manage models" : "Models",
+      icon: Boxes,
+      href: "/chat/models",
+      active: pathname === "/chat/models",
+    },
+  ];
+  const item = (active = false) =>
+    `flex h-9 w-full items-center gap-3 rounded-lg px-3 text-sm whitespace-nowrap ${
       active ? "bg-sidebar-accent text-sidebar-accent-foreground" : "hover:bg-sidebar-accent/70"
     }`;
+  const label = `min-w-0 flex-1 truncate text-left transition-opacity duration-150 ${collapsed ? "opacity-0" : "opacity-100"}`;
 
   return (
-    <div className="flex h-full w-full min-w-0 flex-col bg-sidebar text-sidebar-foreground">
-      <div className="flex items-center gap-2 px-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-2">
-        <Link href="/chat" onClick={onNavigate} className="flex min-w-0 flex-1 items-center gap-2 px-1">
-          <Mark className="size-7 shrink-0 text-primary" />
-          <span className="font-heading text-lg">{BRAND.product}</span>
-        </Link>
-        {onCollapse ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            className="text-muted-foreground"
-            onClick={onCollapse}
-            aria-label="Close sidebar"
-            title="Close sidebar"
-          >
-            <PanelLeftClose />
-          </Button>
+    <div className="flex h-full w-full min-w-0 flex-col overflow-hidden bg-sidebar text-sidebar-foreground">
+      <div className="flex h-14 shrink-0 items-center px-2 pt-[env(safe-area-inset-top)]">
+        {onToggle ? (
+          <RailTip label={collapsed ? "Open sidebar" : "Close sidebar"} show>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="text-muted-foreground"
+              onClick={onToggle}
+              aria-label={collapsed ? "Open sidebar" : "Close sidebar"}
+              aria-expanded={!collapsed}
+            >
+              {collapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
+            </Button>
+          </RailTip>
         ) : null}
       </div>
-      <div className="space-y-0.5 px-3">
-        <Link
-          href="/chat"
-          onClick={onNavigate}
-          className={navItem(pathname === "/chat")}
-          aria-current={pathname === "/chat" ? "page" : undefined}
-        >
-          <SquarePen className="size-4" />
-          New chat
-          <kbd className="ml-auto hidden text-xs text-muted-foreground lg:inline">⇧⌘O</kbd>
-        </Link>
-        <button
-          type="button"
-          onClick={() => {
-            onNavigate?.();
-            openSearch();
-          }}
-          className={navItem(false)}
-        >
-          <Search className="size-4" />
-          Search chats
-          <kbd className="ml-auto hidden text-xs text-muted-foreground lg:inline">⌘K</kbd>
-        </button>
-        <Link href="/chat/models" onClick={onNavigate} className={navItem(pathname === "/chat/models")}>
-          <Boxes className="size-4" />
-          {admin ? "Manage models" : "Models"}
-        </Link>
+      <div className="space-y-0.5 px-2">
+        {entries.map((entry) => {
+          const content = (
+            <>
+              <entry.icon className="size-4 shrink-0" />
+              <span className={label} aria-hidden={collapsed}>
+                {entry.label}
+              </span>
+              {entry.shortcut && !collapsed ? (
+                <kbd className="hidden text-xs text-muted-foreground lg:inline">{entry.shortcut}</kbd>
+              ) : null}
+            </>
+          );
+          return (
+            <RailTip key={entry.label} label={entry.label} show={collapsed}>
+              {entry.href ? (
+                <Link
+                  href={entry.href}
+                  onClick={onNavigate}
+                  aria-label={collapsed ? entry.label : undefined}
+                  aria-current={entry.active ? "page" : undefined}
+                  className={item(entry.active)}
+                >
+                  {content}
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  aria-label={collapsed ? entry.label : undefined}
+                  onClick={() => {
+                    onNavigate?.();
+                    entry.onSelect?.();
+                  }}
+                  className={item()}
+                >
+                  {content}
+                </button>
+              )}
+            </RailTip>
+          );
+        })}
       </div>
-      <nav aria-label="Conversations" className="mt-4 min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-3">
+      <nav
+        aria-label="Conversations"
+        aria-hidden={collapsed}
+        inert={collapsed}
+        className={`mt-4 min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-3 transition-opacity duration-150 ${
+          collapsed ? "pointer-events-none opacity-0" : "opacity-100"
+        }`}
+      >
         <ConversationList conversations={conversations} onNavigate={onNavigate} />
       </nav>
-      <div className="border-t px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
-        <ProfileMenu onNavigate={onNavigate} />
-        <ConzexCredit className="mt-1.5 px-2" />
+      <div className="shrink-0 border-t px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+        <ProfileMenu onNavigate={onNavigate} collapsed={collapsed} />
       </div>
     </div>
   );

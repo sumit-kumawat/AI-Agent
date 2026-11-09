@@ -4,6 +4,7 @@ import {
   Brain,
   Check,
   Copy,
+  Download,
   FastForward,
   Pencil,
   RefreshCw,
@@ -11,10 +12,14 @@ import {
   ThumbsUp,
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { MessageAttachments } from "@/components/chat/attachments";
+import { exportReport, linkCitations, ResearchPanel } from "@/components/chat/research";
 import { useChatChrome } from "@/components/chat/chat-shell";
 import { Markdown } from "@/components/chat/markdown";
 import { useFeedback } from "@/components/feedback";
 import { Button } from "@/components/ui/button";
+import type { AttachmentInfo } from "@/lib/attachments/types";
+import type { ResearchData } from "@/lib/research/types";
 
 async function copyText(text: string) {
   if (navigator.clipboard && window.isSecureContext) {
@@ -108,10 +113,12 @@ const hoverReveal = "opacity-100 transition-opacity md:opacity-0 md:group-hover:
 export function UserMessage({
   text,
   createdAt,
+  attachments = [],
   onEdit,
 }: {
   text: string;
   createdAt?: number;
+  attachments?: AttachmentInfo[];
   /** Replaces this message and everything after it. Absent while a reply streams. */
   onEdit?: (text: string) => void;
 }) {
@@ -166,13 +173,16 @@ export function UserMessage({
 
   return (
     <div className="group flex flex-col items-end gap-1" data-role="user">
-      <div className="max-w-[85%] rounded-3xl bg-muted px-4 py-2.5 text-[15px] leading-7 break-words whitespace-pre-wrap sm:max-w-[75%]">
-        {text}
-      </div>
+      <MessageAttachments files={attachments} />
+      {text ? (
+        <div className="max-w-[85%] rounded-3xl bg-muted px-4 py-2.5 text-[15px] leading-7 break-words whitespace-pre-wrap sm:max-w-[75%]">
+          {text}
+        </div>
+      ) : null}
       <div className={`flex items-center ${hoverReveal}`}>
         <Timestamp at={createdAt} />
-        <CopyButton text={text} />
-        {onEdit ? (
+        {text ? <CopyButton text={text} /> : null}
+        {onEdit && text ? (
           <IconAction
             label="Edit message"
             onClick={() => {
@@ -234,9 +244,14 @@ export function AssistantMessage({
   persisted = false,
   onRegenerate,
   onContinue,
+  research,
+  question,
 }: {
   id?: string;
   text: string;
+  research?: ResearchData;
+  /** The request a research report answers; used as the export title. */
+  question?: string;
   streaming: boolean;
   last: boolean;
   createdAt?: number;
@@ -265,8 +280,9 @@ export function AssistantMessage({
           Memory updated
         </button>
       ) : null}
+      {research ? <ResearchPanel data={research} /> : null}
       {text ? (
-        <Markdown text={text} streaming={streaming} />
+        <Markdown text={research ? linkCitations(text, research) : text} streaming={streaming} />
       ) : streaming ? (
         <span className="harbor-caret text-[15px] leading-7" aria-label="Generating">▋</span>
       ) : null}
@@ -277,6 +293,11 @@ export function AssistantMessage({
           {last && onRegenerate ? (
             <IconAction label="Regenerate" onClick={onRegenerate}>
               <RefreshCw />
+            </IconAction>
+          ) : null}
+          {research && research.status !== "running" ? (
+            <IconAction label="Export report as Markdown" onClick={() => exportReport(text, research, question)}>
+              <Download />
             </IconAction>
           ) : null}
           {last && onContinue ? (

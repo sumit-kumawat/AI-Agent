@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { apiUser, handler, parseBody } from "@/lib/api";
+import { pruneUserFiles } from "@/lib/attachments/store";
 import {
   archiveAllConversations,
   deleteAllConversations,
@@ -21,5 +22,6 @@ export const POST = handler(async (request) => {
       : action === "restore-all"
         ? restoreAllConversations(user.id)
         : deleteAllConversations(user.id, action === "delete-all" ? "all" : "archived");
+  if (action.startsWith("delete")) pruneUserFiles(user.id);
   return Response.json({ count });
 });

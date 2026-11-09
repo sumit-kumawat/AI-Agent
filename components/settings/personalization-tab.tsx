@@ -6,7 +6,6 @@ import { Row, Select, Toggle } from "@/components/settings/controls";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { BRAND } from "@/lib/brand";
 import { PERSONALITIES, PERSONALITY_LABELS } from "@/lib/preferences-schema";
 
 const PERSONALITY_HELP: Record<(typeof PERSONALITIES)[number], string> = {
@@ -83,7 +82,7 @@ export function PersonalizationTab() {
       >
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="grid gap-1.5 text-sm">
-            <span className="font-medium">What should {BRAND.product} call you?</span>
+            <span className="font-medium">What should the assistant call you?</span>
             <Input
               name="nickname"
               value={draft.nickname}

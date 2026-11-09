@@ -1,14 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { Mark } from "@/components/brand";
-import { BRAND } from "@/lib/brand";
-
 export const metadata: Metadata = { title: "Help" };
 
 const SHORTCUTS = [
   ["⌘/Ctrl + K", "Search chats"],
   ["⌘/Ctrl + Shift + O", "New chat"],
+  ["⌘/Ctrl + Shift + S", "Collapse or expand the sidebar"],
   ["⌘/Ctrl + ,", "Open settings"],
   ["Enter", "Send (configurable in Settings → General)"],
   ["Shift + Enter", "New line"],
@@ -53,11 +51,7 @@ export default function HelpPage() {
         <ArrowLeft className="size-4" />
         Back to chat
       </Link>
-      <div className="mt-6 flex items-center gap-3">
-        <Mark className="size-9 text-primary" />
-        <h1 className="font-heading text-3xl">Help &amp; support</h1>
-      </div>
-      <p className="mt-2 text-muted-foreground">How to get the most out of {BRAND.product}.</p>
+      <h1 className="mt-6 font-heading text-3xl">Help</h1>
 
       <section className="mt-8 grid gap-4">
         {TOPICS.map((topic) => (
@@ -84,14 +78,7 @@ export default function HelpPage() {
 
       <section className="mt-8 rounded-2xl border bg-card p-5">
         <h2 className="font-medium">Contact</h2>
-        <p className="mt-1.5 text-sm text-muted-foreground">
-          {BRAND.product} is a product of {BRAND.company}. For account or access problems, contact your administrator,
-          or reach {BRAND.company} at{" "}
-          <a href={BRAND.companyUrl} className="text-primary underline" target="_blank" rel="noreferrer">
-            {BRAND.companyUrl.replace(/^https?:\/\//, "")}
-          </a>
-          .
-        </p>
+        <p className="mt-1.5 text-sm text-muted-foreground">For account or access problems, contact your administrator.</p>
       </section>
     </main>
   );

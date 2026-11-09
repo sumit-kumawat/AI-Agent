@@ -1,7 +1,5 @@
 import type { Metadata } from "next";
 import { ChangePasswordForm } from "@/components/auth/change-password-form";
-import { Mark } from "@/components/brand";
-import { ConzexCredit } from "@/components/conzex-credit";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { findUserById } from "@/lib/db/queries";
 import { requireUser } from "@/lib/session";
@@ -30,8 +28,7 @@ export default async function ChangePasswordPage({
       <main className="flex flex-1 items-center justify-center px-6 py-16">
         <Card className="w-full max-w-md">
           <CardHeader>
-            <Mark className="mb-2 size-8 text-primary" />
-            <CardTitle className="font-heading text-3xl">
+            <CardTitle className="font-heading text-2xl">
               {forced ? "Choose a new password" : "Change password"}
             </CardTitle>
             <CardDescription>
@@ -45,9 +42,6 @@ export default async function ChangePasswordPage({
           </CardContent>
         </Card>
       </main>
-      <footer className="pb-6 text-center">
-        <ConzexCredit />
-      </footer>
     </div>
   );
 }

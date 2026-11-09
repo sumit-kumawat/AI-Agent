@@ -39,7 +39,7 @@ export function SecurityTab() {
         </Button>
       </Row>
       <Row label="Log out" description="Ends the session in this browser.">
-        <Button type="button" variant="outline" size="sm" onClick={() => void signOut({ callbackUrl: "/" })}>
+        <Button type="button" variant="outline" size="sm" onClick={() => void signOut({ callbackUrl: "/login" })}>
           Log out
         </Button>
       </Row>

@@ -113,73 +113,103 @@ All new tables reference these with foreign keys; nothing is dropped.
 - Ollama remains the local default. Installing and disabling local models
   stays on Agents & models.
 
-## 6. What changed in the business platform release
+## 6. Separation, attachments and Deep Research release
 
-CONZEX no longer depends on WHMCS; the separate local WHMCS install and its
-database have been removed. Website, customer portal, billing and requests
-are part of this app.
+**This repository is the AI application only.** The hosting website, customer
+portal, billing, requests and domain lookup that were briefly added here are
+removed; the hosting business belongs in its own WHMCS installation, which
+shares no code, configuration, database or dependencies with this app. The
+removed code is kept at tag `pre-separation-20261109`.
 
-- **Design**: Inter, the light (`#FFFFFF`, sidebar `#F7F7F8`) and dark
-  (`#212121`, sidebar `#171717`) palettes, accent `#10A37F`. The accent and
-  `#8E8EA0` fail WCAG AA as text on white, so text uses `#6E6E80` and light
-  primary buttons use `#0B7A5F`; `#10A37F` stays for marks, focus rings and
-  dark mode.
-- **Website** (`app/(site)`): home, domains (search and transfer), web,
-  WordPress, builder, cloud, VPS, dedicated, business hosting, email, SSL,
-  website security, backup, four solutions pages, CONZEX AI, FAQ, support and
-  about. The copy comes from the old WHMCS addon (`lib/site/pages.ts`). Product
-  pages list plans from the catalogue, and say "quoted on request" when there
-  are none. Prices show in the visitor's currency (INR or USD).
-- **Migration 7** (additive): `billing_profiles`, `products`, `product_prices`,
-  `services`, `invoices`, `invoice_items`, `payments`, `projects`,
-  `project_updates`, `proposals`. Amounts are stored in paise or cents.
-- **Billing** (`lib/billing`): orders create a pending service and an invoice
-  (numbered `CZX-YEAR-00001`, configurable GST). Paying activates the service
-  and sets its next due date. An AI plan sets the member's plan and token quota
-  while it is paid. Renewal invoices are issued hourly (`instrumentation.ts`),
-  ahead of the due date, once per period. A requested cancellation ends the
-  service at the end of the paid term.
-- **Razorpay**: keys are saved encrypted under Admin → Billing → Payments &
-  tax. Checkout is verified with the order signature and the webhook
-  (`/api/billing/razorpay/webhook`) with the webhook secret. Payment is applied
-  once, and only when the amount and currency match the invoice. Without keys,
-  invoices say online payment is not set up, and admins can record bank
-  transfers.
-- **Portal** (`/portal`): overview, services (with cancellation), invoices
-  (print or save as PDF, pay), requests and billing details.
-- **Requests** replace the WHMCS projects addon. Customers send a request; staff
-  reply, keep internal notes, change status and send a proposal. Accepting a
-  proposal issues an invoice; paying it moves the request to In progress.
-- **Domains**: availability is looked up live over RDAP. No registrar is
-  connected, so registering or transferring opens a request.
-- **Admin**: Billing (overview, invoices, services, plans and prices, payments
-  and tax) and Requests. Every change is audited; secrets are never logged.
-- **Tests**: `npm run e2e:billing` covers the website, ordering with GST,
-  signed and forged webhooks and checkout callbacks, replay safety, invoice
-  isolation between customers, and the request to proposal to invoice flow.
+- **Migration 8** drops the empty business tables that migration 7 created
+  (migration 7 is now a no-op) and deletes the billing settings. `/` sends
+  visitors to sign-in or to chat.
+- **Design**: Inter, light (`#FFFFFF`, sidebar `#F7F7F8`) and dark (`#212121`,
+  sidebar `#171717`) palettes, accent `#10A37F` (text uses `#6E6E80` and light
+  primary buttons `#0B7A5F` to pass WCAG AA). Promotional credits, the logo in
+  the chat sidebar, starter suggestions and duplicate headings are gone.
+- **Sidebar**: always present on desktop. Expanded it shows icons and labels;
+  collapsed it is a 56 px icon rail with tooltips. The state is kept in a
+  cookie, so the server renders it correctly with no flash. ⌘/Ctrl+Shift+S
+  toggles it. Phones use a sheet.
+
+### Attachments
+
+- **Types**: PDF, Word (.docx), Excel (.xlsx), CSV/TSV, text and Markdown,
+  source code, and PNG/JPEG/GIF/WebP images. Up to 10 files per message, 20 MB
+  each (10 MB for images), 500 MB per user.
+- **Validation** happens on the server: file type by extension plus content
+  (image magic bytes, `%PDF-` header, ZIP structure for Office files with a
+  limit on uncompressed size, strict UTF-8 for text). Parsing has a 30-second
+  limit. Password-protected or damaged files are refused with a reason. Scanned
+  PDFs without text are accepted with a warning.
+- **Storage**: `DATA_DIR/uploads/<user>/<id>`, named by id only. Table
+  `attachments` (migration 9) and `attachment_chunks` with an FTS5 index.
+  Downloads are owner-only, `nosniff`, sandboxed, and anything that is not an
+  image downloads instead of opening inline.
+- **Composer**: paperclip, drag and drop, and paste. Every file uploads
+  immediately with a progress bar and can be removed or replaced. Sending
+  waits for uploads and is blocked while a file has failed or an image is
+  attached to a model that cannot read images (vision support comes from
+  Ollama's reported capabilities; the model list marks "Images").
+- **Use in chat**: each user message carries its files, so edits and
+  regenerations keep them and reloads show them. Small files go to the model
+  whole. Long ones contribute the sections that match the question (or an
+  even spread for summaries), within 12,000 characters for local models and
+  60,000 for cloud ones, and the reply says "answered from N of M sections".
+  Images from the last messages are re-sent to vision models.
+- **Retention**: unsent uploads are deleted after 24 hours, and files of
+  deleted chats and accounts are removed (hourly sweep in `instrumentation.ts`
+  plus immediate clean-up on delete).
+
+### Deep Research
+
+- **Sources** (Admin → Research): Wikipedia (no key, on by default), a
+  self-hosted SearXNG, Tavily and Brave Search (keys encrypted). "Test sources"
+  runs a real query against each. The composer's Deep Research button is
+  disabled with the reason when no configured source answers.
+- **Run**: the chosen model plans 3–4 queries. Each source is searched one
+  request at a time; results are deduplicated across queries and filtered for
+  relevance. Pages are then read in full (Wikipedia articles through its API,
+  other pages through a fetcher that refuses private and loopback addresses at
+  connect time, re-checks every redirect, and caps size and time). When a page
+  cannot be opened, only the search snippet is used and the source says so.
+- **Report**: Summary, Findings, Conflicts, Unverified and Gaps, with `[n]`
+  citations that link to the numbered sources. The Sources list and the
+  evidence check are written by the server from what was actually retrieved:
+  citations to numbers that do not exist are removed, uncited statements are
+  counted, and a report from a model that cited nothing says nothing is
+  verified. Repetition loops and the length limit are detected and reported.
+- **Progress** streams live (planning, each search, each page) and is saved
+  with the reply. Reports can be exported as Markdown, regenerated as
+  research, and followed up in normal chat. Conversation files are used as
+  `[F]` sources. If no source responds, the reply explains why instead of
+  inventing an answer.
+- **Model choice matters**: `qwen2.5:1.5b` often fails to cite; `llama3.2:3b`
+  or larger produces properly cited reports.
+
+### Tests
+
+`npm run e2e:attachments` and `npm run e2e:research` cover the above in
+headless Chrome, including a fake SearXNG that returns a private address
+(it must not be fetched) and the no-source failure path.
 
 ## 7. Needs a provider before it can work
 
 | Capability | What is missing |
 | --- | --- |
-| Online card and UPI payment | Razorpay key ID, key secret and webhook secret (Admin → Billing → Payments & tax) |
-| Domain registration and transfer | A registrar API. Until then these go through a request |
-| Email verification, password reset, invoice emails | SMTP settings (not built yet) |
+| Broader web research | SearXNG, Tavily or Brave Search under Admin → Research (Wikipedia works without setup) |
+| Email verification and password reset | SMTP settings (not built yet) |
 | Google sign-in | Google OAuth client (not built yet) |
-| Image, GIF and video generation, voice, web search and research | Provider integrations (not built yet; not shown in the UI) |
+| Image, GIF and video generation, voice | Provider integrations (not built yet; not shown in the UI) |
 
 ## 8. Next up
 
-1. Phase 7: storage, uploads, attachments in the composer, library page,
-   avatars; document export (PDF, DOCX, XLSX, CSV, PPTX, TXT, MD).
+1. Optical text recognition for scanned PDFs and images for non-vision models.
 2. Phase 3 remainder: SMTP settings in admin, email verification, password
-   reset, invoice and renewal emails, optional Google sign-in and 2FA.
-3. Generation and research: image, GIF and video generation, web search with
-   real citations, voice, each behind a configured provider.
-4. Phase 8: projects in chat, custom assistants, share links.
-5. Settings modal tabs for billing, notifications and connected providers;
-   phase 9 remainder (feature flags, maintenance mode, storage admin); phase 4
-   remainder.
+   reset, optional Google sign-in and 2FA.
+3. Phase 8: projects in chat, custom assistants, share links.
+4. A library page listing a user's files across chats.
 
 Capabilities without a working backend are not shown in the UI until they are
 implemented.

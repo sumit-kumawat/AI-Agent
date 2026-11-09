@@ -176,6 +176,11 @@ export function ModelPicker({
                 <DropdownMenuRadioItem value={model.key} className="py-2">
                   {model.local ? null : <Cloud className="size-3.5 text-muted-foreground" />}
                   <span className="min-w-0 flex-1 truncate">{model.name}</span>
+                  {model.vision ? (
+                    <span className="shrink-0 rounded border px-1 text-[10px] text-muted-foreground" title="Can read images">
+                      Images
+                    </span>
+                  ) : null}
                   <span className="shrink-0 text-xs text-muted-foreground">
                     {model.local ? (model.parameterSize ?? (formatBytes(model.size) || "Local")) : "Cloud"}
                   </span>

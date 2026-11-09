@@ -4,7 +4,10 @@ import {
   streamText,
   toUIMessageStream,
 } from "ai";
+import { z } from "zod";
 import { startSession } from "@/lib/agents";
+import { contextBudget, documentContext, imageParts } from "@/lib/attachments/context";
+import { AttachmentError, bindAttachments, ownedAttachments, type Attachment } from "@/lib/attachments/store";
 import { auth } from "@/lib/auth";
 import type { ChatMessageMeta } from "@/lib/chat-types";
 import {
@@ -25,6 +28,7 @@ import { buildInstructions } from "@/lib/prompt";
 import { noteProviderFailure, resolveChatTarget } from "@/lib/providers/catalog";
 import { costMicro, languageModel, safeProviderError } from "@/lib/providers/engine";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
+import { researchStream } from "@/lib/research/run";
 import { getSettings } from "@/lib/settings";
 import { textFromParts } from "@/lib/text";
 import { chatRequestSchema } from "@/lib/validators";
@@ -35,6 +39,16 @@ export const maxDuration = 300;
 const AGENT_ID = "ollama";
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const MODEL_CONTEXT_MESSAGES = 40;
+/** Earlier images are re-sent so follow-up questions still see them, up to this many. */
+const MAX_IMAGES_IN_CONTEXT = 6;
+
+const attachmentRefs = z.array(z.object({ id: z.uuid() })).max(10);
+
+function attachmentIds(metadata: unknown) {
+  const value = metadata && typeof metadata === "object" ? (metadata as { attachments?: unknown }).attachments : undefined;
+  const parsed = attachmentRefs.safeParse(value ?? []);
+  return parsed.success ? [...new Set(parsed.data.map((item) => item.id))] : null;
+}
 
 /** Ollama sometimes omits usage; fall back to roughly four characters per token. */
 function estimateTokens(characters: number) {
@@ -89,6 +103,8 @@ export async function POST(request: Request) {
   }
 
   const messages = parsed.data.messages as UIMessage[];
+  const filesByMessage = new Map<string, string[]>();
+  let badAttachments = false;
   const transcript = messages.flatMap((message) => {
     if (message.role !== "user" && message.role !== "assistant") return [];
     const content = textFromParts(
@@ -98,9 +114,16 @@ export async function POST(request: Request) {
           "text" in part && typeof part.text === "string" ? part.text : undefined,
       })),
     );
-    if (!content.trim()) return [];
-    return [{ id: message.id, role: message.role, content }];
+    const ids = message.role === "user" ? attachmentIds(message.metadata) : [];
+    if (ids === null) badAttachments = true;
+    const hasFiles = Boolean(ids?.length);
+    if (hasFiles) filesByMessage.set(message.id, ids!);
+    if (!content.trim() && !hasFiles) return [];
+    return [{ id: message.id, role: message.role, content, hasFiles }];
   });
+  if (badAttachments) {
+    return Response.json({ error: "Attach up to 10 files per message." }, { status: 400 });
+  }
 
   const latestUser = [...transcript].reverse().find((message) => message.role === "user");
   if (!latestUser) {
@@ -126,6 +149,25 @@ export async function POST(request: Request) {
   const chosen = resolved.target.model;
   const modelName = chosen.modelId;
 
+  let files: Map<string, Attachment>;
+  try {
+    files = ownedAttachments(user.id, conversation.id, filesByMessage);
+  } catch (error) {
+    if (error instanceof AttachmentError) return Response.json({ error: error.message }, { status: 400 });
+    throw error;
+  }
+  const filesOf = (messageId: string) =>
+    (filesByMessage.get(messageId) ?? []).map((id) => files.get(id)).filter((row): row is Attachment => Boolean(row));
+  const latestImages = filesOf(latestUser.id).filter((row) => row.kind === "image");
+  if (latestImages.length > 0 && !chosen.vision) {
+    return Response.json(
+      {
+        error: `${modelName} cannot read images. Pick a model that accepts images (marked in the model list), or remove the image.`,
+      },
+      { status: 400 },
+    );
+  }
+
   if (findBlockedKeyword(latestUser.content)) {
     recordUsage({
       userId: user.id,
@@ -142,6 +184,18 @@ export async function POST(request: Request) {
       { error: "This message contains content that is not allowed on this server." },
       { status: 400 },
     );
+  }
+
+  const research = parsed.data.research === true;
+  if (research) {
+    if (!latestUser.content.trim()) {
+      return Response.json({ error: "Describe what to research." }, { status: 400 });
+    }
+    const researchLimit = rateLimit(`research:${user.id}`, 10, 10 * 60 * 1000, {
+      endpoint: "research",
+      userId: user.id,
+    });
+    if (!researchLimit.ok) return tooManyRequests(researchLimit.retryAfter);
   }
 
   const quota = quotaState(user.id);
@@ -169,7 +223,8 @@ export async function POST(request: Request) {
   }
 
   syncTranscript(conversation.id, transcript, { replace: parsed.data.edit === true });
-  maybeSetTitle(conversation.id, conversation.title, latestUser.content);
+  bindAttachments(user.id, conversation.id, filesByMessage);
+  maybeSetTitle(conversation.id, conversation.title, latestUser.content || (filesOf(latestUser.id)[0]?.name ?? ""));
 
   const remembering = !conversation.temporary && prefs.memoryEnabled;
   let savedMemory: string | undefined;
@@ -181,7 +236,7 @@ export async function POST(request: Request) {
       if (!(error instanceof MemoryError)) console.error("Failed to save memory", error);
     }
   }
-  const instructions = buildInstructions({
+  const baseInstructions = buildInstructions({
     prefs,
     userName: user.name,
     memories: remembering ? relevantMemories(user.id, latestUser.content) : [],
@@ -191,6 +246,12 @@ export async function POST(request: Request) {
         : [],
     temporary: conversation.temporary,
   });
+  const documents = documentContext(
+    transcript.flatMap((message) => filesOf(message.id)),
+    latestUser.content || "Summarize the attached files.",
+    contextBudget(chosen.local),
+  );
+  const instructions = documents.text ? `${baseInstructions}\n\n${documents.text}` : baseInstructions;
 
   if (modelName !== conversation.model || (conversation.providerId ?? "ollama") !== chosen.providerId) {
     setConversationModel(conversation.id, modelName, chosen.providerId);
@@ -204,6 +265,65 @@ export async function POST(request: Request) {
     return Response.json({ error: safeProviderError(chosen.providerId, error) }, { status: 503 });
   }
 
+  if (research) {
+    const researchFiles = transcript.flatMap((message) => filesOf(message.id)).filter((row) => row.kind !== "image");
+    const researchDocs = documentContext(researchFiles, latestUser.content, chosen.local ? 4_000 : 20_000);
+    const startedAt = Date.now();
+    const meta: ChatMessageMeta = {
+      createdAt: startedAt,
+      model: modelName,
+      provider: chosen.providerName,
+      ...(resolved.target.fallbackFrom ? { fallbackFrom: resolved.target.fallbackFrom.name } : {}),
+    };
+    const messageId = crypto.randomUUID();
+    return createUIMessageStreamResponse({
+      stream: researchStream(
+        {
+          model: chatModel,
+          local: chosen.local,
+          question: latestUser.content,
+          history: transcript.slice(0, -1).slice(-6).map((message) => ({ role: message.role, content: message.content })),
+          documents: researchDocs.text,
+          fileNames: researchFiles.map((row) => row.name),
+          meta,
+          messageId,
+          signal: agent.signal,
+        },
+        (outcome) => {
+          agent.end();
+          if (outcome.failed && !agent.signal.aborted) noteProviderFailure(chosen.providerId);
+          try {
+            saveAssistantMessage(conversation.id, {
+              id: messageId,
+              content: outcome.content,
+              meta: { model: meta.model, provider: meta.provider, fallbackFrom: meta.fallbackFrom, research: outcome.data },
+            });
+          } catch (error) {
+            console.error("Failed to save the research report", error);
+          }
+          try {
+            const inputTokens = outcome.usage.inputTokens || estimateTokens(outcome.promptChars);
+            const outputTokens = outcome.usage.outputTokens || estimateTokens(outcome.content.length);
+            recordUsage({
+              userId: user.id,
+              conversationId: conversation.id,
+              agentId: AGENT_ID,
+              model: modelName,
+              providerId: chosen.providerId,
+              inputTokens,
+              outputTokens,
+              costMicro: costMicro(chosen.providerId, modelName, inputTokens, outputTokens),
+              durationMs: Date.now() - startedAt,
+              status: agent.signal.aborted ? "aborted" : outcome.failed ? "error" : "ok",
+            });
+          } catch (error) {
+            console.error("Failed to record usage", error);
+          }
+        },
+      ),
+    });
+  }
+
   const cleanMessages: UIMessage[] = transcript.map((message) => ({
     id: message.id,
     role: message.role,
@@ -211,10 +331,32 @@ export async function POST(request: Request) {
   }));
 
   const context = transcript.slice(-MODEL_CONTEXT_MESSAGES);
-  const modelMessages: ModelMessage[] = context.map((message) => ({
-    role: message.role,
-    content: message.content,
-  }));
+  let imageBudget = MAX_IMAGES_IN_CONTEXT;
+  const visibleImages = new Set<string>();
+  for (const message of [...context].reverse()) {
+    for (const row of filesOf(message.id)) {
+      if (row.kind === "image" && chosen.vision && imageBudget > 0) {
+        visibleImages.add(row.id);
+        imageBudget -= 1;
+      }
+    }
+  }
+  const modelMessages: ModelMessage[] = context.map((message) => {
+    if (message.role === "assistant") return { role: "assistant", content: message.content };
+    const attached = filesOf(message.id);
+    if (attached.length === 0) return { role: "user", content: message.content };
+    const names = attached.map((row) => row.name).join(", ");
+    const hidden = attached.filter((row) => row.kind === "image" && !visibleImages.has(row.id));
+    const text = [
+      message.content || "(The user sent the attached files without a message.)",
+      `[Attached: ${names}]`,
+      hidden.length ? `[Images not shown to you: ${hidden.map((row) => row.name).join(", ")}]` : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+    const images = imageParts(attached.filter((row) => visibleImages.has(row.id)));
+    return { role: "user", content: images.length ? [{ type: "text", text }, ...images] : text };
+  });
 
   const startedAt = Date.now();
   let usage: LanguageModelUsage | undefined;
@@ -225,6 +367,7 @@ export async function POST(request: Request) {
     provider: chosen.providerName,
     ...(resolved.target.fallbackFrom ? { fallbackFrom: resolved.target.fallbackFrom.name } : {}),
     ...(savedMemory ? { memory: savedMemory } : {}),
+    ...(documents.notes.length ? { fileNotes: documents.notes } : {}),
   };
 
   const result = streamText({
@@ -274,6 +417,7 @@ export async function POST(request: Request) {
               provider: meta.provider,
               fallbackFrom: meta.fallbackFrom,
               memory: meta.memory,
+              fileNotes: meta.fileNotes,
             },
           });
         } catch (error) {

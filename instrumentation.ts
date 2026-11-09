@@ -1,14 +1,13 @@
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
-  const { runRenewals } = await import("@/lib/billing/store");
-  const tick = () => {
+  const { sweepAttachments } = await import("@/lib/attachments/store");
+  const run = () => {
     try {
-      const result = runRenewals();
-      if (result.issued || result.ended) console.info("[billing] renewals", result);
+      sweepAttachments();
     } catch (error) {
-      console.error("[billing] renewals failed", error instanceof Error ? error.message : error);
+      console.error("Attachment cleanup failed", error);
     }
   };
-  setTimeout(tick, 30_000).unref();
-  setInterval(tick, 60 * 60 * 1000).unref();
+  setTimeout(run, 60 * 1000).unref();
+  setInterval(run, 60 * 60 * 1000).unref();
 }

@@ -9,6 +9,8 @@ export type ModelOption = {
   local: boolean;
   parameterSize: string | null;
   size: number;
+  /** Accepts images. */
+  vision: boolean;
 };
 
 const SEP = "\u001f";

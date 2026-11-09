@@ -1,5 +1,5 @@
 import { modelKey, parseModelRef, type ModelOption } from "@/lib/model-ref";
-import { getModelName, getUserInventory } from "@/lib/ollama";
+import { getModelName, getUserInventory, modelCapabilities } from "@/lib/ollama";
 import { getProvider, getRouting, listProviderModels, listProviders, type ModelRef } from "@/lib/providers/store";
 
 const downUntil = new Map<string, number>();
@@ -12,6 +12,15 @@ export function noteProviderFailure(providerId: string) {
 export function providerIsDown(providerId: string) {
   if ((downUntil.get(providerId) ?? 0) > Date.now()) return true;
   return getProvider(providerId)?.healthOk === false;
+}
+
+/** Cloud APIs do not report image support, so this follows the model families known to accept images. */
+function cloudVision(modelId: string) {
+  const id = modelId.toLowerCase();
+  if (/embed|whisper|tts|dall-e|audio|instruct-|o1-mini|o3-mini|gpt-3\.5/.test(id)) return false;
+  return /gpt-4o|gpt-4\.1|gpt-4-turbo|gpt-5|^o[134]\b|claude-(3|sonnet|opus|haiku)|gemini|pixtral|vision|llava|grok-(2-vision|4)|qwen.*vl|llama-4/.test(
+    id,
+  );
 }
 
 function sameOllama(installed: string, wanted: string) {
@@ -28,7 +37,8 @@ export async function listSelectableModels(): Promise<{ models: ModelOption[]; w
   if (!ollama || ollama.enabled) {
     const inventory = await getUserInventory();
     if (inventory.ok) {
-      for (const model of inventory.models) {
+      const caps = await Promise.all(inventory.models.map((model) => modelCapabilities(model.name)));
+      for (const [index, model] of inventory.models.entries()) {
         models.push({
           key: modelKey("ollama", model.name),
           providerId: "ollama",
@@ -38,6 +48,7 @@ export async function listSelectableModels(): Promise<{ models: ModelOption[]; w
           local: true,
           parameterSize: model.parameterSize,
           size: model.size,
+          vision: caps[index]!.includes("vision"),
         });
       }
     } else if (models.length === 0) {
@@ -60,6 +71,7 @@ export async function listSelectableModels(): Promise<{ models: ModelOption[]; w
         local: false,
         parameterSize: null,
         size: 0,
+        vision: cloudVision(model.modelId),
       });
     }
   }

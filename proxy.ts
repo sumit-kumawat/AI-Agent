@@ -13,9 +13,7 @@ export default auth((req) => {
   const isAdminPage =
     pathname === "/admin" || pathname.startsWith("/admin/") || pathname === "/ide" || pathname.startsWith("/ide/");
   const isAccountPage = pathname === "/account" || pathname.startsWith("/account/");
-  const isPortalPage =
-    pathname === "/portal" || pathname.startsWith("/portal/") || pathname.startsWith("/order/");
-  const isProtected = pathname.startsWith("/chat") || isAdminPage || isAccountPage || isPortalPage;
+  const isProtected = pathname.startsWith("/chat") || isAdminPage || isAccountPage;
 
   if (isProtected && !isLoggedIn) {
     const url = new URL("/login", req.nextUrl);
@@ -41,17 +39,5 @@ export default auth((req) => {
 });
 
 export const config = {
-  matcher: [
-    "/chat/:path*",
-    "/admin/:path*",
-    "/admin",
-    "/ide",
-    "/ide/:path*",
-    "/account/:path*",
-    "/portal",
-    "/portal/:path*",
-    "/order/:path*",
-    "/login",
-    "/register",
-  ],
+  matcher: ["/chat/:path*", "/admin/:path*", "/admin", "/ide", "/ide/:path*", "/account/:path*", "/login", "/register"],
 };

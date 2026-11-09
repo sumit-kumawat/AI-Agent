@@ -14,6 +14,7 @@ import {
   Files,
   FolderKanban,
   Loader2,
+  MessageSquare,
   Moon,
   PanelBottom,
   Search,
@@ -29,9 +30,6 @@ import { SearchPanel } from "@/components/ide/search-panel";
 import { Splitter } from "@/components/ide/splitter";
 import { useIdeTheme } from "@/components/ide/use-ide-theme";
 import { useFeedback } from "@/components/feedback";
-import { Mark } from "@/components/brand";
-import { BRAND } from "@/lib/brand";
-
 loader.config({ paths: { vs: "/monaco/vs" } });
 
 type Monaco = typeof import("monaco-editor");
@@ -401,7 +399,7 @@ export function Workbench({
         run: () => setTheme(theme === "dark" ? "light" : "dark"),
       },
       { id: "nav.workspaces", label: "Go to Workspaces", run: () => router.push("/ide") },
-      { id: "nav.chat", label: `Go to ${BRAND.product} Chat`, run: () => router.push("/chat") },
+      { id: "nav.chat", label: "Go to Chat", run: () => router.push("/chat") },
     ],
     [closeTabs, newTerminal, router, runEditorAction, save, saveAll, setTheme, showView, theme, togglePanel],
   );
@@ -458,9 +456,9 @@ export function Workbench({
         className={`${theme === "dark" ? "dark" : ""} flex h-dvh flex-col overflow-hidden bg-background text-foreground`}
       >
         <header className="flex h-10 shrink-0 items-center gap-2 border-b bg-sidebar px-2">
-          <Link href="/chat" className="flex items-center gap-1.5 px-1" title={`${BRAND.product} chat`}>
-            <Mark className="size-5 text-primary" />
-            <span className="hidden text-sm font-medium sm:inline">{BRAND.product}</span>
+          <Link href="/chat" className="flex items-center gap-1.5 px-1 text-sm font-medium" title="Back to chat">
+            <MessageSquare className="size-4" />
+            <span className="hidden sm:inline">Chat</span>
           </Link>
           <span className="text-muted-foreground">/</span>
           <Link href="/ide" className="truncate text-sm hover:underline" title="All workspaces">
@@ -792,7 +790,6 @@ function EmptyEditor({ onQuickOpen, onCommands, onTerminal }: { onQuickOpen: () 
   const row = "flex w-64 items-center justify-between rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground";
   return (
     <div className="flex h-full flex-col items-center justify-center gap-1">
-      <Mark className="mb-4 size-12 text-muted-foreground/40" />
       <button type="button" className={row} onClick={onQuickOpen}>
         Go to file <kbd className="font-sans text-xs">⌘P</kbd>
       </button>

@@ -26,6 +26,8 @@ export function formatNumber(value: number | null | undefined) {
 
 export function formatBytes(bytes: number) {
   if (!bytes) return "";
+  if (bytes < 1e3) return `${bytes} B`;
+  if (bytes < 1e6) return `${Math.round(bytes / 1e3)} KB`;
   const gb = bytes / 1e9;
   return gb >= 1 ? `${gb.toFixed(1)} GB` : `${Math.round(bytes / 1e6)} MB`;
 }

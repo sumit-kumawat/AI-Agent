@@ -50,7 +50,7 @@ export function AccountTab() {
     if (!password) return;
     try {
       await jsonFetch("/api/account", { method: "DELETE", body: JSON.stringify({ password }) });
-      await signOut({ callbackUrl: "/" });
+      await signOut({ callbackUrl: "/login" });
     } catch (error) {
       void notify({ tone: "error", title: "Account not deleted", description: (error as Error).message });
     }

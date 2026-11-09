@@ -266,145 +266,66 @@ const MIGRATIONS: ((sqlite: Sqlite) => void)[] = [
     seed.run("google", "google", "Google Gemini", 0, now, now);
   },
 
-  // 7: CONZEX business platform: billing profiles, catalogue,
-  // services, invoices, payments, and custom project requests.
+  // 7: retired. Created hosting-business tables that do not belong in this app.
+  () => {},
+
+  // 8: drops the hosting-business tables left by migration 7 on databases that ran it.
   (sqlite) => {
     sqlite.exec(`
-      CREATE TABLE IF NOT EXISTS billing_profiles (
-        user_id TEXT PRIMARY KEY NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        company TEXT, address1 TEXT, address2 TEXT, city TEXT, state TEXT,
-        postcode TEXT, country TEXT, phone TEXT, tax_id TEXT,
-        currency TEXT NOT NULL DEFAULT 'INR',
-        updated_at INTEGER NOT NULL
-      );
-      CREATE TABLE IF NOT EXISTS products (
-        id TEXT PRIMARY KEY NOT NULL,
-        slug TEXT NOT NULL UNIQUE,
-        group_slug TEXT NOT NULL,
-        kind TEXT NOT NULL DEFAULT 'hosting',
-        name TEXT NOT NULL,
-        tagline TEXT NOT NULL DEFAULT '',
-        features TEXT NOT NULL DEFAULT '',
-        featured INTEGER NOT NULL DEFAULT 0,
-        hidden INTEGER NOT NULL DEFAULT 1,
-        sort INTEGER NOT NULL DEFAULT 0,
-        ai_quota_tokens INTEGER,
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
-      );
-      CREATE INDEX IF NOT EXISTS products_group_idx ON products (group_slug, sort);
-      CREATE TABLE IF NOT EXISTS product_prices (
-        product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
-        currency TEXT NOT NULL,
-        cycle TEXT NOT NULL,
-        amount_minor INTEGER NOT NULL,
-        setup_minor INTEGER NOT NULL DEFAULT 0,
-        PRIMARY KEY (product_id, currency, cycle)
-      );
-      CREATE TABLE IF NOT EXISTS services (
+      DROP TABLE IF EXISTS proposals;
+      DROP TABLE IF EXISTS project_updates;
+      DROP TABLE IF EXISTS projects;
+      DROP TABLE IF EXISTS payments;
+      DROP TABLE IF EXISTS invoice_items;
+      DROP TABLE IF EXISTS invoices;
+      DROP TABLE IF EXISTS services;
+      DROP TABLE IF EXISTS product_prices;
+      DROP TABLE IF EXISTS products;
+      DROP TABLE IF EXISTS billing_profiles;
+      DELETE FROM settings WHERE key IN ('billing.config', 'billing.razorpay');
+    `);
+  },
+
+  // 9: chat attachments. Files live on disk under DATA_DIR/uploads; text is
+  // split into sections and indexed so long documents can be searched.
+  (sqlite) => {
+    sqlite.exec(`
+      CREATE TABLE IF NOT EXISTS attachments (
         id TEXT PRIMARY KEY NOT NULL,
         user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        product_id TEXT REFERENCES products(id) ON DELETE SET NULL,
+        conversation_id TEXT REFERENCES conversations(id) ON DELETE CASCADE,
+        message_id TEXT,
         name TEXT NOT NULL,
-        kind TEXT NOT NULL DEFAULT 'hosting',
-        status TEXT NOT NULL,
-        cycle TEXT NOT NULL,
-        currency TEXT NOT NULL,
-        amount_minor INTEGER NOT NULL,
-        label TEXT,
-        next_due_at INTEGER,
-        activated_at INTEGER,
-        cancelled_at INTEGER,
-        cancel_requested_at INTEGER,
-        ai_quota_tokens INTEGER,
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
-      );
-      CREATE INDEX IF NOT EXISTS services_user_idx ON services (user_id, created_at);
-      CREATE INDEX IF NOT EXISTS services_due_idx ON services (status, next_due_at);
-      CREATE TABLE IF NOT EXISTS invoices (
-        id TEXT PRIMARY KEY NOT NULL,
-        number TEXT NOT NULL UNIQUE,
-        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        status TEXT NOT NULL,
-        currency TEXT NOT NULL,
-        subtotal_minor INTEGER NOT NULL,
-        tax_rate REAL NOT NULL DEFAULT 0,
-        tax_label TEXT NOT NULL DEFAULT '',
-        tax_minor INTEGER NOT NULL DEFAULT 0,
-        total_minor INTEGER NOT NULL,
-        bill_to TEXT NOT NULL,
-        project_id TEXT,
-        due_at INTEGER NOT NULL,
-        paid_at INTEGER,
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
-      );
-      CREATE INDEX IF NOT EXISTS invoices_user_idx ON invoices (user_id, created_at);
-      CREATE INDEX IF NOT EXISTS invoices_status_idx ON invoices (status, due_at);
-      CREATE TABLE IF NOT EXISTS invoice_items (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        invoice_id TEXT NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
         kind TEXT NOT NULL,
-        description TEXT NOT NULL,
-        amount_minor INTEGER NOT NULL,
-        service_id TEXT REFERENCES services(id) ON DELETE SET NULL,
-        period_start INTEGER,
-        period_end INTEGER
-      );
-      CREATE INDEX IF NOT EXISTS invoice_items_invoice_idx ON invoice_items (invoice_id);
-      CREATE INDEX IF NOT EXISTS invoice_items_service_idx ON invoice_items (service_id, period_start);
-      CREATE TABLE IF NOT EXISTS payments (
-        id TEXT PRIMARY KEY NOT NULL,
-        invoice_id TEXT NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
-        gateway TEXT NOT NULL,
-        gateway_order_id TEXT UNIQUE,
-        gateway_payment_id TEXT UNIQUE,
-        amount_minor INTEGER NOT NULL,
-        currency TEXT NOT NULL,
-        status TEXT NOT NULL,
-        note TEXT,
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
-      );
-      CREATE INDEX IF NOT EXISTS payments_invoice_idx ON payments (invoice_id);
-      CREATE TABLE IF NOT EXISTS projects (
-        id TEXT PRIMARY KEY NOT NULL,
-        reference TEXT NOT NULL UNIQUE,
-        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        type TEXT NOT NULL,
-        title TEXT NOT NULL,
-        requirements TEXT NOT NULL,
-        budget TEXT NOT NULL DEFAULT '',
-        timeline TEXT NOT NULL DEFAULT '',
-        status TEXT NOT NULL DEFAULT 'submitted',
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
-      );
-      CREATE INDEX IF NOT EXISTS projects_user_idx ON projects (user_id, updated_at);
-      CREATE TABLE IF NOT EXISTS project_updates (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-        author_type TEXT NOT NULL,
-        author_id TEXT,
-        status TEXT,
-        message TEXT NOT NULL,
-        visible_to_client INTEGER NOT NULL DEFAULT 1,
+        mime TEXT NOT NULL,
+        size INTEGER NOT NULL,
+        sha256 TEXT NOT NULL,
+        text_chars INTEGER NOT NULL DEFAULT 0,
+        pages INTEGER,
+        truncated INTEGER NOT NULL DEFAULT 0,
+        warning TEXT,
         created_at INTEGER NOT NULL
       );
-      CREATE INDEX IF NOT EXISTS project_updates_project_idx ON project_updates (project_id, created_at);
-      CREATE TABLE IF NOT EXISTS proposals (
-        id TEXT PRIMARY KEY NOT NULL,
-        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-        summary TEXT NOT NULL,
-        currency TEXT NOT NULL,
-        amount_minor INTEGER NOT NULL,
-        status TEXT NOT NULL,
-        invoice_id TEXT REFERENCES invoices(id) ON DELETE SET NULL,
-        created_at INTEGER NOT NULL,
-        responded_at INTEGER
+      CREATE INDEX IF NOT EXISTS attachments_user_idx ON attachments (user_id, created_at);
+      CREATE INDEX IF NOT EXISTS attachments_conversation_idx ON attachments (conversation_id, created_at);
+      CREATE TABLE IF NOT EXISTS attachment_chunks (
+        attachment_id TEXT NOT NULL REFERENCES attachments(id) ON DELETE CASCADE,
+        seq INTEGER NOT NULL,
+        content TEXT NOT NULL,
+        PRIMARY KEY (attachment_id, seq)
       );
-      CREATE INDEX IF NOT EXISTS proposals_project_idx ON proposals (project_id, created_at);
+      CREATE VIRTUAL TABLE IF NOT EXISTS attachment_chunks_fts USING fts5(
+        content,
+        attachment_id UNINDEXED,
+        seq UNINDEXED,
+        tokenize = 'porter unicode61'
+      );
+      CREATE TRIGGER IF NOT EXISTS attachment_chunks_fts_insert AFTER INSERT ON attachment_chunks BEGIN
+        INSERT INTO attachment_chunks_fts (content, attachment_id, seq) VALUES (new.content, new.attachment_id, new.seq);
+      END;
+      CREATE TRIGGER IF NOT EXISTS attachment_chunks_fts_delete AFTER DELETE ON attachment_chunks BEGIN
+        DELETE FROM attachment_chunks_fts WHERE attachment_id = old.attachment_id AND seq = old.seq;
+      END;
     `);
   },
 ];

@@ -1,4 +1,5 @@
 import { compare } from "bcryptjs";
+import { pruneUserFiles } from "@/lib/attachments/store";
 import { auth } from "@/lib/auth";
 import { adminCount, deleteUser, findUserById } from "@/lib/db/queries";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
@@ -31,5 +32,6 @@ export async function DELETE(request: Request) {
   }
 
   deleteUser(user.id);
+  pruneUserFiles(user.id);
   return new Response(null, { status: 204 });
 }

@@ -57,6 +57,8 @@ export const chatRequestSchema = z.object({
   providerId: providerIdSchema.optional(),
   /** The user edited an earlier message, so the stored thread is replaced from that point. */
   edit: z.boolean().optional(),
+  /** Run Deep Research for the latest message instead of a normal reply. */
+  research: z.boolean().optional(),
   messages: z
     .array(
       z.looseObject({

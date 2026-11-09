@@ -13,7 +13,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import { Menu, PanelLeftOpen, Pencil, SquarePen } from "lucide-react";
+import { Menu, Pencil, SquarePen } from "lucide-react";
 import type { ModelOption } from "@/components/chat/model-picker";
 import { jsonFetch, useConversationActions } from "@/components/chat/conversation-actions";
 import { SearchDialog } from "@/components/chat/search-dialog";
@@ -22,9 +22,11 @@ import { useFeedback } from "@/components/feedback";
 import { isSettingsTab, SettingsDialog, type SettingsTab } from "@/components/settings/settings-dialog";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { applyAppearance } from "@/lib/appearance";
 import type { ConversationListItem } from "@/lib/db/queries";
 import type { Preferences } from "@/lib/preferences-schema";
+import { SIDEBAR_COOKIE } from "@/lib/sidebar";
 
 export type ShellUser = {
   id: string;
@@ -60,33 +62,8 @@ export function useChatChrome() {
   return value;
 }
 
-const COLLAPSED_KEY = "harbor-sidebar-collapsed";
-const COLLAPSED_EVENT = "harbor-sidebar-change";
-
-function subscribeCollapsed(callback: () => void) {
-  window.addEventListener(COLLAPSED_EVENT, callback);
-  window.addEventListener("storage", callback);
-  return () => {
-    window.removeEventListener(COLLAPSED_EVENT, callback);
-    window.removeEventListener("storage", callback);
-  };
-}
-
-function readCollapsed() {
-  try {
-    return localStorage.getItem(COLLAPSED_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-
-function writeCollapsed(value: boolean) {
-  try {
-    localStorage.setItem(COLLAPSED_KEY, value ? "1" : "0");
-  } catch {
-    // Storage can be blocked; the sidebar simply resets on reload.
-  }
-  window.dispatchEvent(new Event(COLLAPSED_EVENT));
+function saveCollapsed(value: boolean) {
+  document.cookie = `${SIDEBAR_COOKIE}=${value ? "1" : "0"}; path=/; max-age=31536000; samesite=lax`;
 }
 
 /** Settings live in the URL hash (#settings/memory) so they can be linked and survive reloads. */
@@ -110,6 +87,7 @@ export function ChatShell({
   defaultModel,
   admin,
   ollamaMessage,
+  initialCollapsed,
 }: {
   children: ReactNode;
   conversations: ConversationListItem[];
@@ -119,6 +97,7 @@ export function ChatShell({
   defaultModel: string | null;
   admin: boolean;
   ollamaMessage: string | null;
+  initialCollapsed: boolean;
 }) {
   const router = useRouter();
   const { notify, toast } = useFeedback();
@@ -126,7 +105,13 @@ export function ChatShell({
   const [searchOpen, setSearchOpen] = useState(false);
   const [prefs, setPrefs] = useState(preferences);
   const prefsRef = useRef(prefs);
-  const collapsed = useSyncExternalStore(subscribeCollapsed, readCollapsed, () => false);
+  const [collapsed, setCollapsed] = useState(initialCollapsed);
+  const toggleCollapsed = useCallback(() => {
+    setCollapsed((current) => {
+      saveCollapsed(!current);
+      return !current;
+    });
+  }, []);
   const hash = useSyncExternalStore(subscribeHash, () => window.location.hash, () => "");
   const hashName = hash.startsWith("#settings") ? (hash.split("/")[1] ?? "general") : null;
   const hashTab: SettingsTab | null = hashName === null ? null : isSettingsTab(hashName) ? hashName : "general";
@@ -178,6 +163,9 @@ export function ChatShell({
       if (key === "k" && !event.shiftKey) {
         event.preventDefault();
         setSearchOpen(true);
+      } else if (key === "s" && event.shiftKey) {
+        event.preventDefault();
+        toggleCollapsed();
       } else if (key === "o" && event.shiftKey) {
         event.preventDefault();
         router.push("/chat");
@@ -188,13 +176,13 @@ export function ChatShell({
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [router, openSettings]);
+  }, [router, openSettings, toggleCollapsed]);
 
   const chrome = useMemo<Chrome>(
     () => ({
       openMenu: () => setOpen(true),
       collapsed,
-      toggleCollapsed: () => writeCollapsed(!collapsed),
+      toggleCollapsed,
       models,
       defaultModel,
       admin,
@@ -204,17 +192,22 @@ export function ChatShell({
       openSettings,
       openSearch: () => setSearchOpen(true),
     }),
-    [collapsed, models, defaultModel, admin, user, prefs, updatePrefs, openSettings],
+    [collapsed, toggleCollapsed, models, defaultModel, admin, user, prefs, updatePrefs, openSettings],
   );
 
   return (
     <ChatChromeContext.Provider value={chrome}>
+      <TooltipProvider>
       <div className="fixed inset-0 flex overflow-hidden bg-background">
-        {collapsed ? null : (
-          <aside className="hidden w-64 shrink-0 border-r md:flex lg:w-72" aria-label="Sidebar">
-            <SidebarBody conversations={conversations} onCollapse={() => writeCollapsed(true)} />
-          </aside>
-        )}
+        <aside
+          aria-label="Sidebar"
+          data-collapsed={collapsed}
+          className={`hidden shrink-0 border-r transition-[width] duration-200 ease-out motion-reduce:transition-none md:flex ${
+            collapsed ? "w-14" : "w-64 lg:w-72"
+          }`}
+        >
+          <SidebarBody conversations={conversations} collapsed={collapsed} onToggle={toggleCollapsed} />
+        </aside>
         <Sheet open={open} onOpenChange={setOpen}>
           <SheetContent side="left" className="w-[85vw] max-w-80 p-0 sm:max-w-80">
             <SheetHeader className="sr-only">
@@ -234,6 +227,7 @@ export function ChatShell({
       </div>
       <SearchDialog open={searchOpen} onOpenChange={setSearchOpen} recent={conversations} />
       <SettingsDialog tab={settingsTab} onTabChange={(tab) => openSettings(tab)} onClose={closeSettings} />
+      </TooltipProvider>
     </ChatChromeContext.Provider>
   );
 }
@@ -247,7 +241,7 @@ export function ChatTopBar({
   detail?: string;
   actions?: ReactNode;
 }) {
-  const { openMenu, collapsed, toggleCollapsed } = useChatChrome();
+  const { openMenu } = useChatChrome();
   return (
     <div className="flex min-h-14 items-center gap-1 px-2 pt-[max(0.5rem,env(safe-area-inset-top))] pb-2 sm:px-3">
       <Button
@@ -260,26 +254,6 @@ export function ChatTopBar({
       >
         <Menu />
       </Button>
-      {collapsed ? (
-        <>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="hidden text-muted-foreground md:inline-flex"
-            onClick={toggleCollapsed}
-            aria-label="Open sidebar"
-            title="Open sidebar"
-          >
-            <PanelLeftOpen />
-          </Button>
-          <Button asChild variant="ghost" size="icon" className="hidden text-muted-foreground md:inline-flex">
-            <Link href="/chat" aria-label="New chat" title="New chat">
-              <SquarePen />
-            </Link>
-          </Button>
-        </>
-      ) : null}
       <div className="min-w-0 flex-1 px-1">
         {typeof title === "string" ? <h1 className="truncate text-sm font-medium">{title}</h1> : title}
         {detail ? <p className="truncate text-xs text-muted-foreground">{detail}</p> : null}

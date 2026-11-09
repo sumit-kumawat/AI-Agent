@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ApiError, apiUser, handler, parseBody } from "@/lib/api";
+import { pruneUserFiles } from "@/lib/attachments/store";
 import { parseMeta } from "@/lib/chat-types";
 import {
   deleteConversation,
@@ -72,5 +73,6 @@ export const DELETE = handler<Context>(async (request, context) => {
   const user = await apiUser(request);
   const { id } = await context.params;
   if (!deleteConversation(id, user.id)) throw new ApiError("Conversation not found", 404);
+  pruneUserFiles(user.id);
   return new Response(null, { status: 204 });
 });

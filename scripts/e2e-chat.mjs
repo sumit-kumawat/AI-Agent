@@ -215,12 +215,35 @@ try {
   }));
   check(!theme.dark && theme.pref === "system", "default theme follows the system setting");
 
-  // Collapse the desktop sidebar.
+  // Collapse the desktop sidebar to an icon rail.
+  const rail = () =>
+    page.$eval("aside", (node) => ({ collapsed: node.dataset.collapsed === "true", width: node.getBoundingClientRect().width }));
   await page.click('button[aria-label="Close sidebar"]');
-  await page.waitForSelector("aside", { hidden: true });
+  await page.waitForFunction(() => document.querySelector("aside")?.getBoundingClientRect().width < 80);
+  const collapsed = await rail();
+  check(collapsed.collapsed && collapsed.width < 80, `collapsed sidebar stays as an icon rail (${Math.round(collapsed.width)}px)`);
+  await page.hover('aside a[aria-label="New chat"]');
+  const tipped = await page
+    .waitForFunction(() => [...document.querySelectorAll("[role=tooltip]")].some((node) => node.textContent.includes("New chat")), {
+      timeout: 5000,
+    })
+    .then(() => true)
+    .catch(() => false);
+  check(tipped, "rail icons show tooltips");
+  await page.reload({ waitUntil: "networkidle0" });
+  check((await rail()).collapsed, "the collapsed state survives a reload");
   await page.click('button[aria-label="Open sidebar"]');
-  await page.waitForSelector("aside");
-  check(true, "desktop sidebar collapses and reopens");
+  await page.waitForFunction(() => document.querySelector("aside")?.getBoundingClientRect().width > 200);
+  check(!(await rail()).collapsed, "the sidebar expands again with labels");
+  await page.keyboard.down("Meta");
+  await page.keyboard.down("Shift");
+  await page.keyboard.press("KeyS");
+  await page.keyboard.up("Shift");
+  await page.keyboard.up("Meta");
+  await page.waitForFunction(() => document.querySelector("aside")?.dataset.collapsed === "true");
+  await page.click('button[aria-label="Open sidebar"]');
+  await page.waitForFunction(() => document.querySelector("aside")?.dataset.collapsed === "false");
+  check(true, "⌘⇧S toggles the sidebar");
 
   // Delete from the sidebar asks in a popup; cancelling keeps the chat.
   const openDelete = async () => {

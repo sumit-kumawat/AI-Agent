@@ -4,19 +4,36 @@ import { Timer } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ChatTopBar, useChatChrome } from "@/components/chat/chat-shell";
+import { useAttachments } from "@/components/chat/attachments";
 import { Composer } from "@/components/chat/composer";
 import { jsonFetch } from "@/components/chat/conversation-actions";
 import { pickModel, usePreferredModel, useWarmModel } from "@/components/chat/model-picker";
+import { useResearchStatus } from "@/components/chat/research";
 import { Button } from "@/components/ui/button";
 
-const SUGGESTIONS = [
-  "Explain how SQLite WAL mode works",
-  "Write a TypeScript function that retries fetch",
-  "Draft a short changelog for a chat app",
-  "Compare REST and GraphQL in a table",
-];
+import type { AttachmentInfo } from "@/lib/attachments/types";
 
-export function Greeting({ onPick, temporary = false }: { onPick: (text: string) => void; temporary?: boolean }) {
+/** Carries the first message into the new chat page, which sends it. */
+export type Draft = { text: string; attachments: AttachmentInfo[]; research?: boolean };
+
+export function draftKey(conversationId: string) {
+  return `harbor-draft:${conversationId}`;
+}
+
+export function readDraft(conversationId: string): Draft | null {
+  const raw = sessionStorage.getItem(draftKey(conversationId));
+  if (!raw) return null;
+  sessionStorage.removeItem(draftKey(conversationId));
+  try {
+    const value = JSON.parse(raw) as Draft;
+    if (typeof value?.text === "string" && Array.isArray(value.attachments)) return value;
+  } catch {
+    // Older drafts were plain text.
+  }
+  return { text: raw, attachments: [] };
+}
+
+export function Greeting({ temporary = false }: { temporary?: boolean }) {
   const { prefs, user } = useChatChrome();
   const name = prefs.nickname || user.name.split(" ")[0];
   return (
@@ -34,18 +51,6 @@ export function Greeting({ onPick, temporary = false }: { onPick: (text: string)
           {name ? `What can I help with, ${name}?` : "What can I help with?"}
         </h2>
       )}
-      <div className="mt-6 grid w-full max-w-2xl grid-cols-1 gap-2 sm:grid-cols-2">
-        {SUGGESTIONS.map((suggestion) => (
-          <button
-            key={suggestion}
-            type="button"
-            className="rounded-2xl border px-4 py-3 text-left text-sm text-muted-foreground hover:bg-muted hover:text-foreground active:bg-muted"
-            onClick={() => onPick(suggestion)}
-          >
-            {suggestion}
-          </button>
-        ))}
-      </div>
     </div>
   );
 }
@@ -62,10 +67,13 @@ export function StartChat({ temporary }: { temporary: boolean }) {
   const [input, setInput] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const files = useAttachments();
+  const [research, setResearch] = useState(false);
+  const { status: researchStatus } = useResearchStatus();
 
   async function start(text: string) {
     const trimmed = text.trim();
-    if (!trimmed || pending || !selected) return;
+    if ((!trimmed && files.ready.length === 0) || (research && !trimmed) || pending || !selected) return;
     setPending(true);
     setError(null);
     try {
@@ -73,7 +81,9 @@ export function StartChat({ temporary }: { temporary: boolean }) {
         method: "POST",
         body: JSON.stringify({ model: selected.modelId, providerId: selected.providerId, temporary }),
       });
-      sessionStorage.setItem(`harbor-draft:${conversation.id}`, trimmed);
+      const draft: Draft = { text: trimmed, attachments: files.ready, research };
+      sessionStorage.setItem(draftKey(conversation.id), JSON.stringify(draft));
+      files.clear();
       router.push(`/chat/${conversation.id}`);
       router.refresh();
     } catch {
@@ -85,7 +95,7 @@ export function StartChat({ temporary }: { temporary: boolean }) {
   return (
     <div className="flex h-full flex-col">
       <ChatTopBar
-        title={temporary ? "Temporary chat" : "New chat"}
+        title={temporary ? "Temporary chat" : null}
         actions={
           <Button
             type="button"
@@ -103,7 +113,7 @@ export function StartChat({ temporary }: { temporary: boolean }) {
       />
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:justify-center">
         <div className="flex flex-1 items-center justify-center py-6 md:mb-8 md:flex-none">
-          <Greeting onPick={(text) => void start(text)} temporary={temporary} />
+          <Greeting temporary={temporary} />
         </div>
         <div className="md:pb-[12vh]">
           <Composer
@@ -117,6 +127,8 @@ export function StartChat({ temporary }: { temporary: boolean }) {
             error={error}
             sendWithEnter={prefs.sendWithEnter}
             note={temporary ? "Temporary chat: not saved to history or memory." : undefined}
+            files={files}
+            research={{ on: research, onChange: setResearch, status: researchStatus }}
           />
         </div>
       </div>

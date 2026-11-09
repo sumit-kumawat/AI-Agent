@@ -181,10 +181,10 @@ try {
   await changePassword(adminPage, admin, `admin-${stamp}-changed`);
   check(new URL(adminPage.url()).pathname === "/admin", "after changing it, the admin lands on /admin");
   check(
-    (await adminPage.evaluate(() => document.body.innerText)).includes("A Product Of"),
-    "Conzex credit shows in the admin panel",
+    !(await adminPage.evaluate(() => document.body.innerText)).includes("A Product Of"),
+    "the admin panel carries no promotional credit",
   );
-  for (const path of ["/admin", "/admin/users", "/admin/usage", "/admin/agents", "/admin/providers", "/admin/settings", "/admin/conversations"]) {
+  for (const path of ["/admin", "/admin/users", "/admin/usage", "/admin/agents", "/admin/providers", "/admin/research", "/admin/settings", "/admin/conversations"]) {
     const response = await adminPage.goto(`${base}${path}`, { waitUntil: "networkidle0" });
     check(response.status() === 200 && adminPage.url().endsWith(path), `admin opens ${path}`);
     await adminPage.screenshot({ path: `${shots}/${path.replaceAll("/", "_").slice(1) || "admin"}.png`, fullPage: true });

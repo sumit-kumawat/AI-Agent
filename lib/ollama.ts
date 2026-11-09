@@ -133,6 +133,34 @@ export function invalidateInventory() {
   cache.harborInventory = undefined;
 }
 
+const capabilityCache = globalThis as typeof globalThis & {
+  harborCapabilities?: Map<string, string[]>;
+};
+const capabilities = (capabilityCache.harborCapabilities ??= new Map<string, string[]>());
+
+/** What Ollama says a model can do, e.g. ["completion", "vision", "tools"]. Empty when unknown. */
+export async function modelCapabilities(name: string): Promise<string[]> {
+  const key = `${ollamaRoot()}|${name}`;
+  const cached = capabilities.get(key);
+  if (cached) return cached;
+  try {
+    const response = await fetch(`${ollamaRoot()}/api/show`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: name }),
+      signal: AbortSignal.timeout(3000),
+      cache: "no-store",
+    });
+    if (!response.ok) return [];
+    const data = (await response.json()) as { capabilities?: string[] };
+    const list = Array.isArray(data.capabilities) ? data.capabilities : [];
+    capabilities.set(key, list);
+    return list;
+  } catch {
+    return [];
+  }
+}
+
 /** Installed models minus the ones an admin has disabled. */
 export async function getUserInventory(): Promise<Inventory> {
   const inventory = await getInventory();

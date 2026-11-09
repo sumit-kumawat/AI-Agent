@@ -480,7 +480,7 @@ export function titleFromMessage(content: string) {
 
 export function syncTranscript(
   conversationId: string,
-  incoming: { id: string; role: "user" | "assistant"; content: string }[],
+  incoming: { id: string; role: "user" | "assistant"; content: string; hasFiles?: boolean }[],
   options: { replace?: boolean } = {},
 ) {
   const stored = db
@@ -513,7 +513,7 @@ export function syncTranscript(
     let createdAt = Date.now();
     for (const message of incoming) {
       const content = bounded(message.content).trim();
-      if (!content) continue;
+      if (!content && !message.hasFiles) continue;
       const existing = tx
         .select({
           id: messages.id,

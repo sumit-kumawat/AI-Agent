@@ -9,8 +9,6 @@ import { useFeedback } from "@/components/feedback";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { BRAND } from "@/lib/brand";
-
 type Item = { id: string; name: string; folder: string; openedAt: number };
 
 export function WorkspaceList({ workspaces, root }: { workspaces: Item[]; root: string }) {
@@ -54,7 +52,7 @@ export function WorkspaceList({ workspaces, root }: { workspaces: Item[]; root: 
     <main className="mx-auto w-full max-w-3xl px-4 py-10">
       <Link href="/chat" className="mb-6 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="size-4" />
-        Back to {BRAND.product}
+        Back to chat
       </Link>
       <h1 className="font-heading text-3xl">Workspaces</h1>
       <p className="mt-1 text-sm text-muted-foreground">
