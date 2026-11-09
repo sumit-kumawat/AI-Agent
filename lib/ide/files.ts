@@ -116,12 +116,16 @@ export function renameEntry(root: string, from: string, to: string) {
   return { path: target.relative };
 }
 
-/** Moves a file or folder to the workspace trash instead of erasing it. */
-export function trashEntry(root: string, folder: string, relative: string) {
+/** Moves a file or folder to the workspace trash, or erases it when `permanent`. */
+export function trashEntry(root: string, folder: string, relative: string, permanent = false) {
   const { absolute, relative: clean } = resolveInside(root, relative);
   assertWritable(clean);
   if (!clean) throw new PathError("The workspace root cannot be deleted here.");
   if (!fs.existsSync(absolute)) throw new PathError("Nothing to delete there.", 404);
+  if (permanent) {
+    fs.rmSync(absolute, { recursive: true, force: true });
+    return { path: clean };
+  }
   const destination = path.join(trashRoot, folder, `${Date.now()}`, clean);
   fs.mkdirSync(path.dirname(destination), { recursive: true });
   fs.renameSync(absolute, destination);

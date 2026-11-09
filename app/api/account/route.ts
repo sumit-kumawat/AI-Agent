@@ -2,6 +2,7 @@ import { compare } from "bcryptjs";
 import { pruneUserFiles } from "@/lib/attachments/store";
 import { auth } from "@/lib/auth";
 import { adminCount, deleteUser, findUserById, superAdminCount } from "@/lib/db/queries";
+import { removeUserWorkspaces } from "@/lib/ide/workspaces";
 import { isStaff } from "@/lib/roles";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
 
@@ -38,6 +39,7 @@ export async function DELETE(request: Request) {
     );
   }
 
+  removeUserWorkspaces(user.id);
   deleteUser(user.id);
   pruneUserFiles(user.id);
   return new Response(null, { status: 204 });

@@ -1,5 +1,5 @@
 import { searchFiles } from "@/lib/ide/files";
-import { errorResponse, ideAdmin } from "@/lib/ide/guard";
+import { errorResponse, ideUser } from "@/lib/ide/guard";
 import { openWorkspace } from "@/lib/ide/workspaces";
 
 export const runtime = "nodejs";
@@ -7,8 +7,8 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await ideAdmin(request);
-    const { root } = openWorkspace((await params).id);
+    const actor = await ideUser(request);
+    const { root } = openWorkspace(actor, (await params).id);
     const url = new URL(request.url);
     const query = (url.searchParams.get("q") ?? "").slice(0, 500);
     const result = searchFiles(root, query, {

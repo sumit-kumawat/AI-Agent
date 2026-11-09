@@ -11,10 +11,10 @@ export default auth((req) => {
   const isLoggedIn = Boolean(user?.id);
   const { pathname } = req.nextUrl;
   const isAuthPage = pathname === "/login" || pathname === "/register";
-  const isAdminPage =
-    pathname === "/admin" || pathname.startsWith("/admin/") || pathname === "/ide" || pathname.startsWith("/ide/");
+  const isAdminPage = pathname === "/admin" || pathname.startsWith("/admin/");
   const isAccountPage = pathname === "/account" || pathname.startsWith("/account/");
-  const isAppPage = ["/chat", "/plans", "/usage"].some((root) => pathname === root || pathname.startsWith(`${root}/`));
+  // The IDE is checked against the user's plan by its pages and API.
+  const isAppPage = ["/chat", "/plans", "/usage", "/ide"].some((root) => pathname === root || pathname.startsWith(`${root}/`));
   const isProtected = isAppPage || isAdminPage || isAccountPage;
 
   if (isProtected && !isLoggedIn) {

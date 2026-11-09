@@ -37,8 +37,11 @@ export function Explorer({
   onRenamed,
   onDeleted,
   isBusy,
+  recoverable,
   log,
 }: {
+  /** Deleted entries go to the server's trash (admins) rather than being erased. */
+  recoverable: boolean;
   workspaceId: string;
   workspaceName: string;
   activePath: string | null;
@@ -164,7 +167,7 @@ export function Explorer({
   async function remove(entry: Entry) {
     const ok = await confirm({
       title: `Delete ${entry.name}?`,
-      description: `${entry.kind === "dir" ? "The folder and everything in it" : "The file"} will be moved to the workspace trash on the server.${isBusy(entry.path) ? " Unsaved changes will be lost." : ""}`,
+      description: `${entry.kind === "dir" ? "The folder and everything in it" : "The file"} will be ${recoverable ? "moved to the workspace trash on the server" : "deleted permanently"}.${isBusy(entry.path) ? " Unsaved changes will be lost." : ""}`,
       confirmLabel: "Delete",
       destructive: true,
     });

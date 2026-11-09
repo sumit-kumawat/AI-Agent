@@ -25,7 +25,7 @@ export async function POST(request: Request) {
     const admin = await ideAdmin(request);
     const body = await readJson<{ workspace?: unknown; cols?: unknown; rows?: unknown }>(request);
     if (typeof body.workspace !== "string") throw new HttpError("Send a workspace.", 400);
-    const { workspace, root } = openWorkspace(body.workspace);
+    const { workspace, root } = openWorkspace({ id: admin.id, admin }, body.workspace);
     const session = createTerminal({
       workspaceId: workspace.id,
       userId: admin.id,

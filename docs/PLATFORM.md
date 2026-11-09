@@ -18,7 +18,7 @@ after it is tested (typecheck, lint, build, smoke, and the e2e suites).
 | AI | AI SDK v7 with an OpenAI-compatible client for Ollama | Keep the SDK; add a provider registry (OpenAI, Anthropic, Gemini, OpenAI-compatible, Ollama) |
 | Popups | Global `FeedbackProvider` (confirm, prompt, notify) | Keep; no browser dialogs anywhere |
 | Admin | Users, usage, agents and models, settings, conversation audit, audit log | Keep and extend; conversation content access becomes reason-gated and audited |
-| IDE | Admin-only workspaces, Monaco, terminals (`/ide`) | Keep as an admin tool; outside this rebuild's scope |
+| IDE | Workspaces, Monaco, assistant for plans with the IDE; terminals for admins (`/ide`) | Per-user ownership and storage quotas |
 
 ### Existing data model
 
@@ -239,6 +239,31 @@ bar, with one scrolling content column. On `/admin` the sidebar's chat list is
 replaced by the admin sections.
 
 `npm run e2e:models` checks the menu and sends real turns in each mode.
+
+### IDE for every plan that includes it
+
+- **Access** follows the plan's `features.ide` (admins always). The pages
+  (`requireIdePage`) send other plans to `/plans`; the API (`ideUser` in
+  `lib/ide/guard.ts`) answers 403 with the plan block. Mutations still need a
+  same-site Origin.
+- **Ownership**: a workspace belongs to `workspaces.created_by`. Customers
+  list and open only their own; anything else is a 404. Admins see theirs plus
+  ones whose owner was deleted, and can open any for support. Deleting an
+  account erases that user's workspaces.
+- **Storage**: every save, new file and clone is checked against the plan's
+  `storageMb.ide` across all of the user's workspaces (413 with what is used).
+  Capped plans clone with `--depth 1`, and a clone that ends up too big is
+  removed. Customers' deletes are permanent so the trash cannot hold
+  uncounted data; admins keep the recoverable trash.
+- **Terminal** stays admin-only: it is a real shell on the server. Customers
+  see why in the panel, and the API refuses with 403.
+- **Assistant** (Sparkles in the activity bar): questions about the open file
+  and selection, answered by the plan's models with Auto and the optimisation
+  modes, streamed from `/api/ide/workspaces/:id/assist`. It is metered as the
+  `ide` feature against the plan's allowance. Secrets files (`.env`, keys) are
+  never sent. It cannot run code or edit files and says so.
+
+`npm run e2e:ide` covers all of the above with a customer and an admin.
 
 ### Accounts, IDs and admin roles
 

@@ -112,14 +112,111 @@ async function popup(page, title, { input, button } = {}) {
 const terminalText = (page) =>
   page.evaluate(() => [...document.querySelectorAll("[data-terminal]:not(.hidden) .xterm-rows > div")].map((row) => row.textContent).join("\n"));
 
+const sql = (query) => execFileSync("sqlite3", [process.env.DB_PATH ?? "data/harbor.db", query], { encoding: "utf8" }).trim();
+
 let workspaceId = null;
+let customerWorkspace = null;
+let originalPlans = null;
 let adminPage = null;
 try {
-  // Access control.
+  // Customers whose plan includes the IDE.
   const userPage = await session(user);
-  check((await api(userPage, "/api/ide/workspaces")).status === 403, "non-admins get 403 from the IDE API");
+  const userId = sql(`SELECT id FROM users WHERE email='${user.email}'`);
+  const planId = sql(`SELECT plan FROM users WHERE id='${userId}'`);
+  originalPlans = sql("SELECT value FROM settings WHERE key='plans.config'");
+  const plans = JSON.parse(originalPlans || "{}");
+  if (!plans[planId]?.features?.ide) throw new Error(`the ${planId} plan does not include the IDE; enable it to run this test`);
+  const created = await api(userPage, "/api/ide/workspaces", { method: "POST", body: JSON.stringify({ name: `cust ${stamp}` }) });
+  check(created.status === 201, `a customer on the ${planId} plan can create a workspace (${created.status})`);
+  customerWorkspace = created.body.workspace?.id;
+  const listed = await api(userPage, "/api/ide/workspaces");
+  check(
+    listed.status === 200 && listed.body.workspaces.every((workspace) => workspace.createdBy === userId) && listed.body.workspaces.length === 1,
+    "customers only see their own workspaces",
+  );
+  const foreign = sql("SELECT id FROM workspaces WHERE created_by IS NOT NULL AND created_by != '" + userId + "' LIMIT 1");
+  if (foreign) {
+    check((await api(userPage, `/api/ide/workspaces/${foreign}/files?dir=`)).status === 404, "another user's workspace is not readable");
+    check((await api(userPage, `/api/ide/workspaces/${foreign}`, { method: "DELETE" })).status === 404, "another user's workspace cannot be deleted");
+  }
+  const terminal = await api(userPage, "/api/ide/terminals", { method: "POST", body: JSON.stringify({ workspace: customerWorkspace }) });
+  check(terminal.status === 403, `customers cannot open a server terminal (${terminal.status})`);
+
+  const filesUrl = `/api/ide/workspaces/${customerWorkspace}/files`;
+  const code = "export function answerCode() {\n  return 4817;\n}\n";
+  const write = await api(userPage, filesUrl, { method: "PUT", body: JSON.stringify({ path: "src/answer.ts", content: code }) });
+  check(write.status === 200, "customers can save files in their workspace");
+  const storageLimit = plans[planId].storageMb.ide * 1024 * 1024;
+  if (storageLimit > 0 && storageLimit <= 60 * 1024 * 1024) {
+    const chunk = "x".repeat(5 * 1024 * 1024 - 64);
+    let refused = null;
+    for (let index = 0; index < Math.ceil(storageLimit / chunk.length) + 1 && !refused; index += 1) {
+      const result = await api(userPage, filesUrl, { method: "PUT", body: JSON.stringify({ path: `big/${index}.txt`, content: chunk }) });
+      if (result.status !== 200) refused = result;
+    }
+    check(refused?.status === 413 && /IDE storage/.test(refused.body.error), `saving past the plan's ${plans[planId].storageMb.ide} MB is refused (${refused?.body?.error ?? "never refused"})`);
+    const removed = await api(userPage, `${filesUrl}?path=big`, { method: "DELETE" });
+    const trashed = sql(`SELECT folder FROM workspaces WHERE id='${customerWorkspace}'`);
+    check(removed.status === 204 && !fs.existsSync(`data/workspaces/.trash/${trashed}`), "customer deletes free the space (nothing kept in the trash)");
+  }
+
   await userPage.goto(`${base}/ide`, { waitUntil: "networkidle0" });
-  check(!userPage.url().includes("/ide"), "non-admins are redirected away from /ide");
+  check(new URL(userPage.url()).pathname === "/ide", "customers with the IDE in their plan open /ide");
+  check(
+    (await userPage.$("aside[aria-label=Sidebar]")) !== null && (await userPage.$("[data-ide-storage]")) !== null,
+    "the workspace list sits in the app shell and shows storage use",
+  );
+  check(!(await userPage.evaluate(() => document.body.innerText.includes("data/workspaces"))), "customers are not shown server paths");
+  await userPage.goto(`${base}/ide/${customerWorkspace}`, { waitUntil: "networkidle0" });
+  await userPage.waitForSelector('[data-ide] [aria-label="Explorer"]');
+  check(Boolean(await userPage.$("[data-terminal-unavailable]")), "the terminal panel explains it is admin-only");
+
+  // The assistant answers from the open file, counted as IDE usage.
+  const before = Number(sql(`SELECT COUNT(*) FROM usage_events WHERE user_id='${userId}' AND feature='ide'`));
+  await userPage.waitForSelector('button[data-path="src"]');
+  await userPage.click('button[data-path="src"]');
+  await userPage.waitForSelector('button[data-path="src/answer.ts"]');
+  await userPage.click('button[data-path="src/answer.ts"]');
+  await userPage.waitForSelector(".monaco-editor");
+  await userPage.click('button[aria-label="Assistant"]');
+  await userPage.waitForSelector("[data-ide-assistant]");
+  check(
+    (await userPage.$eval("[data-assistant-file]", (node) => node.dataset.assistantFile)) === "src/answer.ts",
+    "the assistant offers to include the open file",
+  );
+  await userPage.type('textarea[aria-label="Ask the assistant"]', "What number does answerCode return? Reply with the number only.");
+  await userPage.keyboard.press("Enter");
+  await userPage.waitForFunction(
+    () => {
+      const last = [...document.querySelectorAll('[data-assistant-turn="assistant"]')].at(-1);
+      return last?.querySelector("[data-assistant-model]") && !document.querySelector('[data-ide-assistant] button[aria-label="Stop"]');
+    },
+    { timeout: 120_000 },
+  );
+  const reply = await userPage.$eval('[data-assistant-turn="assistant"]', (node) => node.innerText);
+  check(/4817/.test(reply), `the assistant reads the open file (${reply.slice(0, 60).replace(/\n/g, " ")})`);
+  await userPage.screenshot({ path: `${shots}/ide_assistant.png` });
+  const after = Number(sql(`SELECT COUNT(*) FROM usage_events WHERE user_id='${userId}' AND feature='ide'`));
+  check(after === before + 1, "the assistant's tokens are recorded as IDE usage");
+  const secret = await api(userPage, `/api/ide/workspaces/${customerWorkspace}/assist`, {
+    method: "POST",
+    body: JSON.stringify({ messages: [{ role: "user", content: "hi" }], file: { path: ".env", content: "KEY=1" } }),
+  });
+  check(secret.status === 400, "secrets files are never sent to the assistant");
+
+  // A plan without the IDE is refused by the API and the pages.
+  const locked = JSON.parse(originalPlans);
+  locked[planId].features.ide = false;
+  sql(`UPDATE settings SET value='${JSON.stringify(locked).replaceAll("'", "''")}' WHERE key='plans.config'`);
+  try {
+    const refused = await api(userPage, "/api/ide/workspaces");
+    check(refused.status === 403 && refused.body.block?.code === "upgrade_required", "a plan without the IDE gets 403 from the IDE API");
+    await userPage.goto(`${base}/ide`, { waitUntil: "networkidle0" });
+    check(new URL(userPage.url()).pathname === "/plans", "a plan without the IDE is sent to the plans page");
+  } finally {
+    sql(`UPDATE settings SET value='${originalPlans.replaceAll("'", "''")}' WHERE key='plans.config'`);
+    originalPlans = null;
+  }
 
   adminPage = await session(admin);
   await adminPage.goto(`${base}/account/password?next=/ide`, { waitUntil: "networkidle0" });
@@ -288,6 +385,8 @@ try {
   const pages = await browser.pages().catch(() => []);
   for (const [index, page] of pages.entries()) await page.screenshot({ path: `${shots}/ide-failure-${index}.png` }).catch(() => {});
 } finally {
+  if (originalPlans) sql(`UPDATE settings SET value='${originalPlans.replaceAll("'", "''")}' WHERE key='plans.config'`);
+  const customerFolder = customerWorkspace ? sql(`SELECT folder FROM workspaces WHERE id='${customerWorkspace}'`) : "";
   if (adminPage && workspaceId) {
     try {
       await adminPage.goto(`${base}/ide`, { waitUntil: "networkidle0" });
@@ -307,6 +406,12 @@ try {
     } catch {
       check(false, `cleanup: could not delete ${account.email}`);
     }
+  }
+  if (customerWorkspace) {
+    check(
+      sql(`SELECT COUNT(*) FROM workspaces WHERE id='${customerWorkspace}'`) === "0" && !fs.existsSync(`data/workspaces/${customerFolder}`),
+      "deleting a customer account erases their workspaces",
+    );
   }
   await browser.close();
 }

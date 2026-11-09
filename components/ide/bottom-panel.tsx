@@ -34,7 +34,9 @@ export function BottomPanel({
   output,
   onOpenProblem,
   handle,
+  terminalAllowed,
 }: {
+  terminalAllowed: boolean;
   workspaceId: string;
   theme: IdeTheme;
   tab: PanelTab;
@@ -68,6 +70,7 @@ export function BottomPanel({
   }, [workspaceId, notify, onTab]);
 
   useEffect(() => {
+    if (!terminalAllowed) return;
     let cancelled = false;
     ideFetch<{ terminals: TerminalInfo[] }>(`/api/ide/terminals?workspace=${workspaceId}`)
       .then(({ terminals: existing }) => {
@@ -79,7 +82,7 @@ export function BottomPanel({
     return () => {
       cancelled = true;
     };
-  }, [workspaceId]);
+  }, [workspaceId, terminalAllowed]);
 
   useImperativeHandle(handle, () => ({ newTerminal: () => void create() }), [create]);
 
@@ -114,7 +117,7 @@ export function BottomPanel({
           Terminal
         </button>
         <div className="ml-auto flex items-center gap-0.5">
-          {tab === "terminal" ? (
+          {tab === "terminal" && terminalAllowed ? (
             <button
               type="button"
               className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -141,7 +144,13 @@ export function BottomPanel({
       <div className="min-h-0 flex-1">
         <div className={`h-full min-h-0 ${tab === "terminal" ? "flex" : "hidden"}`}>
           <div className="min-w-0 flex-1">
-            {terminals === null ? (
+            {!terminalAllowed ? (
+              <div className="flex h-full flex-col items-center justify-center gap-1 px-6 text-center text-sm text-muted-foreground" data-terminal-unavailable>
+                <SquareTerminal className="size-5" />
+                <p>The terminal is available to admins only.</p>
+                <p className="text-xs">It runs commands directly on the server, so it is not offered on customer plans.</p>
+              </div>
+            ) : terminals === null ? (
               <p className="flex items-center gap-2 p-3 text-xs text-muted-foreground">
                 <Loader2 className="size-3 animate-spin" /> Loading terminals…
               </p>

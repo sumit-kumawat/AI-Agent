@@ -19,10 +19,12 @@ import {
   Moon,
   PanelBottom,
   Search,
+  Sparkles,
   Sun,
   X,
 } from "lucide-react";
 import { IdeRequestError, errorMessage, ideFetch } from "@/components/ide/api";
+import { AssistantPanel, type AssistantContext } from "@/components/ide/assistant";
 import { BottomPanel, type BottomPanelHandle, type PanelTab, type Problem } from "@/components/ide/bottom-panel";
 import { Explorer } from "@/components/ide/explorer";
 import { Palette, type Command } from "@/components/ide/palette";
@@ -52,9 +54,12 @@ const menuItem =
 export function Workbench({
   workspace,
   user,
+  admin,
 }: {
   workspace: { id: string; name: string };
   user: { name: string; email: string };
+  /** Admins get the terminal and a recoverable trash. */
+  admin: boolean;
 }) {
   const { confirm, notify } = useFeedback();
   const { openMenu } = useChatChrome();
@@ -65,9 +70,12 @@ export function Workbench({
   const [view, setView] = useState<"explorer" | "search">("explorer");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sidebarWidth, setSidebarWidth] = useState(264);
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  const [assistantWidth, setAssistantWidth] = useState(360);
+  const assistantStart = useRef(360);
   const [panelOpen, setPanelOpen] = useState(true);
   const [panelHeight, setPanelHeight] = useState(260);
-  const [panelTab, setPanelTab] = useState<PanelTab>("terminal");
+  const [panelTab, setPanelTab] = useState<PanelTab>(admin ? "terminal" : "problems");
   const [searchFocusKey, setSearchFocusKey] = useState(0);
   const [explorerKey, setExplorerKey] = useState(0);
   const [palette, setPalette] = useState<"files" | "commands" | null>(null);
@@ -367,8 +375,8 @@ export function Workbench({
   const newTerminal = useCallback(() => {
     setPanelTab("terminal");
     setPanelOpen(true);
-    panelRef.current?.newTerminal();
-  }, []);
+    if (admin) panelRef.current?.newTerminal();
+  }, [admin]);
 
   const showView = useCallback((next: "explorer" | "search") => {
     setView(next);
@@ -389,7 +397,8 @@ export function Workbench({
       { id: "view.panel", label: "View: Toggle Panel", shortcut: k("ctrl+`"), run: () => togglePanel() },
       { id: "view.problems", label: "View: Show Problems", run: () => togglePanel("problems") },
       { id: "view.output", label: "View: Show Output", run: () => togglePanel("output") },
-      { id: "terminal.new", label: "Terminal: New Terminal", shortcut: k("ctrl+shift+`"), run: newTerminal },
+      ...(admin ? [{ id: "terminal.new", label: "Terminal: New Terminal", shortcut: k("ctrl+shift+`"), run: newTerminal }] : []),
+      { id: "assistant.toggle", label: "Assistant: Ask About This Code", run: () => setAssistantOpen((open) => !open) },
       { id: "explorer.refresh", label: "Explorer: Refresh", run: () => setExplorerKey((key) => key + 1) },
       { id: "editor.format", label: "Format Document", shortcut: k("shift+alt+f"), run: () => runEditorAction("editor.action.formatDocument") },
       { id: "editor.find", label: "Find", shortcut: k("mod+f"), run: () => runEditorAction("actions.find") },
@@ -415,7 +424,7 @@ export function Workbench({
       { id: "nav.workspaces", label: "Go to Workspaces", run: () => router.push("/ide") },
       { id: "nav.chat", label: "Go to Chat", run: () => router.push("/chat") },
     ],
-    [closeTabs, k, newTerminal, platform, router, runEditorAction, save, saveAll, setTheme, showView, theme, togglePanel],
+    [admin, closeTabs, k, newTerminal, platform, router, runEditorAction, save, saveAll, setTheme, showView, theme, togglePanel],
   );
 
   // Workbench keyboard shortcuts. Ctrl-only chords are left to the shell when a terminal has focus.
@@ -458,6 +467,16 @@ export function Workbench({
   const warningCount = problems.filter((problem) => problem.severity === "warning").length;
   const sidebarStart = useRef(sidebarWidth);
   const panelStart = useRef(panelHeight);
+
+  const assistantContext = (): AssistantContext => {
+    const model = editorRef.current?.getModel();
+    if (!active || !model || activeFile?.status !== "ready") return {};
+    const selection = editorRef.current?.getSelection();
+    return {
+      file: { path: active, content: model.getValue(), language: model.getLanguageId() },
+      selection: selection && !selection.isEmpty() ? model.getValueInRange(selection) : undefined,
+    };
+  };
 
   const activityButton = (on: boolean) =>
     `relative flex size-11 items-center justify-center text-muted-foreground hover:text-foreground ${on ? "text-foreground before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded before:bg-primary" : ""}`;
@@ -528,9 +547,11 @@ export function Workbench({
                 <DropdownMenu.Item className={menuItem} onSelect={() => router.push("/chat")}>
                   Chat
                 </DropdownMenu.Item>
-                <DropdownMenu.Item className={menuItem} onSelect={() => router.push("/admin")}>
-                  Admin panel
-                </DropdownMenu.Item>
+                {admin ? (
+                  <DropdownMenu.Item className={menuItem} onSelect={() => router.push("/admin")}>
+                    Admin panel
+                  </DropdownMenu.Item>
+                ) : null}
                 <DropdownMenu.Item className={menuItem} onSelect={() => router.push("/account/password")}>
                   Change password
                 </DropdownMenu.Item>
@@ -565,6 +586,16 @@ export function Workbench({
             </button>
             <button
               type="button"
+              className={activityButton(assistantOpen)}
+              onClick={() => setAssistantOpen((open) => !open)}
+              aria-label="Assistant"
+              aria-pressed={assistantOpen}
+              title="Assistant: ask about the open file"
+            >
+              <Sparkles className="size-5" />
+            </button>
+            <button
+              type="button"
               className={`${activityButton(panelOpen)} mt-auto`}
               onClick={() => togglePanel()}
               aria-label="Toggle panel"
@@ -587,6 +618,7 @@ export function Workbench({
                     onRenamed={handleRenamed}
                     onDeleted={handleDeleted}
                     isBusy={(path) => [...dirty].some((item) => isUnder(item, path))}
+                    recoverable={admin}
                     log={log}
                   />
                 </div>
@@ -668,7 +700,7 @@ export function Workbench({
               ) : null}
               <div className="relative min-h-0 flex-1">
                 {!active ? (
-                  <EmptyEditor onQuickOpen={() => setPalette("files")} onCommands={() => setPalette("commands")} onTerminal={newTerminal} />
+                  <EmptyEditor onQuickOpen={() => setPalette("files")} onCommands={() => setPalette("commands")} onTerminal={admin ? newTerminal : null} />
                 ) : activeFile?.status === "ready" ? (
                   <Editor
                     path={uriFor(active)}
@@ -740,6 +772,7 @@ export function Workbench({
             <div className={panelOpen ? "shrink-0" : "hidden"} style={{ height: panelHeight }}>
                   <BottomPanel
                     workspaceId={workspace.id}
+                    terminalAllowed={admin}
                     theme={theme}
                     tab={panelTab}
                     onTab={setPanelTab}
@@ -751,6 +784,22 @@ export function Workbench({
                   />
             </div>
           </main>
+
+          {assistantOpen ? (
+            <>
+              <Splitter
+                direction="horizontal"
+                label="Resize assistant"
+                onResize={(delta, phase) => {
+                  if (phase === "start") assistantStart.current = assistantWidth;
+                  else setAssistantWidth(Math.min(Math.max(assistantStart.current - delta, 280), 720));
+                }}
+              />
+              <aside className="min-h-0 shrink-0 border-l" style={{ width: assistantWidth }} aria-label="Assistant">
+                <AssistantPanel workspaceId={workspace.id} getContext={assistantContext} onClose={() => setAssistantOpen(false)} />
+              </aside>
+            </>
+          ) : null}
         </div>
 
         <footer className="flex h-6 shrink-0 items-center gap-3 border-t bg-sidebar px-3 text-xs text-muted-foreground">
@@ -803,7 +852,7 @@ function Notice({ children, tone }: { children: React.ReactNode; tone?: "error" 
   );
 }
 
-function EmptyEditor({ onQuickOpen, onCommands, onTerminal }: { onQuickOpen: () => void; onCommands: () => void; onTerminal: () => void }) {
+function EmptyEditor({ onQuickOpen, onCommands, onTerminal }: { onQuickOpen: () => void; onCommands: () => void; onTerminal: (() => void) | null }) {
   const row = "flex w-64 items-center justify-between rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground";
   return (
     <div className="flex h-full flex-col items-center justify-center gap-1">
@@ -813,9 +862,11 @@ function EmptyEditor({ onQuickOpen, onCommands, onTerminal }: { onQuickOpen: () 
       <button type="button" className={row} onClick={onCommands}>
         Show all commands <Kbd combo="mod+shift+p" />
       </button>
-      <button type="button" className={row} onClick={onTerminal}>
-        New terminal <Kbd combo="ctrl+shift+`" />
-      </button>
+      {onTerminal ? (
+        <button type="button" className={row} onClick={onTerminal}>
+          New terminal <Kbd combo="ctrl+shift+`" />
+        </button>
+      ) : null}
     </div>
   );
 }
