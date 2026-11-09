@@ -349,7 +349,67 @@ const MIGRATIONS: ((sqlite: Sqlite) => void)[] = [
       CREATE INDEX IF NOT EXISTS model_selections_user_idx ON model_selections (user_id, created_at);
     `);
   },
+
+  // 11: public user IDs (XAIU2026A8K29P7Q) and generated usernames. Both are
+  // unique; existing accounts get theirs from the year they registered.
+  (sqlite) => {
+    addColumn(sqlite, "users", "public_id", "TEXT");
+    addColumn(sqlite, "users", "username", "TEXT");
+    sqlite.exec(`
+      CREATE UNIQUE INDEX IF NOT EXISTS users_public_id_unique ON users (public_id);
+      CREATE UNIQUE INDEX IF NOT EXISTS users_username_unique ON users (username);
+    `);
+    assignMissingIds(sqlite);
+  },
 ];
+
+// No 0/O or 1/I, so IDs survive being read aloud or retyped.
+const ID_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+function randomChars(length: number) {
+  const bytes = crypto.getRandomValues(new Uint8Array(length));
+  // 256 is a multiple of 32, so the modulo is unbiased.
+  return Array.from(bytes, (byte) => ID_ALPHABET[byte % ID_ALPHABET.length]).join("");
+}
+
+export function newPublicId(year = new Date().getFullYear()) {
+  return `XAIU${year}${randomChars(8)}`;
+}
+
+export function newUsername() {
+  return `user${randomChars(8).toLowerCase()}`;
+}
+
+function isUniqueViolation(error: unknown) {
+  return typeof error === "object" && error !== null && "code" in error && String(error.code).startsWith("SQLITE_CONSTRAINT");
+}
+
+/** Runs `write` with fresh random values until it does not collide with an existing one. */
+export function withUniqueRetry<T>(write: () => T, attempts = 8): T {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return write();
+    } catch (error) {
+      if (!isUniqueViolation(error) || attempt >= attempts) throw error;
+    }
+  }
+}
+
+/** Gives every account without a public ID or username a generated one. */
+export function assignMissingIds(sqlite: Sqlite) {
+  const missing = sqlite
+    .prepare("SELECT id, created_at AS createdAt, public_id AS publicId, username FROM users WHERE public_id IS NULL OR username IS NULL")
+    .all() as { id: string; createdAt: number; publicId: string | null; username: string | null }[];
+  const setPublicId = sqlite.prepare("UPDATE users SET public_id = ? WHERE id = ?");
+  const setUsername = sqlite.prepare("UPDATE users SET username = ? WHERE id = ?");
+  for (const user of missing) {
+    if (!user.publicId) {
+      withUniqueRetry(() => setPublicId.run(newPublicId(new Date(user.createdAt).getFullYear()), user.id));
+    }
+    if (!user.username) withUniqueRetry(() => setUsername.run(newUsername(), user.id));
+  }
+  return missing.length;
+}
 
 function version(sqlite: Sqlite) {
   return sqlite.pragma("user_version", { simple: true }) as number;

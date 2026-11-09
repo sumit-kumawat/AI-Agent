@@ -1,5 +1,5 @@
 import { hash } from "bcryptjs";
-import { adminCount, createUser, findUserByEmail } from "@/lib/db/queries";
+import { createUser, findUserByEmail } from "@/lib/db/queries";
 import { clientIp, rateLimit, tooManyRequests } from "@/lib/rate-limit";
 import { getSettings } from "@/lib/settings";
 import { registerSchema } from "@/lib/validators";
@@ -9,9 +9,7 @@ export const runtime = "nodejs";
 const HOUR = 60 * 60 * 1000;
 
 export async function POST(request: Request) {
-  // A server with no admin yet always accepts the first account, which becomes the admin.
-  const bootstrap = adminCount() === 0;
-  if (!bootstrap && !getSettings().registrationEnabled) {
+  if (!getSettings().registrationEnabled) {
     return Response.json(
       { error: "Registration is closed on this server. Ask an admin for an account." },
       { status: 403 },
@@ -71,7 +69,6 @@ export async function POST(request: Request) {
       name: parsed.data.name,
       email: parsed.data.email,
       passwordHash,
-      role: bootstrap ? "admin" : "user",
     });
   } catch (error) {
     const code =

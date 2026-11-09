@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { ChangePasswordForm } from "@/components/auth/change-password-form";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { findUserById } from "@/lib/db/queries";
+import { isStaff } from "@/lib/roles";
 import { requireUser } from "@/lib/session";
 
 export const metadata: Metadata = { title: "Change password" };
@@ -21,7 +22,7 @@ export default async function ChangePasswordPage({
   const user = findUserById(session.id);
   const forced = Boolean(user?.firstLogin);
   const params = await searchParams;
-  const next = safeNext(params.next, user?.role === "admin" ? "/admin" : "/chat");
+  const next = safeNext(params.next, isStaff(user?.role) ? "/admin" : "/chat");
 
   return (
     <div className="flex min-h-dvh flex-col">

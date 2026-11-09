@@ -13,15 +13,6 @@ const schema = z.object({
     .string()
     .optional()
     .transform((value) => value?.trim().toLowerCase() || undefined),
-  ADMIN_EMAILS: z
-    .string()
-    .optional()
-    .transform((value) =>
-      (value ?? "")
-        .split(",")
-        .map((email) => email.trim().toLowerCase())
-        .filter(Boolean),
-    ),
 });
 
 export type Env = z.infer<typeof schema>;

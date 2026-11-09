@@ -4,10 +4,14 @@ import { index, integer, primaryKey, real, sqliteTable, text } from "drizzle-orm
 
 export const users = sqliteTable("users", {
   id: text("id").primaryKey(),
+  /** Shown to people and used on records: XAIU + year + 8 characters. Never editable. */
+  publicId: text("public_id").unique(),
+  /** Generated, never chosen by the user. Can be used to sign in. */
+  username: text("username").unique(),
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
-  role: text("role", { enum: ["admin", "user"] }).notNull().default("user"),
+  role: text("role", { enum: ["superadmin", "admin", "user"] }).notNull().default("user"),
   suspended: integer("suspended", { mode: "boolean" }).notNull().default(false),
   plan: text("plan").notNull().default("free"),
   /** Monthly token allowance; null means unlimited. */

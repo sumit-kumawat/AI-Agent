@@ -26,7 +26,7 @@ export async function ideAdmin(request: Request): Promise<AdminUser> {
     if (!origin || !host || new URL(origin).host !== host) throw new HttpError("Cross-site request refused.", 403);
   }
   const user = findUserById(session.user.id)!;
-  return { id: user.id, email: user.email, name: user.name };
+  return { id: user.id, email: user.email, name: user.name, role: user.role === "superadmin" ? "superadmin" : "admin" };
 }
 
 /** Turns thrown errors into JSON responses without leaking internals. */

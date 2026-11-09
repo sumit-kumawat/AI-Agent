@@ -222,6 +222,35 @@ headless Chrome, including a fake SearXNG that returns a private address
 
 `npm run e2e:models` checks the menu and sends real turns in each mode.
 
+### Accounts, IDs and admin roles
+
+- Every account has a **user ID** `XAIU<year><8 characters>` (e.g.
+  `XAIU2026RBRGZUR5`; no 0/O/1/I) and a generated **username** such as
+  `user8s7uxp4d`. Both are unique in the database, regenerated on collision,
+  shown in Settings → Account and Admin → Users, and never editable. Existing
+  accounts were backfilled with the year they registered (migration 11).
+- Sign-in accepts the email or the exact username. The old rule that matched
+  the part of an email before "@" is gone, since it let similar addresses
+  collide.
+- **Roles**: User, Administrator, Super Administrator. Only a Super
+  Administrator can change roles or reset, suspend or change the quota of
+  another admin; this is checked in the server actions, not only hidden in the
+  menu. The last active Super Administrator cannot be demoted, suspended or
+  deleted.
+- **Registration never creates admins.** The rule that made the first
+  registered account an admin, and the `ADMIN_EMAILS` promotion list, are
+  removed.
+- **Bootstrap**: on first start, `ADMIN_EMAIL`, `ADMIN_USERNAME` (default
+  `admin`) and `ADMIN_PASSWORD_HASH` create the Super Administrator with a
+  forced password change. To promote or recover an existing account, run
+  `npm run admin:bootstrap -- --email you@example.com` on the server. It reads
+  the password from stdin, stores only a bcrypt hash, forces a change at the
+  next sign-in, ends existing sessions and writes an audit entry.
+
+`npm run e2e:auth` covers registration, IDs, username sign-in, the bootstrap
+and forced change, and replays admin actions as a plain Administrator to prove
+the server refuses them.
+
 ## 7. Needs a provider before it can work
 
 | Capability | What is missing |

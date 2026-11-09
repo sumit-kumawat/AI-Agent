@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, ne, sql } from "drizzle-orm";
 import { db } from "./index";
+import { newPublicId, newUsername, withUniqueRetry } from "./migrate";
 import { conversations, messages, modelConfig, modelSelections, usageEvents, users } from "./schema";
 
 const MAX_STORED_CHARS = 200_000;
@@ -21,26 +22,14 @@ export function findUserByEmail(email: string) {
   return db.select().from(users).where(eq(users.email, email)).get();
 }
 
-/**
- * Sign-in lookup. An exact email wins. A username matches when exactly one
- * account uses it as the part before @, so "admin" and "admin@conzex.com"
- * are the same account.
- */
-export function findUserByLogin(identifier: string, preferredEmail?: string) {
-  const exact = findUserByEmail(identifier);
-  if (exact || identifier.includes("@")) return exact;
-  if (preferredEmail && preferredEmail.split("@")[0] === identifier) {
-    const preferred = findUserByEmail(preferredEmail);
-    if (preferred) return preferred;
-  }
-  const pattern = `${identifier.replace(/[\\%_]/g, (char) => `\\${char}`)}@%`;
-  const matches = db
-    .select()
-    .from(users)
-    .where(sql`${users.email} LIKE ${pattern} ESCAPE '\\'`)
-    .all()
-    .filter((user) => user.email.split("@")[0] === identifier);
-  return matches.length === 1 ? matches[0] : undefined;
+/** Sign-in lookup: an email address, or an account's generated username. */
+export function findUserByLogin(identifier: string) {
+  if (identifier.includes("@")) return findUserByEmail(identifier);
+  return db.select().from(users).where(eq(users.username, identifier)).get();
+}
+
+export function findUserByPublicId(publicId: string) {
+  return db.select().from(users).where(eq(users.publicId, publicId)).get();
 }
 
 export function findUserById(id: string) {
@@ -51,32 +40,46 @@ export function deleteUser(id: string) {
   db.delete(users).where(eq(users.id, id)).run();
 }
 
-export function createUser(input: {
-  name: string;
-  email: string;
-  passwordHash: string;
-  role?: "admin" | "user";
-}) {
+/** Creates a regular account. Admins are only made by the bootstrap or by a super admin. */
+export function createUser(input: { name: string; email: string; passwordHash: string }) {
   const id = crypto.randomUUID();
-  db.insert(users)
-    .values({
-      id,
-      name: input.name,
-      email: input.email,
-      passwordHash: input.passwordHash,
-      role: input.role ?? "user",
-      createdAt: Date.now(),
-    })
-    .run();
-  return { id, name: input.name, email: input.email };
+  const created = withUniqueRetry(() => {
+    const publicId = newPublicId();
+    const username = newUsername();
+    db.insert(users)
+      .values({
+        id,
+        publicId,
+        username,
+        name: input.name,
+        email: input.email,
+        passwordHash: input.passwordHash,
+        role: "user",
+        createdAt: Date.now(),
+      })
+      .run();
+    return { publicId, username };
+  });
+  return { id, name: input.name, email: input.email, ...created };
 }
 
+/** Active admins and super admins. */
 export function adminCount() {
   return (
     db
       .select({ count: sql<number>`count(*)` })
       .from(users)
-      .where(eq(users.role, "admin"))
+      .where(and(inArray(users.role, ["admin", "superadmin"]), eq(users.suspended, false)))
+      .get()?.count ?? 0
+  );
+}
+
+export function superAdminCount() {
+  return (
+    db
+      .select({ count: sql<number>`count(*)` })
+      .from(users)
+      .where(and(eq(users.role, "superadmin"), eq(users.suspended, false)))
       .get()?.count ?? 0
   );
 }

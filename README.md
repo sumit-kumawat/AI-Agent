@@ -49,7 +49,7 @@ openssl rand -base64 32         # paste into AUTH_SECRET
 | `AUTH_URL` | behind a proxy | none | Public URL, for example `https://chat.example.com`. Leave unset for local and LAN use. |
 | `OLLAMA_BASE_URL` | no | `http://127.0.0.1:11434` | Ollama host, without `/v1` |
 | `OLLAMA_MODEL` | no | `qwen2.5-coder:14b` | Default for new chats when it is installed |
-| `ADMIN_EMAILS` | no | none | Comma-separated emails that are promoted to admin on startup. Without it, the first account created on the server is the admin, and admins can promote others from `/admin/users`. |
+| `ADMIN_EMAIL`, `ADMIN_USERNAME`, `ADMIN_PASSWORD_HASH` | first run | none, `admin`, none | Creates the Super Administrator on first start, with a forced password change. Registration never creates admins. `npm run admin:bootstrap` promotes or recovers an existing account from the server's shell. |
 | `DATA_DIR` | no | `./data` | Where `harbor.db` lives |
 
 ## Use it from a phone or another computer

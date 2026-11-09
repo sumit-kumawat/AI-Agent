@@ -3,7 +3,7 @@ import path from "node:path";
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { env } from "@/lib/env";
-import { migrate } from "./migrate";
+import { assignMissingIds, migrate } from "./migrate";
 import { seedAdminFromEnv } from "./seed-admin";
 import * as schema from "./schema";
 
@@ -36,10 +36,7 @@ function openDatabase() {
     console.warn(`Admin seed skipped: ${seeded.reason}`);
   }
 
-  if (env.ADMIN_EMAILS.length > 0) {
-    const promote = sqlite.prepare("UPDATE users SET role = 'admin' WHERE email = ?");
-    for (const email of env.ADMIN_EMAILS) promote.run(email);
-  }
+  assignMissingIds(sqlite);
 
   const database = drizzle(sqlite, { schema });
   globalForDb.harborDb = database;

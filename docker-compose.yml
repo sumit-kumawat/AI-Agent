@@ -6,7 +6,9 @@ services:
       - "3000:3000"
     environment:
       AUTH_SECRET: ${AUTH_SECRET:?Set AUTH_SECRET in .env}
-      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH:-}
       OLLAMA_BASE_URL: http://ollama:11434
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5-coder:14b}
     volumes:

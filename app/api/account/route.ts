@@ -1,7 +1,8 @@
 import { compare } from "bcryptjs";
 import { pruneUserFiles } from "@/lib/attachments/store";
 import { auth } from "@/lib/auth";
-import { adminCount, deleteUser, findUserById } from "@/lib/db/queries";
+import { adminCount, deleteUser, findUserById, superAdminCount } from "@/lib/db/queries";
+import { isStaff } from "@/lib/roles";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
@@ -24,7 +25,13 @@ export async function DELETE(request: Request) {
   ) {
     return Response.json({ error: "Password is incorrect." }, { status: 403 });
   }
-  if (user.role === "admin" && adminCount() <= 1) {
+  if (user.role === "superadmin" && superAdminCount() <= 1) {
+    return Response.json(
+      { error: "You are the only Super Administrator. Make someone else one before deleting this account." },
+      { status: 409 },
+    );
+  }
+  if (isStaff(user.role) && adminCount() <= 1) {
     return Response.json(
       { error: "You are the only admin. Make someone else an admin before deleting this account." },
       { status: 409 },

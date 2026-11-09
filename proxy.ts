@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { isStaff } from "@/lib/roles";
 
 const CHANGE_PASSWORD = "/account/password";
 
@@ -27,7 +28,7 @@ export default auth((req) => {
     return NextResponse.redirect(url);
   }
 
-  if (isAdminPage && user?.role !== "admin") {
+  if (isAdminPage && !isStaff(user?.role)) {
     return NextResponse.redirect(new URL("/chat", req.nextUrl));
   }
 

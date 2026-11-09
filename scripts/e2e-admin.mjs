@@ -357,16 +357,16 @@ try {
   user.password = resetAccount.password;
 
   // Role change.
-  await userRowAction(adminPage, user.email, "Change role to admin");
-  await popup(adminPage, "an admin?");
+  await userRowAction(adminPage, user.email, "Change role to Administrator");
+  await popup(adminPage, "an Administrator?");
   await popup(adminPage, "Role updated");
   await adminPage.waitForFunction((email) => {
     const row = [...document.querySelectorAll("tr")].find((tr) => tr.innerText.includes(email));
-    return row?.innerText.includes("admin");
+    return row?.innerText.includes("Administrator");
   }, {}, user.email);
   await relogged.goto(`${base}/admin`, { waitUntil: "networkidle0" });
   check(relogged.url().endsWith("/admin"), "promoted user can open /admin immediately");
-  await userRowAction(adminPage, user.email, "Change role to user");
+  await userRowAction(adminPage, user.email, "Change role to User");
   await popup(adminPage, "a regular user?");
   await popup(adminPage, "Role updated");
   await relogged.goto(`${base}/admin/users`, { waitUntil: "networkidle0" });

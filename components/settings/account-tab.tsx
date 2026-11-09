@@ -9,6 +9,7 @@ import { useFeedback } from "@/components/feedback";
 import { Row } from "@/components/settings/controls";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ROLE_LABEL } from "@/lib/roles";
 
 export function AccountTab() {
   const router = useRouter();
@@ -73,11 +74,21 @@ export function AccountTab() {
           {saving ? "Saving…" : "Save"}
         </Button>
       </form>
+      <Row label="User ID" description="Quote this when you contact support. It never changes.">
+        <span className="font-mono text-sm text-muted-foreground" data-public-id>
+          {user.publicId}
+        </span>
+      </Row>
+      <Row label="Username" description="Assigned automatically. You can sign in with it or your email.">
+        <span className="font-mono text-sm text-muted-foreground" data-username>
+          {user.username}
+        </span>
+      </Row>
       <Row label="Email">
         <span className="text-sm text-muted-foreground">{user.email}</span>
       </Row>
       <Row label="Role">
-        <span className="text-sm text-muted-foreground capitalize">{user.role}</span>
+        <span className="text-sm text-muted-foreground">{ROLE_LABEL[user.role]}</span>
       </Row>
       <Row label="Member since">
         <span className="text-sm text-muted-foreground">

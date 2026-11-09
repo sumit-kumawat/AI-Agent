@@ -1,4 +1,5 @@
 import type { NextAuthConfig } from "next-auth";
+import { asRole } from "@/lib/roles";
 
 // Edge-safe settings shared with proxy.ts. It reads the role from the token
 // without touching the database; lib/auth.ts re-validates it on the server.
@@ -21,7 +22,7 @@ export const authConfig = {
       if (session.user) {
         session.user.id =
           typeof token.id === "string" ? token.id : (token.sub ?? "");
-        session.user.role = token.role === "admin" ? "admin" : "user";
+        session.user.role = asRole(token.role);
         session.user.mustChangePassword = token.fl === true;
       }
       return session;

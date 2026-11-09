@@ -6,10 +6,11 @@ import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { killSession, listSessions, getAgent, updateAgent } from "@/lib/agents";
-import { adminAction, type AdminUser } from "@/lib/admin";
+import { adminAction, assertCanManage, type AdminUser } from "@/lib/admin";
 import { audit } from "@/lib/audit";
 import { db } from "@/lib/db";
-import { adminCount, findUserById } from "@/lib/db/queries";
+import { adminCount, findUserById, superAdminCount } from "@/lib/db/queries";
+import { isStaff, ROLES, type Role } from "@/lib/roles";
 import { conversations, messages, modelConfig, users } from "@/lib/db/schema";
 import { ACCESS_ACTION, activeContentGrant } from "@/lib/content-access";
 import { parseKeywords } from "@/lib/moderation";
@@ -47,13 +48,15 @@ function endSessionsFor(id: string) {
   }
 }
 
-export async function setUserRole(id: string, role: "admin" | "user") {
+/** Granting or removing admin rights is reserved for super admins. */
+export async function setUserRole(id: string, role: Role) {
   return run((admin) => {
+    if (admin.role !== "superadmin") fail("Only a Super Administrator can change roles.");
     const user = targetUser(id);
-    if (role !== "admin" && role !== "user") fail("Unknown role.");
+    if (!ROLES.includes(role)) fail("Unknown role.");
     if (user.role === role) return {};
     if (user.id === admin.id) fail("You cannot change your own role.");
-    if (user.role === "admin" && adminCount() <= 1) fail("At least one admin must remain.");
+    if (user.role === "superadmin" && superAdminCount() <= 1) fail("At least one Super Administrator must remain.");
     db.update(users).set({ role }).where(eq(users.id, user.id)).run();
     audit(admin, "user.role", { type: "user", id: user.id }, { email: user.email, from: user.role, to: role });
     revalidatePath("/admin/users");
@@ -64,6 +67,7 @@ export async function setUserRole(id: string, role: "admin" | "user") {
 export async function resetUserPassword(id: string) {
   return run(async (admin) => {
     const user = targetUser(id);
+    assertCanManage(admin, user);
     const password = randomBytes(12).toString("base64url");
     db.update(users)
       .set({
@@ -83,7 +87,11 @@ export async function setUserSuspended(id: string, suspended: boolean) {
   return run((admin) => {
     const user = targetUser(id);
     if (user.id === admin.id) fail("You cannot suspend yourself.");
-    if (suspended && user.role === "admin" && adminCount() <= 1) fail("At least one admin must remain.");
+    assertCanManage(admin, user);
+    if (suspended && user.role === "superadmin" && superAdminCount() <= 1) {
+      fail("At least one Super Administrator must remain.");
+    }
+    if (suspended && isStaff(user.role) && adminCount() <= 1) fail("At least one admin must remain.");
     db.update(users)
       .set({
         suspended,
@@ -107,6 +115,7 @@ const quotaSchema = z.object({
 export async function updateUserQuota(id: string, input: z.input<typeof quotaSchema>) {
   return run((admin) => {
     const user = targetUser(id);
+    assertCanManage(admin, user);
     const parsed = quotaSchema.safeParse(input);
     if (!parsed.success) fail("Enter a plan name and a token limit of 0 or more, or leave the limit empty.");
     const { plan, quotaTokens, resetUsage } = parsed.data;

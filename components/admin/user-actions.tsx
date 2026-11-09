@@ -30,18 +30,32 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { isStaff, ROLE_LABEL, ROLES, type Role, type StaffRole } from "@/lib/roles";
 
 type Target = {
   id: string;
   email: string;
-  role: "admin" | "user";
+  role: Role;
   suspended: boolean;
   plan: string;
   quotaTokens: number | null;
   self: boolean;
 };
 
-export function UserActions({ user }: { user: Target }) {
+const ROLE_ARTICLE: Record<Role, string> = {
+  superadmin: "a Super Administrator",
+  admin: "an Administrator",
+  user: "a regular user",
+};
+
+const ROLE_EFFECT: Record<Role, string> = {
+  superadmin: "Super Administrators can manage every account, including other admins, and all security settings.",
+  admin: "Admins can manage regular users, conversations and settings, but not other admin accounts.",
+  user: "They lose access to the admin panel immediately.",
+};
+
+export function UserActions({ user, viewerRole }: { user: Target; viewerRole: StaffRole }) {
+  const locked = isStaff(user.role) && viewerRole !== "superadmin";
   const [pending, startTransition] = useTransition();
   const [password, setPassword] = useState<string | null>(null);
   const [quotaOpen, setQuotaOpen] = useState(false);
@@ -68,25 +82,32 @@ export function UserActions({ user }: { user: Target }) {
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-52">
           <DropdownMenuLabel className="truncate text-xs text-muted-foreground">{user.email}</DropdownMenuLabel>
-          <DropdownMenuItem
-            disabled={user.self}
-            onSelect={async () => {
-              const role = user.role === "admin" ? "user" : "admin";
-              const ok = await confirm({
-                title: `Make ${user.email} ${role === "admin" ? "an admin" : "a regular user"}?`,
-                description:
-                  role === "admin"
-                    ? "Admins can manage every user, conversation and setting."
-                    : "They lose access to the admin panel immediately.",
-                confirmLabel: "Change role",
-              });
-              if (ok) perform(() => setUserRole(user.id, role), "Role updated");
-            }}
-          >
-            {user.role === "admin" ? "Change role to user" : "Change role to admin"}
+          {viewerRole === "superadmin" && !user.self
+            ? ROLES.filter((role) => role !== user.role).map((role) => (
+                <DropdownMenuItem
+                  key={role}
+                  onSelect={async () => {
+                    const ok = await confirm({
+                      title: `Make ${user.email} ${ROLE_ARTICLE[role]}?`,
+                      description: ROLE_EFFECT[role],
+                      confirmLabel: "Change role",
+                      destructive: role === "superadmin",
+                    });
+                    if (ok) perform(() => setUserRole(user.id, role), "Role updated");
+                  }}
+                >
+                  Change role to {ROLE_LABEL[role]}
+                </DropdownMenuItem>
+              ))
+            : null}
+          {locked ? (
+            <DropdownMenuItem disabled>Only a Super Administrator can change this account</DropdownMenuItem>
+          ) : null}
+          <DropdownMenuItem disabled={locked} onSelect={() => setQuotaOpen(true)}>
+            Adjust plan and quota
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => setQuotaOpen(true)}>Adjust plan and quota</DropdownMenuItem>
           <DropdownMenuItem
+            disabled={locked}
             onSelect={async () => {
               const ok = await confirm({
                 title: "Reset password?",
@@ -102,7 +123,7 @@ export function UserActions({ user }: { user: Target }) {
           <DropdownMenuSeparator />
           <DropdownMenuItem
             variant={user.suspended ? "default" : "destructive"}
-            disabled={user.self}
+            disabled={user.self || locked}
             onSelect={async () => {
               const ok = await confirm(
                 user.suspended

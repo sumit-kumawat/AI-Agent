@@ -63,7 +63,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const byEmail = rateLimit(`login:email:${parsed.data.email}`, 10, WINDOW, context);
         if (!byIp.ok || !byEmail.ok) throw new RateLimited();
 
-        const user = findUserByLogin(parsed.data.email, env.ADMIN_EMAIL);
+        const user = findUserByLogin(parsed.data.email);
         const passwordMatches = await compare(
           parsed.data.password,
           user?.passwordHash ?? DUMMY_HASH,

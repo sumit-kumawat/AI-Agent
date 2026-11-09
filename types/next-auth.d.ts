@@ -1,6 +1,5 @@
 import { DefaultSession } from "next-auth";
-
-type Role = "admin" | "user";
+import type { Role } from "@/lib/roles";
 
 declare module "next-auth" {
   interface Session {

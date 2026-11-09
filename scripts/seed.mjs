@@ -9,7 +9,7 @@ import path from "node:path";
 import { randomBytes, randomUUID } from "node:crypto";
 import Database from "better-sqlite3";
 import bcrypt from "bcryptjs";
-import { migrate } from "../lib/db/migrate.ts";
+import { assignMissingIds, migrate } from "../lib/db/migrate.ts";
 import { seedAdminFromEnv } from "../lib/db/seed-admin.ts";
 
 const root = process.cwd();
@@ -60,4 +60,5 @@ if (process.env.SEED_USER !== "0") {
   }
 }
 
+assignMissingIds(sqlite);
 sqlite.close();

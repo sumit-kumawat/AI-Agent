@@ -20,6 +20,7 @@ import {
 import { requireAdmin } from "@/lib/admin";
 import { listUsers } from "@/lib/db/admin-queries";
 import { formatAgo, formatCompact, formatDate, formatNumber } from "@/lib/format";
+import { isStaff, ROLE_LABEL } from "@/lib/roles";
 
 export const metadata = { title: "Users" };
 
@@ -39,7 +40,7 @@ export default async function AdminUsersPage({
       <PageHeader
         title="Users"
         description={`${formatNumber(total)} account${total === 1 ? "" : "s"}${q ? ` matching "${q}"` : ""}.`}
-        actions={<SearchForm fields={[{ name: "q", placeholder: "Search email or name", value: q }]} />}
+        actions={<SearchForm fields={[{ name: "q", placeholder: "Search email, name, ID or username", value: q }]} />}
       />
       <TableCard>
         {rows.length === 0 ? (
@@ -67,10 +68,13 @@ export default async function AdminUsersPage({
                       <p className="truncate text-xs text-muted-foreground">
                         {user.name} · {user.conversations} chat{user.conversations === 1 ? "" : "s"}
                       </p>
+                      <p className="truncate font-mono text-xs text-muted-foreground" data-public-id={user.publicId}>
+                        {user.publicId} · @{user.username}
+                      </p>
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-1">
-                        <Badge variant={user.role === "admin" ? "default" : "secondary"}>{user.role}</Badge>
+                        <Badge variant={isStaff(user.role) ? "default" : "secondary"}>{ROLE_LABEL[user.role]}</Badge>
                         {user.suspended ? <Badge variant="destructive">suspended</Badge> : null}
                       </div>
                     </TableCell>
@@ -102,6 +106,7 @@ export default async function AdminUsersPage({
                           quotaTokens: user.quotaTokens,
                           self: user.id === admin.id,
                         }}
+                        viewerRole={admin.role}
                       />
                     </TableCell>
                   </TableRow>

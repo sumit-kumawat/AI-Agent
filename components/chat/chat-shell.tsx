@@ -25,13 +25,16 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { applyAppearance } from "@/lib/appearance";
 import type { ConversationListItem } from "@/lib/db/queries";
 import type { Preferences } from "@/lib/preferences-schema";
+import type { Role } from "@/lib/roles";
 import { SIDEBAR_COOKIE } from "@/lib/sidebar";
 
 export type ShellUser = {
   id: string;
   name: string;
   email: string;
-  role: "admin" | "user";
+  role: Role;
+  publicId: string | null;
+  username: string | null;
   createdAt: number;
   usage: { used: number; limit: number | null };
 };

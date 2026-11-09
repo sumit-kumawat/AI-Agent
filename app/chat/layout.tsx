@@ -30,6 +30,8 @@ export default async function ChatLayout({
         name: user.name,
         email: user.email,
         role: user.role,
+        publicId: user.publicId,
+        username: user.username,
         createdAt: user.createdAt,
         usage: { used: quota?.used ?? 0, limit: quota?.limit ?? null },
       }}
