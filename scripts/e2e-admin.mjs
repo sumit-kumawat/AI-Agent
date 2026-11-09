@@ -445,8 +445,9 @@ try {
     check(afterCheck !== "Ready" && afterCheck !== "Local", "a failed check is not shown as ready");
     await adminPage.goto(`${base}/chat`, { waitUntil: "networkidle0" });
     await adminPage.click('button[aria-label="Choose model"]');
-    await adminPage.waitForSelector("[role=menu]");
-    const menu = await adminPage.$eval("[role=menu]", (node) => node.innerText);
+    await adminPage.waitForSelector('[role=listbox][aria-label="Models"]');
+    const menu = await adminPage.$eval('[role=listbox][aria-label="Models"]', (node) => node.innerText);
+    await adminPage.keyboard.press("Escape");
     check(!menu.includes("OpenAI") && !menu.includes("gpt-test"), "chat only lists models that passed a check");
     withDb((db) => {
       db.prepare(

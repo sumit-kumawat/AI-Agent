@@ -7,7 +7,7 @@ import { ChatTopBar, useChatChrome } from "@/components/chat/chat-shell";
 import { useAttachments } from "@/components/chat/attachments";
 import { Composer } from "@/components/chat/composer";
 import { jsonFetch } from "@/components/chat/conversation-actions";
-import { pickModel, usePreferredModel, useWarmModel } from "@/components/chat/model-picker";
+import { pickModel, selectionBody, usePreferredModel, useWarmModel } from "@/components/chat/model-picker";
 import { useResearchStatus } from "@/components/chat/research";
 import { Button } from "@/components/ui/button";
 
@@ -58,10 +58,10 @@ export function Greeting({ temporary = false }: { temporary?: boolean }) {
 /** A blank chat. The conversation is created when the first message is sent. */
 export function StartChat({ temporary }: { temporary: boolean }) {
   const router = useRouter();
-  const { models, defaultModel, prefs } = useChatChrome();
+  const { models, prefs } = useChatChrome();
   const preferred = usePreferredModel();
   const [picked, setPicked] = useState<string | null>(null);
-  const model = pickModel(models, prefs.cloudModels, picked, preferred, defaultModel);
+  const model = pickModel(models, prefs.cloudModels, picked, preferred);
   const selected = models.find((option) => option.key === model) ?? null;
   useWarmModel(selected?.local ? selected.modelId : null);
   const [input, setInput] = useState("");
@@ -73,13 +73,13 @@ export function StartChat({ temporary }: { temporary: boolean }) {
 
   async function start(text: string) {
     const trimmed = text.trim();
-    if ((!trimmed && files.ready.length === 0) || (research && !trimmed) || pending || !selected) return;
+    if ((!trimmed && files.ready.length === 0) || (research && !trimmed) || pending || !model) return;
     setPending(true);
     setError(null);
     try {
       const conversation = await jsonFetch<{ id: string }>("/api/conversations", {
         method: "POST",
-        body: JSON.stringify({ model: selected.modelId, providerId: selected.providerId, temporary }),
+        body: JSON.stringify({ ...selectionBody(model, models), temporary }),
       });
       const draft: Draft = { text: trimmed, attachments: files.ready, research };
       sessionStorage.setItem(draftKey(conversation.id), JSON.stringify(draft));

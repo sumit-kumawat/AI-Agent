@@ -238,6 +238,7 @@ export function AssistantMessage({
   last,
   createdAt,
   model,
+  autoReason,
   memory,
   note,
   feedback = null,
@@ -256,6 +257,8 @@ export function AssistantMessage({
   last: boolean;
   createdAt?: number;
   model?: string;
+  /** Why Auto chose `model`; absent when the user picked it. */
+  autoReason?: string;
   memory?: string;
   note?: string;
   feedback?: 1 | -1 | null;
@@ -306,7 +309,11 @@ export function AssistantMessage({
             </IconAction>
           ) : null}
           <span className="ml-1 text-xs text-muted-foreground">
-            {model ? <span className="hidden sm:inline">{model}</span> : null}
+            {model ? (
+              <span className="hidden sm:inline" title={autoReason} data-auto-reason={autoReason}>
+                {autoReason ? `Auto · ${model}` : model}
+              </span>
+            ) : null}
           </span>
           <Timestamp at={createdAt} />
         </div>

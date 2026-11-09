@@ -194,6 +194,34 @@ removed code is kept at tag `pre-separation-20261109`.
 headless Chrome, including a fake SearXNG that returns a private address
 (it must not be fetched) and the no-source failure path.
 
+### Model selection
+
+- **Auto** is the default: `Auto · Balance`. Each turn is classified from the
+  latest message, its files and the length of the chat (`lib/models/router.ts`):
+  coding, reasoning or general, with a 0–1 complexity score. Models are scored
+  from their parameter count, what they were trained for (coder, reasoning,
+  vision from Ollama `/api/show`) and their memory cost (lighter when Ollama
+  already holds them, from `/api/ps`).
+  - **Intelligence** takes the strongest fit regardless of size, e.g.
+    `qwen2.5-coder:14b` for code.
+  - **Balance** trades quality against memory, more so for quick questions,
+    e.g. `llama3.2:3b` for a short question.
+  - **Cost** takes the lightest model that fits, e.g. `gemma3:1b` for chat
+    or `qwen2.5-coder:1.5b` for code.
+  - Images always go to a model that can read them (`gemma3:4b`).
+- **Manual**: any installed model can be picked from the same menu, which
+  has search, groups (General, Reasoning, Coding, Cloud), capability badges and
+  whether the model is in memory. Only installed models, or cloud models that
+  passed their last check, are listed.
+- **Switching** keeps the conversation: history is stored on the server and
+  sent to whichever model answers next. A chat remembers its Auto mode
+  (`conversations.model_mode`), each reply says which model answered and why,
+  and every automatic choice is recorded in `model_selections` (migration 10).
+- **⌘K** no longer opens a search overlay; "Search chats" in the sidebar opens
+  an inline search over titles and messages. ⇧⌘O, ⇧⌘S and ⌘, still work.
+
+`npm run e2e:models` checks the menu and sends real turns in each mode.
+
 ## 7. Needs a provider before it can work
 
 | Capability | What is missing |

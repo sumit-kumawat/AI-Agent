@@ -17,6 +17,7 @@
     "e2e:ide": "node scripts/e2e-ide.mjs",
     "e2e:platform": "node scripts/e2e-platform.mjs",
     "e2e:research": "node scripts/e2e-research.mjs",
+    "e2e:models": "node scripts/e2e-models.mjs",
     "seed": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/seed.mjs",
     "db:push": "drizzle-kit push"
   },

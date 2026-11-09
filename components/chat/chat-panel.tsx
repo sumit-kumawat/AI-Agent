@@ -10,8 +10,8 @@ import { useAttachments } from "@/components/chat/attachments";
 import { Composer } from "@/components/chat/composer";
 import { useConversationActions } from "@/components/chat/conversation-actions";
 import { AssistantMessage, UserMessage } from "@/components/chat/message";
-import { pickModel, usePreferredModel, useWarmModel } from "@/components/chat/model-picker";
-import { modelKey } from "@/lib/model-ref";
+import { pickModel, selectionBody, usePreferredModel, useWarmModel } from "@/components/chat/model-picker";
+import { autoKey, modelKey, type AutoMode } from "@/lib/model-ref";
 import { Greeting, readDraft } from "@/components/chat/start-chat";
 import { useResearchStatus } from "@/components/chat/research";
 import { Button } from "@/components/ui/button";
@@ -140,6 +140,7 @@ export function ChatPanel({
   title,
   conversationModel,
   conversationProvider,
+  conversationMode,
   pinned,
   archived,
   temporary,
@@ -149,20 +150,23 @@ export function ChatPanel({
   title: string;
   conversationModel: string | null;
   conversationProvider: string | null;
+  conversationMode: AutoMode | null;
   pinned: boolean;
   archived: boolean;
   temporary: boolean;
   initialMessages: ChatMessage[];
 }) {
   const router = useRouter();
-  const { models, defaultModel, prefs } = useChatChrome();
+  const { models, prefs } = useChatChrome();
   const actions = useConversationActions();
   const preferred = usePreferredModel();
   const [picked, setPicked] = useState<string | null>(null);
-  const conversationKey = conversationModel
-    ? modelKey(conversationProvider ?? "ollama", conversationModel)
-    : null;
-  const model = pickModel(models, prefs.cloudModels, picked, conversationKey, preferred, defaultModel);
+  const conversationKey = conversationMode
+    ? autoKey(conversationMode)
+    : conversationModel
+      ? modelKey(conversationProvider ?? "ollama", conversationModel)
+      : null;
+  const model = pickModel(models, prefs.cloudModels, picked, conversationKey, preferred);
   const selected = models.find((option) => option.key === model) ?? null;
   useWarmModel(selected?.local ? selected.modelId : null);
   const [continuable, setContinuable] = useState(false);
@@ -205,10 +209,7 @@ export function ChatPanel({
   const sentDraft = useRef(false);
   const { scroller, content, atBottom, scrollToBottom } = useStickToBottom();
   const busy = status === "submitted" || status === "streaming";
-  const requestBody = useMemo(
-    () => (selected ? { model: selected.modelId, providerId: selected.providerId } : {}),
-    [selected],
-  );
+  const requestBody = useMemo(() => selectionBody(model, models), [model, models]);
 
   // The server names the chat from the first message; show it while the reply streams.
   const untitled = title === "New chat";
@@ -344,6 +345,7 @@ export function ChatPanel({
                     last={last && !busy}
                     createdAt={meta.createdAt}
                     model={meta.model}
+                    autoReason={meta.auto?.reason}
                     memory={meta.memory}
                     note={
                       [

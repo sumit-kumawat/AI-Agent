@@ -1,3 +1,7 @@
+export type ModelSkill = "code" | "reasoning" | "vision" | "tools";
+
+export type ModelGroup = "General" | "Reasoning" | "Coding" | "Cloud";
+
 /** A model the user can pick. `key` is only an identifier; it is not a model name. */
 export type ModelOption = {
   key: string;
@@ -11,6 +15,10 @@ export type ModelOption = {
   size: number;
   /** Accepts images. */
   vision: boolean;
+  /** Held in memory by Ollama right now, so the first token comes quickly. */
+  loaded: boolean;
+  skills: ModelSkill[];
+  group: ModelGroup;
 };
 
 const SEP = "\u001f";
@@ -21,10 +29,31 @@ export function modelKey(providerId: string, modelId: string) {
 
 /** Accepts a key, or a legacy bare Ollama model name such as "llama3.2:1b". */
 export function parseModelRef(value: string | null | undefined): { providerId: string; modelId: string } | null {
-  if (!value) return null;
+  if (!value || autoModeOf(value)) return null;
   const split = value.indexOf(SEP);
   if (split > 0) {
     return { providerId: value.slice(0, split), modelId: value.slice(split + 1) };
   }
   return { providerId: "ollama", modelId: value };
+}
+
+export const AUTO_MODES = ["intelligence", "balance", "cost"] as const;
+export type AutoMode = (typeof AUTO_MODES)[number];
+
+export const AUTO_INFO: Record<AutoMode, { label: string; description: string }> = {
+  intelligence: { label: "Intelligence", description: "Strongest model for the task, even if slower" },
+  balance: { label: "Balance", description: "Good answers at a sensible speed" },
+  cost: { label: "Cost", description: "Smallest model that fits, fastest and lightest" },
+};
+
+export const DEFAULT_SELECTION = "auto:balance";
+
+export function autoKey(mode: AutoMode) {
+  return `auto:${mode}`;
+}
+
+export function autoModeOf(value: string | null | undefined): AutoMode | null {
+  if (!value?.startsWith("auto:")) return null;
+  const mode = value.slice(5);
+  return (AUTO_MODES as readonly string[]).includes(mode) ? (mode as AutoMode) : null;
 }

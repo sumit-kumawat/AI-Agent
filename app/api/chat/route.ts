@@ -18,9 +18,11 @@ import {
   recentConversationTitles,
   recordUsage,
   saveAssistantMessage,
+  recordModelSelection,
   setConversationModel,
   syncTranscript,
 } from "@/lib/db/queries";
+import { analyzeTask } from "@/lib/models/router";
 import { addMemory, explicitMemory, MemoryError, relevantMemories } from "@/lib/memory";
 import { findBlockedKeyword } from "@/lib/moderation";
 import { getPreferences } from "@/lib/preferences";
@@ -135,20 +137,6 @@ export async function POST(request: Request) {
 
   // Everything below that can reject runs before history is touched, so a
   // refused request never rewrites the stored conversation.
-  const prefs = getPreferences(user.id);
-  const resolved = await resolveChatTarget({
-    requestedProvider: parsed.data.providerId,
-    requestedModel: parsed.data.model,
-    conversationProvider: conversation.providerId,
-    conversationModel: conversation.model,
-    allowCloud: prefs.cloudModels,
-  });
-  if (!resolved.ok) {
-    return Response.json({ error: resolved.error }, { status: resolved.status });
-  }
-  const chosen = resolved.target.model;
-  const modelName = chosen.modelId;
-
   let files: Map<string, Attachment>;
   try {
     files = ownedAttachments(user.id, conversation.id, filesByMessage);
@@ -159,6 +147,32 @@ export async function POST(request: Request) {
   const filesOf = (messageId: string) =>
     (filesByMessage.get(messageId) ?? []).map((id) => files.get(id)).filter((row): row is Attachment => Boolean(row));
   const latestImages = filesOf(latestUser.id).filter((row) => row.kind === "image");
+
+  const prefs = getPreferences(user.id);
+  const mode = parsed.data.model ? undefined : parsed.data.mode;
+  const task = mode
+    ? analyzeTask({
+        text: latestUser.content,
+        images: latestImages.length > 0,
+        documents: transcript.some((message) => filesOf(message.id).some((row) => row.kind !== "image")),
+        historyChars: transcript.reduce((total, message) => total + message.content.length, 0),
+      })
+    : undefined;
+  const resolved = await resolveChatTarget({
+    requestedProvider: parsed.data.providerId,
+    requestedModel: parsed.data.model,
+    conversationProvider: conversation.providerId,
+    conversationModel: conversation.model,
+    allowCloud: prefs.cloudModels,
+    mode,
+    task,
+  });
+  if (!resolved.ok) {
+    return Response.json({ error: resolved.error }, { status: resolved.status });
+  }
+  const chosen = resolved.target.model;
+  const modelName = chosen.modelId;
+  const autoInfo = resolved.target.auto;
   if (latestImages.length > 0 && !chosen.vision) {
     return Response.json(
       {
@@ -253,8 +267,25 @@ export async function POST(request: Request) {
   );
   const instructions = documents.text ? `${baseInstructions}\n\n${documents.text}` : baseInstructions;
 
-  if (modelName !== conversation.model || (conversation.providerId ?? "ollama") !== chosen.providerId) {
-    setConversationModel(conversation.id, modelName, chosen.providerId);
+  const modelMode = autoInfo?.mode ?? null;
+  if (
+    modelName !== conversation.model ||
+    (conversation.providerId ?? "ollama") !== chosen.providerId ||
+    modelMode !== conversation.modelMode
+  ) {
+    setConversationModel(conversation.id, modelName, chosen.providerId, modelMode);
+  }
+  if (autoInfo && task) {
+    recordModelSelection({
+      userId: user.id,
+      conversationId: conversation.temporary ? null : conversation.id,
+      mode: autoInfo.mode,
+      task: task.kind,
+      complexity: task.complexity,
+      providerId: chosen.providerId,
+      model: modelName,
+      reason: autoInfo.reason,
+    });
   }
 
   let chatModel: ReturnType<typeof languageModel>;
@@ -274,6 +305,7 @@ export async function POST(request: Request) {
       model: modelName,
       provider: chosen.providerName,
       ...(resolved.target.fallbackFrom ? { fallbackFrom: resolved.target.fallbackFrom.name } : {}),
+      ...(autoInfo ? { auto: autoInfo } : {}),
     };
     const messageId = crypto.randomUUID();
     return createUIMessageStreamResponse({
@@ -296,7 +328,7 @@ export async function POST(request: Request) {
             saveAssistantMessage(conversation.id, {
               id: messageId,
               content: outcome.content,
-              meta: { model: meta.model, provider: meta.provider, fallbackFrom: meta.fallbackFrom, research: outcome.data },
+              meta: { model: meta.model, provider: meta.provider, fallbackFrom: meta.fallbackFrom, auto: meta.auto, research: outcome.data },
             });
           } catch (error) {
             console.error("Failed to save the research report", error);
@@ -366,6 +398,7 @@ export async function POST(request: Request) {
     model: modelName,
     provider: chosen.providerName,
     ...(resolved.target.fallbackFrom ? { fallbackFrom: resolved.target.fallbackFrom.name } : {}),
+    ...(autoInfo ? { auto: autoInfo } : {}),
     ...(savedMemory ? { memory: savedMemory } : {}),
     ...(documents.notes.length ? { fileNotes: documents.notes } : {}),
   };
@@ -416,6 +449,7 @@ export async function POST(request: Request) {
               model: meta.model,
               provider: meta.provider,
               fallbackFrom: meta.fallbackFrom,
+              auto: meta.auto,
               memory: meta.memory,
               fileNotes: meta.fileNotes,
             },

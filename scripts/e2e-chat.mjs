@@ -141,13 +141,15 @@ try {
       highlighted: document.querySelectorAll('[data-role="assistant"] pre span[style]').length,
       codeCopy: Boolean(document.querySelector('[data-role="assistant"] [data-streamdown="code-block"] button, [data-role="assistant"] pre')),
       table: Boolean(document.querySelector('[data-role="assistant"] table')),
+      rawTable: /\|\s*:?-{3,}/.test(assistant?.innerText ?? ""),
     };
   });
   check(layout.userRight, "user message is a right-aligned bubble");
   check(Math.round(layout.columnWidth) === 768, `messages column is 48rem (${Math.round(layout.columnWidth)}px)`);
   check(layout.assistantBubble === "rgba(0, 0, 0, 0)", "assistant reply has no bubble");
   check(layout.highlighted > 0, `code block is syntax highlighted (${layout.highlighted} tokens)`);
-  check(layout.table, "markdown table renders");
+  if (layout.table || layout.rawTable) check(layout.table && !layout.rawTable, "markdown table renders");
+  else console.log(`skip ${model} answered without a table, so table rendering was not checked`);
   await shot("desktop_reply");
 
   // Title was generated from the first message.

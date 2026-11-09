@@ -4,6 +4,7 @@ import { ChatPanel } from "@/components/chat/chat-panel";
 import { attachmentsByMessage } from "@/lib/attachments/store";
 import { parseMeta, type ChatMessage } from "@/lib/chat-types";
 import { getConversationForUser, listMessages } from "@/lib/db/queries";
+import { autoModeOf } from "@/lib/model-ref";
 import { requireUser } from "@/lib/session";
 
 export const metadata: Metadata = { title: "Chat" };
@@ -34,6 +35,7 @@ export default async function ConversationPage({ params }: PageProps<"/chat/[id]
       title={conversation.title}
       conversationModel={conversation.model}
       conversationProvider={conversation.providerId}
+      conversationMode={autoModeOf(`auto:${conversation.modelMode ?? ""}`)}
       pinned={conversation.pinnedAt !== null}
       archived={conversation.archivedAt !== null}
       temporary={conversation.temporary}

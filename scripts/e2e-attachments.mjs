@@ -306,10 +306,8 @@ try {
   }, visionModel);
   if (hasVision) {
     await page.click('button[aria-label="Choose model"]');
-    await page.evaluate((name) => {
-      const item = [...document.querySelectorAll("[role=menuitemradio]")].find((node) => node.textContent.includes(name));
-      item?.click();
-    }, visionModel);
+    await page.waitForSelector(`[data-model-option="${visionModel}"]`);
+    await page.click(`[data-model-option="${visionModel}"]`);
     await page.waitForFunction(() => !document.querySelector('button[aria-label="Send message"]').disabled);
     await page.click('button[aria-label="Send message"]');
     await page.waitForFunction(() => location.pathname !== "/chat");

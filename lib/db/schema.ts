@@ -35,6 +35,8 @@ export const conversations = sqliteTable(
     model: text("model"),
     /** Which provider `model` belongs to. Null on chats from before providers existed (Ollama). */
     providerId: text("provider_id"),
+    /** Auto mode ("intelligence", "balance", "cost"), or null when the user picked a model. */
+    modelMode: text("model_mode"),
     pinnedAt: integer("pinned_at"),
     archivedAt: integer("archived_at"),
     /** Temporary chats stay out of history, search and memory. */
@@ -243,3 +245,22 @@ export const settings = sqliteTable("settings", {
   value: text("value").notNull(),
   updatedAt: integer("updated_at").notNull(),
 });
+
+export const modelSelections = sqliteTable(
+  "model_selections",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    conversationId: text("conversation_id").references(() => conversations.id, { onDelete: "cascade" }),
+    mode: text("mode").notNull(),
+    task: text("task").notNull(),
+    complexity: real("complexity").notNull(),
+    providerId: text("provider_id").notNull(),
+    model: text("model").notNull(),
+    reason: text("reason").notNull(),
+    createdAt: integer("created_at", { mode: "number" }).notNull(),
+  },
+  (table) => [index("model_selections_user_idx").on(table.userId, table.createdAt)],
+);

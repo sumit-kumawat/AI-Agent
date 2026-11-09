@@ -261,25 +261,33 @@ try {
   await page.waitForFunction(() => document.querySelector('section[aria-label="Pinned"]'));
   check(true, "pinned chat appears under Pinned");
 
-  // Search by message text with ⌘K.
+  // ⌘K no longer opens anything; search lives inline in the sidebar.
   await page.keyboard.down("Meta");
   await page.keyboard.press("k");
   await page.keyboard.up("Meta");
-  await page.waitForSelector('input[aria-label="Search chats"]');
-  await page.type('input[aria-label="Search chats"]', "hello");
+  await sleep(300);
+  check(
+    !(await page.$('[role="dialog"]')) && !(await page.$('input[aria-label="Search chats"]')),
+    "⌘K opens no overlay",
+  );
+  await page.evaluate(() =>
+    [...document.querySelectorAll("button")].find((node) => node.textContent?.includes("Search chats"))?.click(),
+  );
+  await page.waitForSelector("[data-chat-search] input");
+  await page.type("[data-chat-search] input", "hello");
   await page.waitForFunction(
-    (value) => document.querySelector("[data-search-results]")?.textContent?.includes(value),
+    (value) => document.querySelector("[data-chat-search]")?.textContent?.includes(value),
     {},
     title.slice(0, 20),
   );
-  check(true, "search finds a chat by message text");
+  check(true, "sidebar search finds a chat by message text");
   await shot("search");
-  await page.$eval('input[aria-label="Search chats"]', (node) => node.select());
-  await page.type('input[aria-label="Search chats"]', "zzqqxxnomatch");
-  await page.waitForFunction(() => document.querySelector("[data-search-results]")?.textContent?.includes("No chats match"));
+  await page.$eval("[data-chat-search] input", (node) => node.select());
+  await page.type("[data-chat-search] input", "zzqqxxnomatch");
+  await page.waitForFunction(() => document.querySelector("[data-chat-search]")?.textContent?.includes("No chats match"));
   check(true, "search shows an empty state");
   await page.keyboard.press("Escape");
-  await page.waitForSelector('input[aria-label="Search chats"]', { hidden: true });
+  await page.waitForSelector("[data-chat-search]", { hidden: true });
   await sleep(300);
 
   // Archive from the chat menu, restore from Settings → Data controls.

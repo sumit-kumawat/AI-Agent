@@ -4,6 +4,7 @@ import { ArrowUp, Paperclip, Square, Telescope, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ACCEPT, AttachmentTray, type Attachments } from "@/components/chat/attachments";
 import { ModelPicker, type ModelOption } from "@/components/chat/model-picker";
+import { autoModeOf } from "@/lib/model-ref";
 import type { ResearchStatus } from "@/components/chat/research";
 import { Button } from "@/components/ui/button";
 
@@ -50,15 +51,18 @@ export function Composer({
   const [dragging, setDragging] = useState(false);
   const [fileProblem, setFileProblem] = useState<string | null>(null);
   const selected = models.find((option) => option.key === model);
+  const auto = autoModeOf(model) !== null;
   const hasImage = files?.items.some((item) => item.kind === "image") ?? false;
   const blocked =
     files?.uploading
       ? "Waiting for files to finish uploading…"
       : files?.failed
         ? "Remove or replace the files that could not be attached."
-        : hasImage && selected && !selected.vision
-          ? `${selected.name} cannot read images. Pick a model marked “Images”, or remove the image.`
-          : null;
+        : hasImage && auto && !models.some((option) => option.vision)
+          ? "None of the available models can read images. Remove the image."
+          : hasImage && selected && !selected.vision
+            ? `${selected.name} cannot read images. Pick a model marked “Images”, or switch to Auto.`
+            : null;
   const researching = research?.on === true;
   const hasContent = researching ? value.trim().length > 0 : value.trim().length > 0 || (files?.ready.length ?? 0) > 0;
   const canSend = hasContent && !blocked && model !== null && !busy && !pending;

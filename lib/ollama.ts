@@ -161,6 +161,28 @@ export async function modelCapabilities(name: string): Promise<string[]> {
   }
 }
 
+const loadedCache = globalThis as typeof globalThis & {
+  harborLoaded?: { at: number; names: Set<string> };
+};
+
+/** Models Ollama currently holds in memory. Empty when Ollama cannot be reached. */
+export async function loadedModels(): Promise<Set<string>> {
+  const cached = loadedCache.harborLoaded;
+  if (cached && Date.now() - cached.at < 3000) return cached.names;
+  let names = new Set<string>();
+  try {
+    const response = await fetch(`${ollamaRoot()}/api/ps`, { signal: AbortSignal.timeout(1500), cache: "no-store" });
+    if (response.ok) {
+      const data = (await response.json()) as { models?: { name: string }[] };
+      names = new Set((data.models ?? []).map((model) => model.name));
+    }
+  } catch {
+    // Treated as nothing loaded; the inventory check reports Ollama being down.
+  }
+  loadedCache.harborLoaded = { at: Date.now(), names };
+  return names;
+}
+
 /** Installed models minus the ones an admin has disabled. */
 export async function getUserInventory(): Promise<Inventory> {
   const inventory = await getInventory();

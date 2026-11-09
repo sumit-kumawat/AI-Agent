@@ -5,6 +5,7 @@ import {
   listArchivedConversations,
   listConversations,
 } from "@/lib/db/queries";
+import { AUTO_MODES } from "@/lib/model-ref";
 import { listSelectableModels } from "@/lib/providers/catalog";
 import { modelNameSchema, providerIdSchema } from "@/lib/validators";
 
@@ -21,6 +22,7 @@ export const GET = handler(async (request) => {
 const createSchema = z.object({
   model: modelNameSchema.optional(),
   providerId: providerIdSchema.optional(),
+  mode: z.enum(AUTO_MODES).optional(),
   temporary: z.boolean().optional(),
 });
 
@@ -44,7 +46,8 @@ export const POST = handler(async (request) => {
       providerId = match.providerId;
     }
   }
-  return Response.json(createConversation(user.id, model, body.temporary ?? false, providerId), {
+  const mode = model ? null : (body.mode ?? null);
+  return Response.json(createConversation(user.id, model, body.temporary ?? false, providerId, mode), {
     status: 201,
   });
 });

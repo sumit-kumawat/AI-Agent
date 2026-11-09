@@ -328,6 +328,27 @@ const MIGRATIONS: ((sqlite: Sqlite) => void)[] = [
       END;
     `);
   },
+
+  // 10: Auto model selection. A chat remembers its mode; every automatic
+  // choice is recorded with the reason it was made.
+  (sqlite) => {
+    addColumn(sqlite, "conversations", "model_mode", "TEXT");
+    sqlite.exec(`
+      CREATE TABLE IF NOT EXISTS model_selections (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        conversation_id TEXT REFERENCES conversations(id) ON DELETE CASCADE,
+        mode TEXT NOT NULL,
+        task TEXT NOT NULL,
+        complexity REAL NOT NULL,
+        provider_id TEXT NOT NULL,
+        model TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS model_selections_user_idx ON model_selections (user_id, created_at);
+    `);
+  },
 ];
 
 function version(sqlite: Sqlite) {

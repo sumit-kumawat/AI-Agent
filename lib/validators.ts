@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { AUTO_MODES } from "@/lib/model-ref";
 
 export const MAX_MESSAGE_CHARS = 32_000;
 
@@ -55,6 +56,8 @@ export const chatRequestSchema = z.object({
   conversationId: z.uuid(),
   model: modelNameSchema.optional(),
   providerId: providerIdSchema.optional(),
+  /** Auto selection mode, used when no model is named. */
+  mode: z.enum(AUTO_MODES).optional(),
   /** The user edited an earlier message, so the stored thread is replaced from that point. */
   edit: z.boolean().optional(),
   /** Run Deep Research for the latest message instead of a normal reply. */

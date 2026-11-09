@@ -1,5 +1,6 @@
-import { modelKey, parseModelRef, type ModelOption } from "@/lib/model-ref";
-import { getModelName, getUserInventory, modelCapabilities } from "@/lib/ollama";
+import { modelKey, parseModelRef, type AutoMode, type ModelOption } from "@/lib/model-ref";
+import { chooseAuto, skillsFor, type TaskProfile } from "@/lib/models/router";
+import { getModelName, getUserInventory, loadedModels, modelCapabilities } from "@/lib/ollama";
 import { getProvider, getRouting, listProviderModels, listProviders, type ModelRef } from "@/lib/providers/store";
 
 const downUntil = new Map<string, number>();
@@ -37,9 +38,15 @@ export async function listSelectableModels(): Promise<{ models: ModelOption[]; w
   if (!ollama || ollama.enabled) {
     const inventory = await getUserInventory();
     if (inventory.ok) {
-      const caps = await Promise.all(inventory.models.map((model) => modelCapabilities(model.name)));
+      const [caps, loaded] = await Promise.all([
+        Promise.all(inventory.models.map((model) => modelCapabilities(model.name))),
+        loadedModels(),
+      ]);
       for (const [index, model] of inventory.models.entries()) {
+        const vision = caps[index]!.includes("vision");
         models.push({
+          ...skillsFor(model.name, caps[index]!, vision),
+          loaded: loaded.has(model.name),
           key: modelKey("ollama", model.name),
           providerId: "ollama",
           modelId: model.name,
@@ -48,7 +55,7 @@ export async function listSelectableModels(): Promise<{ models: ModelOption[]; w
           local: true,
           parameterSize: model.parameterSize,
           size: model.size,
-          vision: caps[index]!.includes("vision"),
+          vision,
         });
       }
     } else if (models.length === 0) {
@@ -62,7 +69,11 @@ export async function listSelectableModels(): Promise<{ models: ModelOption[]; w
     }
     for (const model of listProviderModels(provider.id)) {
       if (!model.enabled || !model.available) continue;
+      const vision = cloudVision(model.modelId);
       models.push({
+        ...skillsFor(model.modelId, [], vision),
+        group: "Cloud",
+        loaded: true,
         key: modelKey(provider.id, model.modelId),
         providerId: provider.id,
         modelId: model.modelId,
@@ -71,7 +82,7 @@ export async function listSelectableModels(): Promise<{ models: ModelOption[]; w
         local: false,
         parameterSize: null,
         size: 0,
-        vision: cloudVision(model.modelId),
+        vision,
       });
     }
   }
@@ -99,7 +110,12 @@ export function preferredModel(models: ModelOption[]) {
   return envDefault ?? models[0] ?? null;
 }
 
-export type ChatTarget = { model: ModelOption; fallbackFrom: ModelOption | null };
+export type ChatTarget = {
+  model: ModelOption;
+  fallbackFrom: ModelOption | null;
+  /** Set when Auto chose the model. */
+  auto: { mode: AutoMode; reason: string } | null;
+};
 
 /**
  * Picks the model for one turn. An explicit request for something that is not
@@ -111,6 +127,9 @@ export async function resolveChatTarget(input: {
   conversationProvider: string | null;
   conversationModel: string | null;
   allowCloud: boolean;
+  /** Auto selection: the mode and what this turn needs. Ignored when a model is requested. */
+  mode?: AutoMode;
+  task?: TaskProfile;
 }): Promise<{ ok: true; target: ChatTarget } | { ok: false; status: number; error: string }> {
   const { models, warning } = await listSelectableModels();
   if (models.length === 0) {
@@ -119,6 +138,20 @@ export async function resolveChatTarget(input: {
 
   const usable = (model: ModelOption | undefined) =>
     model !== undefined && (model.local || input.allowCloud);
+
+  if (input.mode && input.task && !input.requestedModel) {
+    const previous = findIn(models, {
+      providerId: input.conversationProvider ?? "ollama",
+      modelId: input.conversationModel ?? "",
+    });
+    const auto = chooseAuto(models, input.mode, input.task, {
+      allowCloud: input.allowCloud,
+      previous: previous?.key ?? null,
+      unavailable: (model) => providerIsDown(model.providerId),
+    });
+    if ("error" in auto) return { ok: false, status: 503, error: auto.error };
+    return { ok: true, target: { model: auto.model, fallbackFrom: null, auto: { mode: input.mode, reason: auto.reason } } };
+  }
 
   let chosen: ModelOption | undefined;
   if (input.requestedModel) {
@@ -156,7 +189,7 @@ export async function resolveChatTarget(input: {
   if (providerIsDown(chosen.providerId)) {
     const fallback = findIn(models, getRouting().fallbackModel);
     if (fallback && fallback.key !== chosen.key && usable(fallback) && !providerIsDown(fallback.providerId)) {
-      return { ok: true, target: { model: fallback, fallbackFrom: chosen } };
+      return { ok: true, target: { model: fallback, fallbackFrom: chosen, auto: null } };
     }
   }
   if (!usable(chosen)) {
@@ -166,7 +199,7 @@ export async function resolveChatTarget(input: {
       error: `Allow cloud models before using ${chosen.providerName}. Your messages, custom instructions and saved memories would be sent to them.`,
     };
   }
-  return { ok: true, target: { model: chosen, fallbackFrom: null } };
+  return { ok: true, target: { model: chosen, fallbackFrom: null, auto: null } };
 }
 
 export function refOf(value: string | null | undefined): ModelRef | null {

@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, ne, sql } from "drizzle-orm";
 import { db } from "./index";
-import { conversations, messages, modelConfig, usageEvents, users } from "./schema";
+import { conversations, messages, modelConfig, modelSelections, usageEvents, users } from "./schema";
 
 const MAX_STORED_CHARS = 200_000;
 
@@ -430,6 +430,7 @@ export function createConversation(
   model: string | null = null,
   temporary = false,
   providerId: string | null = null,
+  modelMode: string | null = null,
 ) {
   const now = Date.now();
   const id = crypto.randomUUID();
@@ -440,6 +441,7 @@ export function createConversation(
       title: temporary ? "Temporary chat" : "New chat",
       model,
       providerId,
+      modelMode,
       temporary,
       createdAt: now,
       updatedAt: now,
@@ -448,10 +450,16 @@ export function createConversation(
   return { id, title: temporary ? "Temporary chat" : "New chat", model, temporary, updatedAt: now };
 }
 
-export function setConversationModel(id: string, model: string, providerId: string | null) {
+export function setConversationModel(id: string, model: string, providerId: string | null, modelMode: string | null) {
   db.update(conversations)
-    .set({ model, providerId })
+    .set({ model, providerId, modelMode })
     .where(eq(conversations.id, id))
+    .run();
+}
+
+export function recordModelSelection(input: Omit<typeof modelSelections.$inferInsert, "id" | "createdAt">) {
+  db.insert(modelSelections)
+    .values({ ...input, createdAt: Date.now() })
     .run();
 }
 
