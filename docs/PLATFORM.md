@@ -115,8 +115,9 @@ All new tables reference these with foreign keys; nothing is dropped.
 
 ## 6. What changed in the business platform release
 
-CONZEX no longer depends on WHMCS. Website, customer portal, billing and
-requests are part of this app.
+CONZEX no longer depends on WHMCS; the separate local WHMCS install and its
+database have been removed. Website, customer portal, billing and requests
+are part of this app.
 
 - **Design**: Inter, the light (`#FFFFFF`, sidebar `#F7F7F8`) and dark
   (`#212121`, sidebar `#171717`) palettes, accent `#10A37F`. The accent and
@@ -169,15 +170,14 @@ requests are part of this app.
 
 ## 8. Next up
 
-1. Remove the separate local WHMCS install once its removal is confirmed.
-2. Phase 7: storage, uploads, attachments in the composer, library page,
+1. Phase 7: storage, uploads, attachments in the composer, library page,
    avatars; document export (PDF, DOCX, XLSX, CSV, PPTX, TXT, MD).
-3. Phase 3 remainder: SMTP settings in admin, email verification, password
+2. Phase 3 remainder: SMTP settings in admin, email verification, password
    reset, invoice and renewal emails, optional Google sign-in and 2FA.
-4. Generation and research: image, GIF and video generation, web search with
+3. Generation and research: image, GIF and video generation, web search with
    real citations, voice, each behind a configured provider.
-5. Phase 8: projects in chat, custom assistants, share links.
-6. Settings modal tabs for billing, notifications and connected providers;
+4. Phase 8: projects in chat, custom assistants, share links.
+5. Settings modal tabs for billing, notifications and connected providers;
    phase 9 remainder (feature flags, maintenance mode, storage admin); phase 4
    remainder.
 

@@ -1,8 +1,8 @@
 import type { ProjectType } from "@/lib/projects";
 
 /**
- * Public website pages, carried over from the CONZEX WHMCS theme. List fields
- * use one entry per line as "Title | Description".
+ * Public website pages. List fields use one entry per line as
+ * "Title | Description".
  */
 export type NavGroup = "domains" | "hosting" | "email" | "solutions" | "ai" | "company";
 

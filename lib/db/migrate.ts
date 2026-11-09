@@ -266,7 +266,7 @@ const MIGRATIONS: ((sqlite: Sqlite) => void)[] = [
     seed.run("google", "google", "Google Gemini", 0, now, now);
   },
 
-  // 7: CONZEX business platform (replaces WHMCS): billing profiles, catalogue,
+  // 7: CONZEX business platform: billing profiles, catalogue,
   // services, invoices, payments, and custom project requests.
   (sqlite) => {
     sqlite.exec(`
