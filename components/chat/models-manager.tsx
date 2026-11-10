@@ -1,8 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
-import { Check, Download, Search, Trash } from "lucide-react";
+import { useMemo, useState, useTransition } from "react";
+import { Activity, Check, Cpu, Download, Layers, Loader2, Power, PowerOff, Search, Trash } from "lucide-react";
+import { setModelLoaded } from "@/app/admin/actions";
 import { useChatChrome } from "@/components/chat/chat-shell";
 import { setPreferredModel, usePreferredModel, type ModelOption } from "@/components/chat/model-picker";
 import { contextLabel, formatK } from "@/lib/models/capabilities";
@@ -12,7 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { CatalogGroup, CatalogModel } from "@/lib/model-catalog";
-import type { InstalledModel } from "@/lib/ollama";
+import type { InstalledModel, LoadedModel } from "@/lib/ollama";
 
 type PullState = {
   status: string;
@@ -68,18 +69,75 @@ function ModelProfileView({ profile }: { profile: ModelOption }) {
   );
 }
 
+export type ModelRuntime = {
+  loaded: LoadedModel | null;
+  enabled: boolean;
+  plans: string[];
+  stats: { calls: number; errors: number; avgMs: number | null; lastAt: number } | null;
+};
+
+type RuntimeSummary = { reachable: boolean; version: string | null; models: Record<string, ModelRuntime>; checkedAt: number };
+
+function RuntimeStatus({ name, runtime, checkedAt }: { name: string; runtime: ModelRuntime; checkedAt: number }) {
+  const router = useRouter();
+  const { report } = useFeedback();
+  const [pending, startTransition] = useTransition();
+  const loaded = runtime.loaded;
+  const toggle = (load: boolean) =>
+    startTransition(async () => {
+      const result = await setModelLoaded(name, load);
+      if (report(result, { title: load ? "Model loaded" : "Model unloaded", description: load ? `${name} stays in memory for 30 minutes.` : `${name} was freed from memory.` })) {
+        router.refresh();
+      }
+    });
+  return (
+    <div className="w-full space-y-2 border-t pt-2 text-xs" data-model-runtime={name}>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className={`inline-flex items-center gap-1 ${loaded ? "text-primary" : "text-muted-foreground"}`} data-loaded={loaded ? "yes" : "no"}>
+          <span className={`size-1.5 rounded-full ${loaded ? "bg-primary" : "bg-muted-foreground/50"}`} aria-hidden />
+          {loaded
+            ? `Loaded · ${formatBytes(loaded.sizeBytes)}${loaded.vramBytes ? ` (${Math.round((loaded.vramBytes / Math.max(1, loaded.sizeBytes)) * 100)}% on GPU)` : " on CPU"}`
+            : "Not loaded"}
+        </span>
+        {loaded?.expiresAt ? (
+          <span className="text-muted-foreground">
+            · unloads in {Math.max(1, Math.round((loaded.expiresAt - checkedAt) / 60_000))} min if idle
+          </span>
+        ) : null}
+        {!runtime.enabled ? <Badge variant="destructive">Disabled for users</Badge> : null}
+      </div>
+      <p className="text-muted-foreground" data-model-plans>
+        <Layers className="mr-1 inline size-3.5 align-[-2px]" aria-hidden />
+        {runtime.plans.length ? `Plans: ${runtime.plans.join(", ")}` : "Not in any plan; only admins can use it"}
+      </p>
+      <p className="text-muted-foreground" data-model-stats>
+        <Activity className="mr-1 inline size-3.5 align-[-2px]" aria-hidden />
+        {runtime.stats
+          ? `${runtime.stats.calls} calls in 30 days · ${runtime.stats.errors} errors${runtime.stats.avgMs ? ` · ${(runtime.stats.avgMs / 1000).toFixed(1)} s average reply` : ""}`
+          : "No calls in 30 days"}
+      </p>
+      <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => toggle(!loaded)} data-model-load={loaded ? "unload" : "load"}>
+        {pending ? <Loader2 className="animate-spin" /> : loaded ? <PowerOff /> : <Power />}
+        {loaded ? "Unload" : "Load"}
+      </Button>
+    </div>
+  );
+}
+
 export function ModelsManager({
   admin,
   installed,
   defaultModel,
   ollamaError,
   catalog,
+  runtime,
 }: {
   admin: boolean;
   installed: InstalledModel[];
   defaultModel: string | null;
   ollamaError: string | null;
   catalog: CatalogGroup[];
+  runtime?: RuntimeSummary;
 }) {
   const router = useRouter();
   const { models: profiles } = useChatChrome();
@@ -203,22 +261,57 @@ export function ModelsManager({
       <div className="mb-6">
         <h1 className="font-heading text-3xl">Models</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Installed local models with what Ollama reports about them, downloads from the library, and removal. Which plans may use each model is set under Plans.
+          Local models as Ollama reports them: what is loaded in memory, which plans include each one, how it has been used, and the library to
+          download more. Plan access is set under Plans; turning a model off for everyone is under Agents &amp; routing.
         </p>
       </div>
       <div>
-        <div className="space-y-10">
+        <div className="space-y-8">
           {ollamaError ? (
             <p className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm">
               {ollamaError}
             </p>
           ) : null}
 
+          {runtime ? (
+            <section className="grid gap-3 sm:grid-cols-3" data-runtime-summary>
+              <div className="rounded-xl border bg-card p-4">
+                <p className="flex items-center gap-1.5 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                  <Cpu className="size-3.5" aria-hidden /> Runtime
+                </p>
+                <p className="mt-2 text-lg font-medium">{runtime.reachable ? "Ollama running" : "Ollama unreachable"}</p>
+                <p className="text-xs text-muted-foreground">{runtime.version ? `Version ${runtime.version}` : "Version not reported"}</p>
+              </div>
+              <div className="rounded-xl border bg-card p-4">
+                <p className="flex items-center gap-1.5 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                  <Power className="size-3.5" aria-hidden /> In memory
+                </p>
+                <p className="mt-2 text-lg font-medium" data-loaded-count>
+                  {Object.values(runtime.models).filter((model) => model.loaded).length} of {installed.length} models
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {formatBytes(Object.values(runtime.models).reduce((sum, model) => sum + (model.loaded?.sizeBytes ?? 0), 0))} used
+                </p>
+              </div>
+              <div className="rounded-xl border bg-card p-4">
+                <p className="flex items-center gap-1.5 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                  <Activity className="size-3.5" aria-hidden /> Last 30 days
+                </p>
+                <p className="mt-2 text-lg font-medium">
+                  {Object.values(runtime.models).reduce((sum, model) => sum + (model.stats?.calls ?? 0), 0)} calls
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {Object.values(runtime.models).reduce((sum, model) => sum + (model.stats?.errors ?? 0), 0)} errors
+                </p>
+              </div>
+            </section>
+          ) : null}
+
           <section>
-            <h2 className="font-heading text-2xl sm:text-3xl">Installed</h2>
+            <h2 className="text-base font-medium">Installed</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Chat models of about one billion parameters and up. Pick one per
-              chat from the menu at the top right.
+              Chat models of about one billion parameters and up. Loading keeps a model in memory so its first reply is fast; unloading frees
+              the memory.
             </p>
             {installed.length === 0 ? (
               <p className="mt-4 text-sm text-muted-foreground">
@@ -233,8 +326,8 @@ export function ModelsManager({
                   <div
                     key={model.name}
                     data-installed-model={model.name}
-                    className={`flex flex-wrap items-center gap-3 rounded-xl border p-3 ${
-                      model.name === active ? "ring-2 ring-primary" : ""
+                    className={`flex flex-wrap items-center gap-3 rounded-xl border bg-card p-4 ${
+                      !admin && model.name === active ? "ring-2 ring-primary" : ""
                     }`}
                   >
                     <div className="min-w-0 flex-1">
@@ -245,24 +338,27 @@ export function ModelsManager({
                           .join(" · ")}
                       </p>
                     </div>
-                    {profile ? <ModelProfileView profile={profile} /> : null}
-                    {model.name === active ? (
-                      <Badge>In use</Badge>
-                    ) : (
-                      <Button type="button" size="sm" variant="outline" onClick={() => use(model.name)}>
-                        Use
-                      </Button>
-                    )}
                     {admin ? (
                       <Button
                         type="button"
                         size="icon-sm"
                         variant="ghost"
                         aria-label={`Remove ${model.name}`}
+                        title={`Remove ${model.name} from this server`}
                         onClick={() => remove(model.name)}
                       >
                         <Trash />
                       </Button>
+                    ) : model.name === active ? (
+                      <Badge>In use</Badge>
+                    ) : (
+                      <Button type="button" size="sm" variant="outline" onClick={() => use(model.name)}>
+                        Use
+                      </Button>
+                    )}
+                    {profile ? <ModelProfileView profile={profile} /> : null}
+                    {runtime?.models[model.name] ? (
+                      <RuntimeStatus name={model.name} runtime={runtime.models[model.name]} checkedAt={runtime.checkedAt} />
                     ) : null}
                   </div>
                   );
@@ -272,7 +368,7 @@ export function ModelsManager({
           </section>
 
           <section>
-            <h2 className="font-heading text-2xl sm:text-3xl">Library</h2>
+            <h2 className="text-base font-medium">Library</h2>
             <p className="mt-1 text-sm text-muted-foreground">
               Open models from 1B to 70B parameters.{" "}
               {admin

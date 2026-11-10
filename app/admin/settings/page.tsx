@@ -47,7 +47,7 @@ export default async function AdminSettingsPage({
       <PageHeader title="System settings" description="Server-wide controls. Every change is written to the audit log." />
       <SettingsForm initial={getSettings()} />
 
-      <div id="audit">
+      <div id="audit" className="mt-10 scroll-mt-4">
         <Section
           title="Audit log"
           description="Every admin action: who changed what, and when."

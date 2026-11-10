@@ -2,14 +2,20 @@ import type { ModelProfile } from "@/lib/models/capabilities";
 
 export type ModelSkill = "code" | "reasoning" | "vision" | "tools";
 
-export type ModelGroup = "General" | "Reasoning" | "Coding" | "Cloud";
+export type ModelGroup = "General" | "Reasoning" | "Coding" | "External";
 
 /** A model the user can pick. `key` is only an identifier; it is not a model name. */
 export type ModelOption = {
   key: string;
   providerId: string;
+  /** Internal model ID such as "llama3.2:1b"; shown to admins only. */
   modelId: string;
+  /** Customer-facing assistant name (admin override or generated). */
   name: string;
+  /** The generated name, shown to admins as the placeholder for overrides. */
+  defaultName: string;
+  /** One customer-facing sentence about what the assistant is good at. */
+  description: string;
   providerName: string;
   /** Runs on this server (Ollama). Cloud models send the conversation to that provider. */
   local: boolean;

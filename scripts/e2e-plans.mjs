@@ -82,8 +82,8 @@ const listed = async () => (await api("/api/models")).body.models.map((model) =>
 
 async function pickerOptions() {
   await page.goto(`${base}/chat`, { waitUntil: "networkidle0" });
-  await page.click('button[aria-label="Choose model"]');
-  await page.waitForSelector('[role=listbox][aria-label="Models"]');
+  await page.click('button[aria-label="Choose assistant"]');
+  await page.waitForSelector('[role=listbox][aria-label="Assistants"]');
   const options = await page.$$eval("[data-model-option]", (nodes) => nodes.map((node) => node.dataset.modelOption));
   await page.keyboard.press("Escape");
   return options.filter((name) => name !== "auto");

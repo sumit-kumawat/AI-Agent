@@ -66,7 +66,7 @@ const wanted = [
   "llama3.2:3b",
   "qwen2.5-coder:1.5b",
   "qwen2.5-coder:14b",
-];
+].filter((name) => installed.models.includes(name));
 
 const browser = await puppeteer.launch({ executablePath: chrome, headless: true });
 const page = await (await browser.createBrowserContext()).newPage();
@@ -133,7 +133,7 @@ try {
   await page.goto(`${base}/chat`, { waitUntil: "networkidle0" });
 
   // ---------- picker ----------
-  const trigger = 'button[aria-label="Choose model"]';
+  const trigger = 'button[aria-label="Choose assistant"]';
   check(
     (await page.$eval(trigger, (node) => node.dataset.modelSelection)) === "auto:balance",
     "Auto with Balance is the default selection",
@@ -161,18 +161,18 @@ try {
   check(modes.join(",") === "intelligence,balance,cost", "optimisation offers Intelligence, Balance and Cost");
   await page.keyboard.press("Escape");
   await page.click(trigger);
-  await page.waitForSelector('[role=listbox][aria-label="Models"]');
+  await page.waitForSelector('[role=listbox][aria-label="Assistants"]');
   const options = await page.$$eval("[data-model-option]", (nodes) => nodes.map((node) => node.dataset.modelOption));
   check(options.filter((key) => key.startsWith("auto")).join(",") === "auto", "the model picker has one Auto entry, not the modes");
   const missing = wanted.filter((name) => !options.includes(name));
-  check(missing.length === 0, `all 8 local models are listed${missing.length ? ` (missing ${missing.join(", ")})` : ""}`);
+  check(missing.length === 0 && wanted.length >= 5, `all ${wanted.length} installed local models are listed${missing.length ? ` (missing ${missing.join(", ")})` : ""}`);
   const notInstalled = options.filter((name) => name !== "auto" && !installed.models.includes(name));
   check(notInstalled.length === 0, "only installed models are listed as selectable");
   check(
     (await page.$eval('[data-model-option="auto"]', (node) => node.getAttribute("aria-selected"))) === "true",
     "the current selection is marked",
   );
-  check(!(await page.$('[role=listbox][aria-label="Models"] a[href="/chat/models"]')), "customers get no model management link");
+  check(!(await page.$('[role=listbox][aria-label="Assistants"] a[href="/chat/models"]')), "customers get no model management link");
   const groupOf = (name) =>
     page.$eval(`[data-model-option="${name}"]`, (node) => node.closest("[role=group]")?.getAttribute("aria-label"));
   check((await groupOf("qwen2.5-coder:14b")) === "Coding", "coder models are grouped under Coding");
@@ -209,37 +209,51 @@ try {
     "no model is shown with a window larger than it supports",
   );
   await shot("picker");
-  await page.type('input[aria-label="Search models"]', "coder");
+  const names = await page.$$eval("[data-model-option] [data-assistant-name]", (nodes) => nodes.map((node) => node.textContent.trim()));
+  check(
+    names.length >= wanted.length && names.every((name) => name.startsWith("xAI ")) && new Set(names).size === names.length,
+    `customers see unique branded names (${names.join(", ")})`,
+  );
+  const pickerText = await page.$eval('[role=listbox][aria-label="Assistants"]', (node) => node.textContent);
+  check(
+    !(await page.$("[data-internal-id]")) && !/llama|qwen|gemma|deepseek|ollama/i.test(pickerText),
+    "customers see no internal model IDs or provider names in the picker",
+  );
+  check(
+    (await page.$$eval("[data-assistant-description]", (nodes) => nodes.every((node) => node.textContent.trim().length > 10))),
+    "every assistant has a description",
+  );
+  await page.type('input[aria-label="Search assistants"]', "forge");
   const searched = await page.$$eval("[data-model-option]", (nodes) => nodes.map((node) => node.dataset.modelOption));
   check(
     searched.length === 2 && searched.every((name) => name.includes("coder")),
     `search filters the list (${searched.join(", ")})`,
   );
-  await page.$eval('input[aria-label="Search models"]', (node) => node.select());
-  await page.type('input[aria-label="Search models"]', "zzqq");
-  await page.waitForFunction(() => document.querySelector('[role=listbox][aria-label="Models"]')?.textContent?.includes("No models match"));
+  await page.$eval('input[aria-label="Search assistants"]', (node) => node.select());
+  await page.type('input[aria-label="Search assistants"]', "zzqq");
+  await page.waitForFunction(() => document.querySelector('[role=listbox][aria-label="Assistants"]')?.textContent?.includes("No assistants match"));
   check(true, "search shows an empty state");
-  await page.$eval('input[aria-label="Search models"]', (node) => node.select());
+  await page.$eval('input[aria-label="Search assistants"]', (node) => node.select());
   await page.keyboard.press("Backspace");
   await page.keyboard.press("ArrowDown");
   check(
     (await page.evaluate(() => document.activeElement?.dataset.modelOption)) === "auto",
     "arrow keys move from search into the list",
   );
-  await page.click('[data-model-option="llama3.2:1b"]');
-  await page.waitForFunction(() => document.querySelector('button[aria-label="Choose model"]')?.textContent?.includes("llama3.2:1b"));
+  await page.click('[data-model-option="llama3.2:3b"]');
+  await page.waitForFunction(() => document.querySelector('button[aria-label="Choose assistant"]')?.textContent?.includes("xAI Atlas Core"));
   check(
     (await page.$eval(optimisation, (node) => node.dataset.optimisationActive)) === "false",
     "manual selection updates the trigger and marks the optimisation as applying to Auto only",
   );
   await chooseMode("cost");
-  check((await page.$eval(trigger, (node) => node.dataset.modelSelection)).includes("llama3.2:1b"), "changing the mode keeps a manual model");
+  check((await page.$eval(trigger, (node) => node.dataset.modelSelection)).includes("llama3.2:3b"), "changing the mode keeps a manual model");
   await page.click(trigger);
   await page.click('[data-model-option="auto"]');
-  await page.waitForFunction(() => document.querySelector('button[aria-label="Choose model"]')?.dataset.modelSelection === "auto:cost");
+  await page.waitForFunction(() => document.querySelector('button[aria-label="Choose assistant"]')?.dataset.modelSelection === "auto:cost");
   check(true, "switching back to Auto uses the chosen mode (Cost)");
   await chooseMode("balance");
-  await page.waitForFunction(() => document.querySelector('button[aria-label="Choose model"]')?.dataset.modelSelection === "auto:balance");
+  await page.waitForFunction(() => document.querySelector('button[aria-label="Choose assistant"]')?.dataset.modelSelection === "auto:balance");
   check(true, "with Auto on, the optimisation selector changes the routing mode");
 
   // ---------- routing ----------
@@ -279,15 +293,15 @@ try {
   check(/red/i.test(image.text), `the vision reply reads the image (${image.text.slice(0, 40)})`);
 
   // Switching models mid-chat keeps the history.
-  const thread = await newChat({ model: "llama3.2:1b" });
+  const thread = await newChat({ model: "llama3.2:3b" });
   const first = userMessage("My secret codename is ZORBLAX. Reply only with: noted.");
-  const one = await turn(thread, [first], { model: "llama3.2:1b", providerId: "ollama" });
+  const one = await turn(thread, [first], { model: "llama3.2:3b", providerId: "ollama" });
   const assistant = { id: one.id ?? crypto.randomUUID(), role: "assistant", parts: [{ type: "text", text: one.text }] };
   const two = await turn(thread, [first, assistant, userMessage("What is my secret codename? Reply with the codename only.")], {
     model: "gemma3:4b",
     providerId: "ollama",
   });
-  check(one.meta.model === "llama3.2:1b" && two.meta.model === "gemma3:4b", "the same chat answered with two models");
+  check(one.meta.model === "llama3.2:3b" && two.meta.model === "gemma3:4b", "the same chat answered with two models");
   check(/zorblax/i.test(two.text), `the second model saw the earlier turn (${two.text.slice(0, 40)})`);
   const stored = Number(sql(`SELECT COUNT(*) FROM messages WHERE conversation_id='${thread}'`));
   check(stored === 4, `the full history is stored (${stored} messages)`);

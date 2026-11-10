@@ -118,19 +118,19 @@ async function fetchInventory(): Promise<Inventory> {
 }
 
 const cache = globalThis as typeof globalThis & {
-  harborInventory?: { at: number; value: Inventory };
+  xaiInventory?: { at: number; value: Inventory };
 };
 
 export async function getInventory() {
-  const cached = cache.harborInventory;
+  const cached = cache.xaiInventory;
   if (cached && Date.now() - cached.at < 5000) return cached.value;
   const value = await fetchInventory();
-  cache.harborInventory = { at: Date.now(), value };
+  cache.xaiInventory = { at: Date.now(), value };
   return value;
 }
 
 export function invalidateInventory() {
-  cache.harborInventory = undefined;
+  cache.xaiInventory = undefined;
 }
 
 /** What Ollama's /api/show reports about one installed model. */
@@ -143,8 +143,8 @@ export type ModelInfo = {
   numCtx: number | null;
 };
 
-const infoCache = globalThis as typeof globalThis & { harborModelInfo?: Map<string, ModelInfo> };
-const infos = (infoCache.harborModelInfo ??= new Map<string, ModelInfo>());
+const infoCache = globalThis as typeof globalThis & { xaiModelInfo?: Map<string, ModelInfo> };
+const infos = (infoCache.xaiModelInfo ??= new Map<string, ModelInfo>());
 const UNKNOWN: ModelInfo = { capabilities: [], maxContext: null, numCtx: null };
 
 export async function modelInfo(name: string): Promise<ModelInfo> {
@@ -186,12 +186,12 @@ export async function modelCapabilities(name: string): Promise<string[]> {
 }
 
 const runningCache = globalThis as typeof globalThis & {
-  harborRunning?: { at: number; models: Map<string, number> };
+  xaiRunning?: { at: number; models: Map<string, number> };
 };
 
 /** Models Ollama holds in memory right now, with the context window each was loaded with. */
 export async function runningModels(): Promise<Map<string, number>> {
-  const cached = runningCache.harborRunning;
+  const cached = runningCache.xaiRunning;
   if (cached && Date.now() - cached.at < 3000) return cached.models;
   const models = new Map<string, number>();
   try {
@@ -203,8 +203,58 @@ export async function runningModels(): Promise<Map<string, number>> {
   } catch {
     // Treated as nothing loaded; the inventory check reports Ollama being down.
   }
-  runningCache.harborRunning = { at: Date.now(), models };
+  runningCache.xaiRunning = { at: Date.now(), models };
   return models;
+}
+
+export type LoadedModel = { name: string; sizeBytes: number; vramBytes: number; contextLength: number | null; expiresAt: number | null };
+
+/** Ollama's version and what it holds in memory right now, uncached. Null when unreachable. */
+export async function runtimeDetails(): Promise<{ version: string | null; loaded: LoadedModel[]; checkedAt: number } | null> {
+  try {
+    const [ps, version] = await Promise.all([
+      fetch(`${ollamaRoot()}/api/ps`, { signal: AbortSignal.timeout(2000), cache: "no-store" }),
+      fetch(`${ollamaRoot()}/api/version`, { signal: AbortSignal.timeout(2000), cache: "no-store" }).catch(() => null),
+    ]);
+    if (!ps.ok) return null;
+    const data = (await ps.json()) as {
+      models?: { name: string; size?: number; size_vram?: number; context_length?: number; expires_at?: string }[];
+    };
+    const versionBody = version?.ok ? ((await version.json().catch(() => null)) as { version?: string } | null) : null;
+    delete runningCache.xaiRunning;
+    return {
+      checkedAt: Date.now(),
+      version: versionBody?.version ?? null,
+      loaded: (data.models ?? []).map((model) => {
+        const expires = model.expires_at ? Date.parse(model.expires_at) : NaN;
+        return {
+          name: model.name,
+          sizeBytes: Number(model.size) || 0,
+          vramBytes: Number(model.size_vram) || 0,
+          contextLength: Number(model.context_length) || null,
+          expiresAt: Number.isFinite(expires) ? expires : null,
+        };
+      }),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Loads a model into memory (`keepAlive` such as "30m") or unloads it ("0"). Waits for Ollama to finish. */
+export async function setModelResidency(name: string, keepAlive: string) {
+  const response = await fetch(`${ollamaRoot()}/api/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model: name, keep_alive: keepAlive }),
+    signal: AbortSignal.timeout(180_000),
+  });
+  delete runningCache.xaiRunning;
+  if (!response.ok) {
+    const detail = ((await response.json().catch(() => null)) as { error?: string } | null)?.error;
+    throw new Error(detail ?? `Ollama answered ${response.status}.`);
+  }
+  await response.body?.cancel().catch(() => undefined);
 }
 
 /** Models Ollama currently holds in memory. Empty when Ollama cannot be reached. */
@@ -212,7 +262,7 @@ export async function loadedModels(): Promise<Set<string>> {
   return new Set((await runningModels()).keys());
 }
 
-const defaultCache = globalThis as typeof globalThis & { harborDefaultContext?: number };
+const defaultCache = globalThis as typeof globalThis & { xaiDefaultContext?: number };
 
 /**
  * The context window Ollama gives models without their own num_ctx. Learned
@@ -225,11 +275,11 @@ export async function serverDefaultContext(): Promise<number | null> {
     if (!length) continue;
     const info = await modelInfo(name);
     if (info.numCtx === null && info.maxContext !== null && length < info.maxContext) {
-      defaultCache.harborDefaultContext = length;
+      defaultCache.xaiDefaultContext = length;
       break;
     }
   }
-  return defaultCache.harborDefaultContext ?? null;
+  return defaultCache.xaiDefaultContext ?? null;
 }
 
 /** Installed models minus the ones an admin has disabled. */

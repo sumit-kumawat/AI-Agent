@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { killSession, listSessions, getAgent, updateAgent } from "@/lib/agents";
 import { adminAction, assertCanManage, type AdminUser } from "@/lib/admin";
+import { applyRetention, conversationSummaries, deleteConversationRows, retentionCandidates } from "@/lib/admin/conversations";
 import { CLEANUP_PARTS, cleanupUserData, userDataSummary } from "@/lib/admin/user-data";
 import { audit } from "@/lib/audit";
 import { db } from "@/lib/db";
@@ -15,6 +16,9 @@ import { isStaff, ROLES, type Role } from "@/lib/roles";
 import { conversations, messages, modelConfig, users } from "@/lib/db/schema";
 import { ACCESS_ACTION, activeContentGrant } from "@/lib/content-access";
 import { parseKeywords } from "@/lib/moderation";
+import { saveBranding } from "@/lib/models/branding-store";
+import { getInventory, setModelResidency } from "@/lib/ollama";
+import { listSelectableModels } from "@/lib/providers/catalog";
 import { getPlans, savePlans } from "@/lib/plans/config";
 import { PLAN_IDS } from "@/lib/plans/types";
 import { getSettings, updateSettings } from "@/lib/settings";
@@ -318,6 +322,51 @@ export async function setModelEnabled(name: string, enabled: boolean) {
   });
 }
 
+/** Loads an installed model into memory for 30 minutes, or unloads it now. */
+export async function setModelLoaded(name: string, loaded: boolean) {
+  return run(async (admin) => {
+    const parsed = modelNameSchema.safeParse(name);
+    if (!parsed.success) fail("Invalid model name.");
+    const inventory = await getInventory();
+    if (!inventory.ok) fail(inventory.error);
+    if (!inventory.models.some((model) => model.name === parsed.data)) fail("That model is not installed.");
+    try {
+      await setModelResidency(parsed.data, loaded ? "30m" : "0");
+    } catch (error) {
+      fail(`Ollama could not ${loaded ? "load" : "unload"} ${parsed.data}: ${(error as Error).message}`);
+    }
+    audit(admin, loaded ? "model.load" : "model.unload", { type: "model", id: parsed.data });
+    revalidatePath("/admin/models");
+    return {};
+  });
+}
+
+const brandingSchema = z.object({
+  key: z.string().min(3).max(400),
+  displayName: z.string().trim().max(40),
+  description: z.string().trim().max(160),
+});
+
+/** Customer-facing name and description for one model. Empty fields fall back to the generated ones. */
+export async function saveModelBranding(input: z.input<typeof brandingSchema>) {
+  return run(async (admin) => {
+    const parsed = brandingSchema.safeParse(input);
+    if (!parsed.success) fail("Names can be up to 40 characters and descriptions up to 160.");
+    const { key, displayName, description } = parsed.data;
+    if (displayName && displayName.length < 2) fail("Use at least 2 characters for the name.");
+    const { models } = await listSelectableModels();
+    const model = models.find((option) => option.key === key);
+    if (!model) fail("That model is not available right now.");
+    const name = displayName || model.defaultName;
+    const clash = models.find((option) => option.key !== key && option.name.toLowerCase() === name.toLowerCase());
+    if (clash) fail(`"${name}" is already used by another assistant.`);
+    saveBranding(key, { displayName: displayName || null, description: description || null });
+    audit(admin, "model.branding", { type: "model", id: `${model.providerId}:${model.modelId}` }, { displayName: name, description: description || null });
+    revalidatePath("/admin/models");
+    return { name };
+  });
+}
+
 const settingsSchema = z.object({
   chatRateLimitPerMinute: z.number().int().min(1).max(1000),
   registrationEnabled: z.boolean(),
@@ -397,6 +446,60 @@ export async function flagMessage(id: string, flagged: boolean, reason: string) 
     });
     revalidatePath(`/admin/conversations/${message.conversationId}`);
     return {};
+  });
+}
+
+const conversationIds = z.array(z.string().min(1).max(64)).min(1).max(MAX_BULK);
+
+/** What deleting these conversations would remove. Metadata only. */
+export async function previewConversationDelete(ids: string[]) {
+  return run(() => {
+    const parsed = conversationIds.safeParse(ids);
+    if (!parsed.success) fail(`Select between 1 and ${MAX_BULK} conversations.`);
+    return { conversations: conversationSummaries(parsed.data) };
+  });
+}
+
+export async function deleteConversations(input: { ids: string[]; confirmation: string }) {
+  return run((admin) => {
+    const parsed = conversationIds.safeParse(input.ids);
+    if (!parsed.success) fail(`Select between 1 and ${MAX_BULK} conversations.`);
+    if (input.confirmation.trim() !== "DELETE") fail("Type DELETE to confirm.");
+    const { deleted } = deleteConversationRows(parsed.data);
+    for (const row of deleted) {
+      audit(admin, "conversation.delete", { type: "conversation", id: row.id }, {
+        owner: row.userId,
+        email: row.email,
+        messages: row.messages,
+        attachments: row.attachments,
+      });
+    }
+    revalidatePath("/admin/conversations");
+    return { deleted: deleted.length, skipped: parsed.data.length - deleted.length };
+  });
+}
+
+const retentionSchema = z.number().int().min(0).max(3650);
+
+/** Saves the retention policy and applies it at once; returns how many chats it removed. */
+export async function saveConversationRetention(days: number) {
+  return run((admin) => {
+    const parsed = retentionSchema.safeParse(days);
+    if (!parsed.success) fail("Enter a number of days from 0 (keep forever) to 3650.");
+    const before = getSettings().conversationRetentionDays;
+    updateSettings({ conversationRetentionDays: parsed.data });
+    audit(admin, "settings.retention", { type: "settings" }, { from: before, to: parsed.data });
+    const removed = applyRetention();
+    revalidatePath("/admin/conversations");
+    return { removed };
+  });
+}
+
+export async function previewRetention(days: number) {
+  return run(() => {
+    const parsed = retentionSchema.safeParse(days);
+    if (!parsed.success) fail("Enter a number of days from 0 to 3650.");
+    return { count: retentionCandidates(parsed.data).count };
   });
 }
 

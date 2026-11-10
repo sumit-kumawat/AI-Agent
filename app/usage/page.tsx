@@ -7,6 +7,8 @@ import { findUserById } from "@/lib/db/queries";
 import { accountSummary } from "@/lib/plans/entitlements";
 import { FEATURE_LABEL, WINDOW_LABEL } from "@/lib/plans/types";
 import { usageBreakdown } from "@/lib/plans/usage";
+import { assistantLabel } from "@/lib/models/branding";
+import { listSelectableModels } from "@/lib/providers/catalog";
 import { requireUser } from "@/lib/session";
 
 export const metadata: Metadata = { title: "Usage" };
@@ -20,12 +22,13 @@ export default async function UsagePage() {
   if (!user) redirect("/login");
   const summary = accountSummary(user);
   const breakdown = usageBreakdown(user);
+  const { models } = await listSelectableModels();
   const monthTotal = breakdown.byModel.reduce((sum, row) => sum + row.total, 0);
 
   return (
     <PageFrame
       title="Usage"
-      description={`Tokens used on the ${summary.plan.name} plan, from the counts each model reported.`}
+      description={`Tokens used on the ${summary.plan.name} plan, from the counts each assistant reported.`}
     >
       {summary.staff ? (
         <p className="mb-4 rounded-lg border bg-muted/40 px-3 py-2 text-sm">Administrators are not limited by plans.</p>
@@ -55,11 +58,11 @@ export default async function UsagePage() {
         ))}
       </div>
 
-      <h2 className="mt-8 font-medium">This month by model</h2>
+      <h2 className="mt-8 font-medium">This month by assistant</h2>
       <p className="text-sm text-muted-foreground">
         Since <LocalTime at={breakdown.since} />.
         {summary.estimatedTokens > 0
-          ? ` ${summary.estimatedTokens.toLocaleString("en-US")} of these tokens are estimates, because the model did not report exact counts for some replies.`
+          ? ` ${summary.estimatedTokens.toLocaleString("en-US")} of these tokens are estimates, because the assistant did not report exact counts for some replies.`
           : ""}
       </p>
       {breakdown.byModel.length === 0 ? (
@@ -69,7 +72,7 @@ export default async function UsagePage() {
           <table className="w-full min-w-[32rem] text-sm" data-usage-models>
             <thead className="border-b text-left text-muted-foreground">
               <tr>
-                <th className="px-4 py-2 font-normal">Model</th>
+                <th className="px-4 py-2 font-normal">Assistant</th>
                 <th className="px-4 py-2 text-right font-normal">Requests</th>
                 <th className="px-4 py-2 text-right font-normal">Input</th>
                 <th className="px-4 py-2 text-right font-normal">Output</th>
@@ -79,7 +82,10 @@ export default async function UsagePage() {
             <tbody>
               {breakdown.byModel.map((row) => (
                 <tr key={row.model} className="border-b last:border-0">
-                  <td className="px-4 py-2 font-mono text-xs">{row.model}</td>
+                  <td className="px-4 py-2">
+                    {assistantLabel(models, row.model)}
+                    {summary.staff ? <span className="ml-2 font-mono text-xs text-muted-foreground">{row.model}</span> : null}
+                  </td>
                   <td className="px-4 py-2 text-right tabular-nums">{row.requests.toLocaleString("en-US")}</td>
                   <td className="px-4 py-2 text-right tabular-nums">{row.input.toLocaleString("en-US")}</td>
                   <td className="px-4 py-2 text-right tabular-nums">{row.output.toLocaleString("en-US")}</td>

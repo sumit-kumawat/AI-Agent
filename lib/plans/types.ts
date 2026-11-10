@@ -64,12 +64,6 @@ export function formatTokens(value: number) {
   return new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(value);
 }
 
-export function formatPrice(price: PlanConfig["price"]) {
-  if (!price) return null;
-  const amount = new Intl.NumberFormat("en-US", { style: "currency", currency: price.currency }).format(price.amount);
-  return `${amount} / ${price.interval}`;
-}
-
 /** Usage state for one window, as the UI shows it. */
 export type UsageWindow = {
   window: LimitWindow;

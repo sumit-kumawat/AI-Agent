@@ -103,7 +103,7 @@ export function useWarmModel(name: string | null) {
   }, [name]);
 }
 
-const GROUPS: ModelGroup[] = ["General", "Reasoning", "Coding", "Cloud"];
+const GROUPS: ModelGroup[] = ["General", "Reasoning", "Coding", "External"];
 
 const SKILL_LABEL: Record<ModelSkill, string> = {
   vision: "Images",
@@ -137,10 +137,11 @@ function sizeLabel(model: ModelOption) {
   return model.parameterSize ?? (formatBytes(model.size) || "Local");
 }
 
-function searchable(model: ModelOption) {
+function searchable(model: ModelOption, admin: boolean) {
   return [
     model.name,
-    model.providerName,
+    model.description,
+    ...(admin ? [model.modelId, model.providerName] : []),
     model.group,
     ...model.skills.map((skill) => SKILL_LABEL[skill]),
     ...model.capabilities.map((capability) => capability.label),
@@ -226,14 +227,14 @@ export function ModelPicker({
       </Button>
     ) : (
       <span className="px-2.5 text-xs text-muted-foreground" data-no-models>
-        No models available
+        No assistants available
       </span>
     );
   }
 
   const needle = query.trim().toLowerCase();
   const showAuto = !needle || "auto automatic".includes(needle);
-  const visible = models.filter((model) => !needle || searchable(model).includes(needle));
+  const visible = models.filter((model) => !needle || searchable(model, admin).includes(needle));
   const optionClass = (selected: boolean) =>
     `flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm outline-none hover:bg-accent focus-visible:bg-accent ${
       selected ? "bg-accent/60" : ""
@@ -257,11 +258,11 @@ export function ModelPicker({
               ? "h-8 max-w-[11rem] shrink-0 rounded-full px-2.5 text-muted-foreground sm:max-w-[16rem]"
               : "h-9 max-w-[10.5rem] shrink-0 sm:max-w-[16rem] md:h-8"
           }
-          aria-label="Choose model"
+          aria-label="Choose assistant"
           data-model-selection={value ?? ""}
         >
           {mode ? <Sparkles className="opacity-70" /> : null}
-          <span className="truncate">{mode ? "Auto" : (current?.name ?? "Choose model")}</span>
+          <span className="truncate">{mode ? "Auto" : (current?.name ?? "Choose assistant")}</span>
           <ChevronDown className="opacity-60" />
         </Button>
       </PopoverTrigger>
@@ -281,15 +282,15 @@ export function ModelPicker({
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={(event) => moveFocus(event, list.current)}
-            placeholder="Search models"
-            aria-label="Search models"
+            placeholder="Search assistants"
+            aria-label="Search assistants"
             className="h-10 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
           />
         </div>
         <div
           ref={list}
           role="listbox"
-          aria-label="Models"
+          aria-label="Assistants"
           className="min-h-0 flex-1 overflow-y-auto p-1.5"
           onKeyDown={(event) => moveFocus(event, list.current)}
         >
@@ -307,7 +308,7 @@ export function ModelPicker({
                 <span className="min-w-0 flex-1">
                   <span className="block font-medium">Auto</span>
                   <span className="block text-xs text-muted-foreground">
-                    Picks a model for each message, optimised for {AUTO_INFO[optimisation].label.toLowerCase()}
+                    Picks an assistant for each message, optimised for {AUTO_INFO[optimisation].label.toLowerCase()}
                   </span>
                 </span>
                 {mode !== null ? <Check className="mt-0.5 size-4 shrink-0" aria-hidden /> : null}
@@ -337,12 +338,21 @@ export function ModelPicker({
                       {model.local ? (
                         <Boxes className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
                       ) : (
-                        <Cloud className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-label="Cloud model" />
+                        <Cloud className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-label="External assistant" />
                       )}
                       <span className="min-w-0 flex-1">
                         <span className="flex items-center gap-1.5">
-                          <span className="min-w-0 truncate">{model.name}</span>
-                          <span className="shrink-0 text-xs text-muted-foreground">{sizeLabel(model)}</span>
+                          <span className="min-w-0 truncate font-medium" data-assistant-name>
+                            {model.name}
+                          </span>
+                          {admin ? (
+                            <span className="min-w-0 truncate font-mono text-[10px] text-muted-foreground" data-internal-id title={`${model.providerName} · ${model.modelId}`}>
+                              {model.modelId} · {sizeLabel(model)}
+                            </span>
+                          ) : null}
+                        </span>
+                        <span className="block text-xs text-muted-foreground" data-assistant-description>
+                          {model.description}
                         </span>
                         <span className="mt-0.5 flex flex-wrap gap-1 text-[10px] text-muted-foreground" data-capabilities>
                           <span data-context-window={model.context.tokens ?? ""} title={contextTitle(model.context)}>
@@ -351,7 +361,7 @@ export function ModelPicker({
                           {model.capabilities
                             .filter((capability) => !HIDDEN_IN_PICKER.has(capability.id))
                             .map((capability) => (
-                              <span key={capability.id} className="rounded border px-1" title={capability.source} data-capability={capability.id}>
+                              <span key={capability.id} className="rounded border px-1" title={admin ? capability.source : undefined} data-capability={capability.id}>
                                 {capability.label}
                               </span>
                             ))}
@@ -365,7 +375,7 @@ export function ModelPicker({
             );
           })}
           {!showAuto && visible.length === 0 ? (
-            <p className="px-2.5 py-6 text-center text-sm text-muted-foreground">No models match.</p>
+            <p className="px-2.5 py-6 text-center text-sm text-muted-foreground">No assistants match.</p>
           ) : null}
         </div>
         {admin ? (

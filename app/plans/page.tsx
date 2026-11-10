@@ -1,11 +1,15 @@
 import type { Metadata } from "next";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { Check, Minus } from "lucide-react";
 import { PageFrame } from "@/components/page-frame";
+import { CurrencyPicker } from "@/components/plans/currency-picker";
 import { Badge } from "@/components/ui/badge";
 import { findUserById } from "@/lib/db/queries";
 import { planComparison } from "@/lib/plans/entitlements";
-import { FEATURE_LABEL, FEATURES, formatPrice, formatTokens, WINDOWS, type Limits } from "@/lib/plans/types";
+import { FEATURE_LABEL, FEATURES, formatTokens, WINDOWS, type Limits } from "@/lib/plans/types";
+import { convertPrice, FX_SOURCE_NAME } from "@/lib/pricing/fx";
+import { CURRENCY_COOKIE, DISPLAY_CURRENCIES, formatMoney, guessCurrency } from "@/lib/pricing/locale";
 import { isStaff } from "@/lib/roles";
 import { requireUser } from "@/lib/session";
 
@@ -13,9 +17,9 @@ export const metadata: Metadata = { title: "Plans" };
 export const dynamic = "force-dynamic";
 
 const SKILL_LABEL: Record<string, string> = {
-  code: "coding models",
-  reasoning: "reasoning models",
-  vision: "image input",
+  code: "coding",
+  reasoning: "reasoning",
+  vision: "image understanding",
   tools: "tool calling",
 };
 
@@ -50,15 +54,22 @@ export default async function PlansPage({ searchParams }: { searchParams: Promis
   const plans = await planComparison(user);
   const { highlight } = await searchParams;
   const staff = isStaff(user.role);
+  const baseCurrency = plans.find((plan) => plan.price)?.price?.currency ?? "INR";
+  const guess = guessCurrency(await headers(), (await cookies()).get(CURRENCY_COOKIE)?.value, baseCurrency);
+  const prices = await Promise.all(plans.map((plan) => (plan.price ? convertPrice(plan.price, guess.currency) : null)));
+  const rateDate = prices.find((price) => price?.local)?.local?.date ?? null;
+  const unavailable = prices.find((price) => price?.unavailable)?.unavailable ?? null;
 
   return (
     <PageFrame
       title="Plans"
-      description="What each plan includes. Token allowances cover everything you send and receive: your messages, the conversation history the model rereads, attachments and replies."
+      description="What each plan includes. Token allowances cover everything you send and receive: your messages, the conversation history the assistant rereads, attachments and replies."
+      actions={<CurrencyPicker value={guess.currency} options={DISPLAY_CURRENCIES} cookie={CURRENCY_COOKIE} />}
     >
       <div className="grid gap-4 md:grid-cols-3">
-        {plans.map((plan) => {
-          const price = formatPrice(plan.price);
+        {plans.map((plan, index) => {
+          const price = prices[index];
+          const interval = plan.price?.interval === "year" ? "year" : "month";
           const emphasised = highlight === plan.id;
           return (
             <section
@@ -73,9 +84,24 @@ export default async function PlansPage({ searchParams }: { searchParams: Promis
                 {plan.current ? <Badge data-current-plan>Current plan</Badge> : null}
               </div>
               <p className="mt-1 min-h-10 text-sm text-muted-foreground">{plan.tagline}</p>
-              <p className="mt-3 text-lg font-medium" data-price>
-                {price ?? "Price not set yet"}
-              </p>
+              <div className="mt-3 min-h-12" data-price>
+                {!price ? (
+                  <p className="text-lg font-medium">Price not set yet</p>
+                ) : price.local ? (
+                  <>
+                    <p className="text-lg font-medium" data-local-price={price.local.currency}>
+                      ≈ {formatMoney(price.local.amount, price.local.currency)} <span className="text-sm font-normal text-muted-foreground">/ {interval}</span>
+                    </p>
+                    <p className="text-xs text-muted-foreground" data-base-price={price.base.currency}>
+                      Billed as {formatMoney(price.base.amount, price.base.currency)} {price.base.currency} / {interval}
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-lg font-medium" data-base-price={price.base.currency}>
+                    {formatMoney(price.base.amount, price.base.currency)} <span className="text-sm font-normal text-muted-foreground">/ {interval}</span>
+                  </p>
+                )}
+              </div>
 
               <h3 className="mt-5 text-xs font-medium tracking-wide text-muted-foreground uppercase">Token allowance</h3>
               <div className="mt-2">
@@ -93,9 +119,9 @@ export default async function PlansPage({ searchParams }: { searchParams: Promis
                 </ul>
               ) : null}
 
-              <h3 className="mt-5 text-xs font-medium tracking-wide text-muted-foreground uppercase">Models</h3>
+              <h3 className="mt-5 text-xs font-medium tracking-wide text-muted-foreground uppercase">Assistants</h3>
               <p className="mt-2 text-sm" data-model-count={plan.modelCount}>
-                {plan.modelCount} installed model{plan.modelCount === 1 ? "" : "s"}
+                {plan.modelCount} assistant{plan.modelCount === 1 ? "" : "s"}
               </p>
               {plan.skills.length ? (
                 <p className="text-xs text-muted-foreground">
@@ -103,7 +129,7 @@ export default async function PlansPage({ searchParams }: { searchParams: Promis
                 </p>
               ) : null}
               {plan.models ? (
-                <p className="mt-1 text-xs text-muted-foreground">{plan.models.join(", ") || "None installed yet"}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{plan.models.join(", ") || "None available yet"}</p>
               ) : null}
 
               <h3 className="mt-5 text-xs font-medium tracking-wide text-muted-foreground uppercase">Includes</h3>
@@ -115,7 +141,7 @@ export default async function PlansPage({ searchParams }: { searchParams: Promis
                 <Feature on={plan.features.ide}>
                   IDE{plan.features.ide ? ` (${plan.storageMb.ide === 0 ? "unlimited" : formatStorage(plan.storageMb.ide)} workspace storage)` : ""}
                 </Feature>
-                <Feature on={plan.features.cloudModels}>Cloud models, when an admin connects a provider</Feature>
+                <Feature on={plan.features.cloudModels}>External assistants, when available</Feature>
                 <Feature on={plan.vision}>Image understanding</Feature>
               </ul>
 
@@ -135,8 +161,18 @@ export default async function PlansPage({ searchParams }: { searchParams: Promis
           );
         })}
       </div>
-      <p className="mt-6 text-xs text-muted-foreground">
-        Allowances are separate from a model&apos;s context window, which limits how much one conversation can hold at once.
+      {prices.some(Boolean) ? (
+        <p className="mt-6 text-xs text-muted-foreground" data-fx-note>
+          {rateDate
+            ? `Prices in ${guess.currency} are approximate, converted from ${baseCurrency} with the ${FX_SOURCE_NAME} of ${rateDate}. You are charged the ${baseCurrency} amount; your bank sets the final conversion. `
+            : unavailable
+              ? `${unavailable} Prices are shown in ${baseCurrency}, the currency you are charged in. `
+              : `Prices are in ${baseCurrency}, the currency you are charged in. `}
+          {guess.source === "language" || guess.source === "network" ? "The currency was picked from your browser settings; change it above." : null}
+        </p>
+      ) : null}
+      <p className="mt-2 text-xs text-muted-foreground">
+        Allowances are separate from an assistant&apos;s context window, which limits how much one conversation can hold at once.
         Days start at 00:00 UTC and weeks on Monday. Monthly allowances reset on the 1st, or on the day your paid plan started.
       </p>
     </PageFrame>

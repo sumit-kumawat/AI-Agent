@@ -53,7 +53,7 @@ export default async function AdminUsersPage({
       <PageHeader
         title="Users"
         description={`${formatNumber(total)} account${total === 1 ? "" : "s"}${q ? ` matching "${q}"` : ""}.`}
-        actions={<SearchForm fields={[{ name: "q", placeholder: "Search email, name, ID or username", value: q }]} hidden={{ status, plan }} />}
+        actions={<SearchForm fields={[{ name: "q", placeholder: "Email, name, ID or username", value: q }]} hidden={{ status, plan }} />}
       />
       <div className="mb-3 flex flex-wrap items-center gap-1.5" data-user-filters>
         {USER_STATUSES.map((value) => (

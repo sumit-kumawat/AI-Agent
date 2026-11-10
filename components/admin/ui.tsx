@@ -83,7 +83,7 @@ export function SearchForm({
           defaultValue={field.value}
           placeholder={field.placeholder}
           aria-label={field.placeholder}
-          className="h-9 sm:w-64"
+          className="h-9 sm:w-72"
           autoCapitalize="none"
           spellCheck={false}
         />

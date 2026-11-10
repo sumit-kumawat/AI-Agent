@@ -215,6 +215,14 @@ export const modelConfig = sqliteTable("model_config", {
   updatedAt: integer("updated_at").notNull(),
 });
 
+export const modelBranding = sqliteTable("model_branding", {
+  /** `modelKey(providerId, modelId)`. */
+  key: text("key").primaryKey(),
+  displayName: text("display_name"),
+  description: text("description"),
+  updatedAt: integer("updated_at").notNull(),
+});
+
 export const attachments = sqliteTable(
   "attachments",
   {

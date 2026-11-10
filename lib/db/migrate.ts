@@ -411,6 +411,18 @@ const MIGRATIONS: ((sqlite: Sqlite) => void)[] = [
       WHERE key = 'plans.config';
     `);
   },
+  // 16: customer-facing assistant names and descriptions set by admins,
+  // keyed by provider and model ID. Missing rows use the generated name.
+  (sqlite) => {
+    sqlite.exec(`
+      CREATE TABLE IF NOT EXISTS model_branding (
+        key TEXT PRIMARY KEY,
+        display_name TEXT,
+        description TEXT,
+        updated_at INTEGER NOT NULL
+      );
+    `);
+  },
 ];
 
 // No 0/O or 1/I, so IDs survive being read aloud or retyped.

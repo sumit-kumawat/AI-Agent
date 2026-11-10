@@ -4,6 +4,7 @@ import { describeModel, type ContextWindow } from "@/lib/models/capabilities";
 import { getModelName, getUserInventory, modelInfo, runningModels, serverDefaultContext, type ModelInfo } from "@/lib/ollama";
 import { getProvider, getRouting, listProviderModels, listProviders, type ModelRef } from "@/lib/providers/store";
 import { linkReadingEnabled } from "@/lib/research/config";
+import { applyBranding } from "@/lib/models/branding-store";
 
 const downUntil = new Map<string, number>();
 
@@ -45,7 +46,7 @@ function sameOllama(installed: string, wanted: string) {
 
 /** Models a user may pick: local ones that are installed, and cloud ones whose last check succeeded. */
 export async function listSelectableModels(): Promise<{ models: ModelOption[]; warning: string | null }> {
-  const models: ModelOption[] = [];
+  const models: Parameters<typeof applyBranding>[0] = [];
   const rows = listProviders();
   const ollama = rows.find((provider) => provider.id === "ollama");
   let warning: string | null = null;
@@ -70,7 +71,6 @@ export async function listSelectableModels(): Promise<{ models: ModelOption[]; w
           key: modelKey("ollama", model.name),
           providerId: "ollama",
           modelId: model.name,
-          name: model.name,
           providerName: "Ollama",
           local: true,
           parameterSize: model.parameterSize,
@@ -101,12 +101,11 @@ export async function listSelectableModels(): Promise<{ models: ModelOption[]; w
           context: { tokens: null, max: null, source: null },
           webLinks,
         }),
-        group: "Cloud",
+        group: "External",
         loaded: true,
         key: modelKey(provider.id, model.modelId),
         providerId: provider.id,
         modelId: model.modelId,
-        name: model.modelId,
         providerName: provider.name,
         local: false,
         parameterSize: null,
@@ -120,7 +119,7 @@ export async function listSelectableModels(): Promise<{ models: ModelOption[]; w
     warning = "No chat models are available. An admin can enable one under Providers.";
   }
   if (models.length > 0) warning = null;
-  return { models, warning };
+  return { models: applyBranding(models), warning };
 }
 
 function findIn(models: ModelOption[], ref: ModelRef | null) {
@@ -193,13 +192,13 @@ export async function resolveChatTarget(input: {
       chosen = matches.length === 1 ? matches[0] : undefined;
     }
     if (!chosen) {
-      return { ok: false, status: 400, error: `Model "${input.requestedModel}" is not available. Pick another model.` };
+      return { ok: false, status: 400, error: "That assistant is not available right now. Pick another one." };
     }
     if (!chosen.local && !input.allowCloud) {
       return {
         ok: false,
         status: 403,
-        error: `Allow cloud models before using ${chosen.providerName}. Your messages, custom instructions and saved memories would be sent to them.`,
+        error: `Allow external assistants before using ${chosen.name}. Your messages, custom instructions and saved memories would be sent to ${chosen.providerName}.`,
       };
     }
   } else {
@@ -227,7 +226,7 @@ export async function resolveChatTarget(input: {
     return {
       ok: false,
       status: 403,
-      error: `Allow cloud models before using ${chosen.providerName}. Your messages, custom instructions and saved memories would be sent to them.`,
+      error: `Allow external assistants before using ${chosen.name}. Your messages, custom instructions and saved memories would be sent to ${chosen.providerName}.`,
     };
   }
   return { ok: true, target: { model: chosen, fallbackFrom: null, auto: null } };

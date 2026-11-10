@@ -2,79 +2,18 @@
 
 import { Ban, Eraser, RotateCcw, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { createContext, useContext, useState, useTransition, type ReactNode } from "react";
+import { useState, useTransition } from "react";
 import { setUserSuspended } from "@/app/admin/actions";
+import { SelectAll, SelectionProvider, SelectRow, useSelection } from "@/components/admin/selection";
 import { CleanupDialog } from "@/components/admin/user-cleanup";
 import { useFeedback } from "@/components/feedback";
 import { Button } from "@/components/ui/button";
 
-type Selection = { selected: Set<string>; toggle: (id: string, on: boolean) => void; setAll: (ids: string[], on: boolean) => void; clear: () => void };
-
-const SelectionContext = createContext<Selection | null>(null);
-
-function useSelection() {
-  const context = useContext(SelectionContext);
-  if (!context) throw new Error("useSelection outside UserSelection");
-  return context;
-}
-
-/** Row selection for bulk actions on the users table; `selectable` excludes accounts the viewer cannot act on. */
-export function UserSelection({ children }: { children: ReactNode }) {
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const value: Selection = {
-    selected,
-    toggle: (id, on) =>
-      setSelected((current) => {
-        const next = new Set(current);
-        if (on) next.add(id);
-        else next.delete(id);
-        return next;
-      }),
-    setAll: (ids, on) =>
-      setSelected((current) => {
-        const next = new Set(current);
-        for (const id of ids) {
-          if (on) next.add(id);
-          else next.delete(id);
-        }
-        return next;
-      }),
-    clear: () => setSelected(new Set()),
-  };
-  return <SelectionContext.Provider value={value}>{children}</SelectionContext.Provider>;
-}
+export const UserSelection = SelectionProvider;
+export const SelectAllUsers = SelectAll;
 
 export function SelectUser({ id, label, disabled }: { id: string; label: string; disabled?: boolean }) {
-  const { selected, toggle } = useSelection();
-  return (
-    <input
-      type="checkbox"
-      aria-label={`Select ${label}`}
-      title={disabled ? "You cannot act on this account" : `Select ${label}`}
-      disabled={disabled}
-      checked={selected.has(id)}
-      onChange={(event) => toggle(id, event.target.checked)}
-      data-select-user={id}
-      className="size-4 align-middle"
-    />
-  );
-}
-
-export function SelectAllUsers({ ids }: { ids: string[] }) {
-  const { selected, setAll } = useSelection();
-  const all = ids.length > 0 && ids.every((id) => selected.has(id));
-  return (
-    <input
-      type="checkbox"
-      aria-label="Select all on this page"
-      title="Select all on this page"
-      disabled={ids.length === 0}
-      checked={all}
-      onChange={(event) => setAll(ids, event.target.checked)}
-      data-select-all
-      className="size-4 align-middle"
-    />
-  );
+  return <SelectRow id={id} label={label} kind="user" disabled={disabled} disabledReason="You cannot act on this account" />;
 }
 
 export function BulkUserActions() {

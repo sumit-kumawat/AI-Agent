@@ -85,20 +85,24 @@ export function usageByUser(period: Period, page: number) {
     inputTokens: number;
     outputTokens: number;
     tokens: number;
+    accounts: number;
   }>(sql`
-    SELECT e.user_id AS userId, u.email AS email, COUNT(*) AS calls,
+    SELECT CASE WHEN u.id IS NULL THEN '' ELSE e.user_id END AS userId, u.email AS email, COUNT(*) AS calls,
            SUM(e.input_tokens) AS inputTokens, SUM(e.output_tokens) AS outputTokens,
-           SUM(e.total_tokens) AS tokens
+           SUM(e.total_tokens) AS tokens, COUNT(DISTINCT e.user_id) AS accounts
     FROM usage_events e LEFT JOIN users u ON u.id = e.user_id
     WHERE e.created_at >= ${since}
-    GROUP BY e.user_id ORDER BY tokens DESC
+    GROUP BY CASE WHEN u.id IS NULL THEN '' ELSE e.user_id END ORDER BY tokens DESC
     LIMIT ${PAGE_SIZE} OFFSET ${offset(page)}
   `);
-  const total =
-    db.get<{ count: number }>(sql`
-      SELECT COUNT(DISTINCT user_id) AS count FROM usage_events WHERE created_at >= ${since}
-    `)?.count ?? 0;
-  return { rows, total };
+  const counts = db.get<{ groups: number; active: number; deleted: number }>(sql`
+    SELECT COUNT(DISTINCT CASE WHEN u.id IS NULL THEN '' ELSE e.user_id END) AS groups,
+           COUNT(DISTINCT u.id) AS active,
+           COUNT(DISTINCT CASE WHEN u.id IS NULL THEN e.user_id END) AS deleted
+    FROM usage_events e LEFT JOIN users u ON u.id = e.user_id
+    WHERE e.created_at >= ${since}
+  `) ?? { groups: 0, active: 0, deleted: 0 };
+  return { rows, total: counts.groups, activeAccounts: counts.active, deletedAccounts: counts.deleted };
 }
 
 export function usageByModel(period: Period) {
@@ -167,9 +171,25 @@ export function auditLog({ page, q }: { page: number; q: string }) {
   return { rows, total };
 }
 
-export function searchConversations({ email, q, flagged, page }: { email: string; q: string; flagged: boolean; page: number }) {
+export function searchConversations({
+  email,
+  q,
+  flagged,
+  page,
+  inactiveDays = 0,
+  withFiles = false,
+}: {
+  email: string;
+  q: string;
+  flagged: boolean;
+  page: number;
+  inactiveDays?: number;
+  withFiles?: boolean;
+}) {
   const conditions = [sql`1 = 1`];
   if (email) conditions.push(sql`u.email LIKE ${likePattern(email)} ESCAPE '\\'`);
+  if (inactiveDays > 0) conditions.push(sql`c.updated_at < ${Date.now() - inactiveDays * DAY}`);
+  if (withFiles) conditions.push(sql`EXISTS (SELECT 1 FROM attachments a WHERE a.conversation_id = c.id)`);
   // Titles only: searching message text would expose content without a recorded reason.
   if (q) conditions.push(sql`c.title LIKE ${likePattern(q)} ESCAPE '\\'`);
   if (flagged) {
@@ -181,13 +201,21 @@ export function searchConversations({ email, q, flagged, page }: { email: string
     title: string;
     model: string | null;
     email: string;
+    userId: string;
     updatedAt: number;
+    pinned: number;
+    temporary: number;
     messages: number;
     flagged: number;
+    attachments: number;
+    attachmentBytes: number;
   }>(sql`
-    SELECT c.id, c.title, c.model, u.email, c.updated_at AS updatedAt,
+    SELECT c.id, c.title, c.model, u.email, u.id AS userId, c.updated_at AS updatedAt,
+           c.pinned_at IS NOT NULL AS pinned, c.temporary,
            (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id) AS messages,
-           (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id AND m.flagged = 1) AS flagged
+           (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id AND m.flagged = 1) AS flagged,
+           (SELECT COUNT(*) FROM attachments a WHERE a.conversation_id = c.id) AS attachments,
+           (SELECT COALESCE(SUM(size), 0) FROM attachments a WHERE a.conversation_id = c.id) AS attachmentBytes
     FROM conversations c JOIN users u ON u.id = c.user_id
     WHERE ${where}
     ORDER BY c.updated_at DESC

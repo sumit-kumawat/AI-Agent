@@ -355,7 +355,7 @@ try {
     return JSON.stringify(data).includes(name);
   }, visionModel);
   if (hasVision) {
-    await page.click('button[aria-label="Choose model"]');
+    await page.click('button[aria-label="Choose assistant"]');
     await page.waitForSelector(`[data-model-option="${visionModel}"]`);
     await page.click(`[data-model-option="${visionModel}"]`);
     await page.waitForFunction(() => !document.querySelector('button[aria-label="Send message"]').disabled);

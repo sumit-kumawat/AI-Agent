@@ -12,7 +12,7 @@ export class ApiError extends Error {
 }
 
 /** Mutations must come from this site; browsers always send Origin on them. */
-function assertSameOrigin(request: Request) {
+export function assertSameOrigin(request: Request) {
   if (request.method === "GET" || request.method === "HEAD") return;
   const origin = request.headers.get("origin");
   if (!origin) throw new ApiError("Missing origin.", 403);

@@ -426,6 +426,37 @@ website content if you provide the URL, page content, or relevant documents."
 `npm run e2e:context` covers the meter, the exact counts, summarising a long
 conversation built from these docs, and link reading on and off.
 
+### Assistant names
+
+Customers never see model IDs. Each model gets a generated name,
+`xAI <family> <tier>`: the family word follows the model family (Atlas for
+Llama, Nova for Gemma, Orion for Qwen, Forge for code models, Sage for
+reasoning models, Helix, Aria and Zenith for the GPT, Claude and Gemini
+families, Echo otherwise), and the tier follows parameter count (Mini under
+2B, Core under 8B, Pro under 30B, Ultra above; external models have none).
+Duplicates get " 2", " 3" in model-key order, so names do not shift when the
+list changes. The one-line description comes from the tier and the strongest
+reported capability.
+
+Admin → Models → "Customer-facing names" overrides the name (2 to 40
+characters, unique across assistants) and description per model; leaving a
+field empty returns to the generated one. Overrides live in `model_branding`
+(migration 16), keyed by provider and model ID, and every change is audited
+as `model.branding`. Admins still see the model ID beside the name in the
+picker and on the Usage page. Replies from models that were removed later
+are labelled with the generated name.
+
+### Conversation management
+
+Admin → Conversations lists titles, owners and counts only. Selecting rows
+offers export and delete. Export needs a written reason of at least 10
+characters and is audited per conversation. Delete shows what goes (chats,
+messages, attached files), needs DELETE typed, keeps token usage records, and
+audits each chat. Retention (days, 0 = off) deletes unpinned chats not
+updated in that many days, once on save after a warning with the count, then
+hourly. `npm run e2e:conversations` covers export, bulk delete, retention and
+assistant names.
+
 ## 7. Needs a provider before it can work
 
 | Capability | What is missing |

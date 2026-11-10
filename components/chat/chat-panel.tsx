@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { AttachmentInfo } from "@/lib/attachments/types";
 import type { ChatMessage } from "@/lib/chat-types";
+import { assistantLabel } from "@/lib/models/branding";
 import type { PlanBlock } from "@/lib/plans/types";
 import type { ResearchData } from "@/lib/research/types";
 import { textFromParts } from "@/lib/text";
@@ -361,6 +362,7 @@ export function ChatPanel({
                 }
                 const last = index === lastIndex;
                 const report = researchOf(message);
+                const assistant = meta.model ? assistantLabel(models, meta.model, meta.provider) : undefined;
                 return (
                   <AssistantMessage
                     key={message.id}
@@ -372,13 +374,13 @@ export function ChatPanel({
                     streaming={last && status === "streaming"}
                     last={last && !busy}
                     createdAt={meta.createdAt}
-                    model={meta.model}
+                    model={assistant}
                     autoReason={meta.auto?.reason}
                     memory={meta.memory}
                     note={
                       [
                         meta.fallbackFrom
-                          ? `${meta.fallbackFrom} was unavailable, so this reply came from ${meta.model ?? "the fallback model"}.`
+                          ? `${meta.fallbackFrom} was unavailable, so this reply came from ${assistant ?? "the fallback assistant"}.`
                           : null,
                         ...(meta.fileNotes ?? []),
                         meta.webNotice ?? null,

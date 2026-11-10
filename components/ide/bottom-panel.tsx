@@ -148,7 +148,7 @@ export function BottomPanel({
               <div className="flex h-full flex-col items-center justify-center gap-1 px-6 text-center text-sm text-muted-foreground" data-terminal-unavailable>
                 <SquareTerminal className="size-5" />
                 <p>The terminal is available to admins only.</p>
-                <p className="text-xs">It runs commands directly on the server, so it is not offered on customer plans.</p>
+                <p className="text-xs">The terminal is available to administrators only.</p>
               </div>
             ) : terminals === null ? (
               <p className="flex items-center gap-2 p-3 text-xs text-muted-foreground">

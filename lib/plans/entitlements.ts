@@ -25,8 +25,10 @@ export async function modelsForUser(user: UserRow) {
   const models = catalog.models.filter((model) => planIncludes(plan, model));
   const warning =
     catalog.models.length > 0 && models.length === 0
-      ? `Your ${plan.name} plan has no models available right now. An admin can add models to it.`
-      : catalog.warning;
+      ? `Your ${plan.name} plan has no assistants available right now. An administrator can add them.`
+      : catalog.warning
+        ? "Assistants are temporarily unavailable. Try again in a few minutes."
+        : null;
   return { models, warning };
 }
 

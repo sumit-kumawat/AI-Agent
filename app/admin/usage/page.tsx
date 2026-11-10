@@ -53,7 +53,9 @@ export default async function AdminUsagePage({
   const limits = rateLimitLog(limitPage);
   const totalTokens = timeline.reduce((sum, row) => sum + row.tokens, 0);
   const totalCalls = timeline.reduce((sum, row) => sum + row.calls, 0);
-  const totalCost = byModel.reduce((sum, row) => sum + (row.costMicro ?? 0), 0);
+  const isLocal = (row: { providerId: string | null; agentId: string }) => (row.providerId ?? row.agentId) === "ollama";
+  const priced = byModel.filter((row) => !isLocal(row) && row.costMicro !== null);
+  const totalCost = priced.length ? priced.reduce((sum, row) => sum + (row.costMicro ?? 0), 0) : null;
   const peak = Math.max(1, ...timeline.map((row) => row.tokens));
 
   return (
@@ -83,8 +85,16 @@ export default async function AdminUsagePage({
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <StatCard label="Tokens" value={formatCompact(totalTokens)} hint={range.label} />
         <StatCard label="Model calls" value={formatNumber(totalCalls)} />
-        <StatCard label="Estimated cost" value={formatUsdMicro(totalCost)} hint="From model prices" />
-        <StatCard label="Active users" value={formatNumber(byUser.total)} />
+        <StatCard
+          label="Provider cost"
+          value={totalCost === null ? "Not applicable" : formatUsdMicro(totalCost)}
+          hint={totalCost === null ? "Local models have no per-token price" : "From the prices of cloud models used"}
+        />
+        <StatCard
+          label="Active users"
+          value={formatNumber(byUser.activeAccounts)}
+          hint={byUser.deletedAccounts ? `Plus ${formatNumber(byUser.deletedAccounts)} since deleted` : "Accounts with at least one request"}
+        />
         <StatCard
           label="Avg tokens per call"
           value={totalCalls ? formatNumber(Math.round(totalTokens / totalCalls)) : "0"}
@@ -134,8 +144,18 @@ export default async function AdminUsagePage({
               </TableHeader>
               <TableBody>
                 {byUser.rows.map((row) => (
-                  <TableRow key={row.userId}>
-                    <TableCell className="pl-4">{row.email ?? <span className="text-muted-foreground">Deleted user</span>}</TableCell>
+                  <TableRow key={row.userId || "deleted"}>
+                    <TableCell className="pl-4">
+                      {row.email ? (
+                        <Link href={`/admin/users/${row.userId}`} className="hover:underline">
+                          {row.email}
+                        </Link>
+                      ) : (
+                        <span className="text-muted-foreground">
+                          Deleted accounts ({formatNumber(row.accounts)}), usage kept for accounting
+                        </span>
+                      )}
+                    </TableCell>
                     <TableCell className="text-right tabular-nums">{formatNumber(row.calls)}</TableCell>
                     <TableCell className="text-right tabular-nums">{formatNumber(row.inputTokens)}</TableCell>
                     <TableCell className="text-right tabular-nums">{formatNumber(row.outputTokens)}</TableCell>
@@ -178,7 +198,9 @@ export default async function AdminUsagePage({
                     <TableCell className="text-muted-foreground">{row.providerId ?? row.agentId}</TableCell>
                     <TableCell className="text-right tabular-nums">{formatNumber(row.calls)}</TableCell>
                     <TableCell className="text-right tabular-nums">{formatNumber(row.tokens)}</TableCell>
-                    <TableCell className="text-right tabular-nums">{formatUsdMicro(row.costMicro)}</TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {isLocal(row) ? <span className="text-muted-foreground">Local</span> : formatUsdMicro(row.costMicro)}
+                    </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {row.avgMs ? `${(row.avgMs / 1000).toFixed(1)}s` : "–"}
                     </TableCell>

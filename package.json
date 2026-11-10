@@ -21,6 +21,7 @@
     "e2e:auth": "node scripts/e2e-auth.mjs",
     "e2e:plans": "node scripts/e2e-plans.mjs",
     "e2e:context": "node scripts/e2e-context.mjs",
+    "e2e:conversations": "node scripts/e2e-conversations.mjs",
     "admin:bootstrap": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/admin-bootstrap.mjs",
     "seed": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/seed.mjs",
     "db:push": "drizzle-kit push"

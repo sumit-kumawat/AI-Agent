@@ -65,9 +65,9 @@ export function describeModel(input: {
     caps.push({ id: "coding", label: "Coding", source: "Code-tuned model family" });
   }
   if (input.vision) {
-    caps.push({ id: "images", label: "Image input", source: input.local ? "Ollama: vision" : "Model family accepts images" });
+    caps.push({ id: "images", label: "Image understanding", source: input.local ? "Ollama: vision" : "Model family accepts images" });
   }
-  caps.push({ id: "documents", label: "Documents", source: "This app extracts text from PDFs, Word, Excel and text files" });
+  caps.push({ id: "documents", label: "Document analysis", source: "This app extracts text from PDFs, Word, Excel and text files" });
   const languages = multilingual(id);
   if (languages) caps.push({ id: "multilingual", label: "Multilingual", source: languages });
   if (reported("tools")) caps.push({ id: "tools", label: "Tool calling", source: "Ollama: tools" });

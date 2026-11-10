@@ -21,15 +21,18 @@ export type SystemSettings = {
   registrationEnabled: boolean;
   /** Lowercased words or phrases rejected in chat input. */
   moderationKeywords: string[];
+  /** Delete chats not updated for this many days (pinned chats are kept). 0 keeps chats forever. */
+  conversationRetentionDays: number;
 };
 
 export const DEFAULT_SETTINGS: SystemSettings = {
   chatRateLimitPerMinute: 30,
   registrationEnabled: true,
   moderationKeywords: [],
+  conversationRetentionDays: 0,
 };
 
-const cache = globalThis as typeof globalThis & { harborSettings?: SystemSettings };
+const cache = globalThis as typeof globalThis & { xaiSettings?: SystemSettings };
 
 function load(): SystemSettings {
   const rows = db.select().from(settings).all();
@@ -46,11 +49,12 @@ function load(): SystemSettings {
     chatRateLimitPerMinute: parse("chatRateLimitPerMinute", DEFAULT_SETTINGS.chatRateLimitPerMinute),
     registrationEnabled: parse("registrationEnabled", DEFAULT_SETTINGS.registrationEnabled),
     moderationKeywords: parse("moderationKeywords", DEFAULT_SETTINGS.moderationKeywords),
+    conversationRetentionDays: parse("conversationRetentionDays", DEFAULT_SETTINGS.conversationRetentionDays),
   };
 }
 
 export function getSettings() {
-  return (cache.harborSettings ??= load());
+  return (cache.xaiSettings ??= load());
 }
 
 export function updateSettings(patch: Partial<SystemSettings>) {
@@ -64,6 +68,6 @@ export function updateSettings(patch: Partial<SystemSettings>) {
         .run();
     }
   });
-  cache.harborSettings = undefined;
+  cache.xaiSettings = undefined;
   return getSettings();
 }

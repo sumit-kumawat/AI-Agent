@@ -117,7 +117,10 @@ export function PlansEditor({ initial, models }: { initial: Record<PlanId, PlanC
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="text-sm font-medium">Price</p>
-              <p className="text-sm text-muted-foreground">Shown on the plans page. Leave off until you have set real pricing.</p>
+              <p className="text-sm text-muted-foreground">
+                The amount you charge, in its billing currency. Customers also see an approximate conversion into their own currency
+                from daily exchange rates; the stored amount never changes. Leave off until you have set real pricing.
+              </p>
             </div>
             <Switch
               checked={plan.price !== null}

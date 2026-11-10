@@ -100,8 +100,8 @@ try {
   await page.goto(`${base}/chat`, { waitUntil: "networkidle0" });
   check((await text()).includes("What can I help with"), "blank new chat shows the greeting");
   check(
-    (await page.$eval('button[aria-label="Choose model"]', (node) => node.textContent)).includes(model),
-    `model selector in the composer shows ${model}`,
+    (await page.$eval('button[aria-label="Choose assistant"]', (node) => node.dataset.modelSelection)).endsWith(model),
+    `model selector in the composer has ${model} selected`,
   );
   await shot("desktop_empty");
 

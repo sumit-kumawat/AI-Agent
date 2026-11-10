@@ -316,7 +316,7 @@ try {
   await adminPage.goto(`${base}/admin/conversations?email=${encodeURIComponent(user.email)}`, { waitUntil: "networkidle0" });
   await adminPage.waitForSelector('table a[href^="/admin/conversations/"]');
   const withMessages = await adminPage.$$eval("tbody tr", (rows) => {
-    const row = rows.find((tr) => Number(tr.children[3]?.textContent?.replace(/\D/g, "") || 0) > 0);
+    const row = rows.find((tr) => Number(tr.children[4]?.textContent?.replace(/\D/g, "") || 0) > 0);
     return row?.querySelector('a[href^="/admin/conversations/"]')?.getAttribute("href") ?? null;
   });
   check(Boolean(withMessages), "audit search finds the user's conversations");
@@ -455,9 +455,9 @@ try {
     );
     check(afterCheck !== "Ready" && afterCheck !== "Local", "a failed check is not shown as ready");
     await adminPage.goto(`${base}/chat`, { waitUntil: "networkidle0" });
-    await adminPage.click('button[aria-label="Choose model"]');
-    await adminPage.waitForSelector('[role=listbox][aria-label="Models"]');
-    const menu = await adminPage.$eval('[role=listbox][aria-label="Models"]', (node) => node.innerText);
+    await adminPage.click('button[aria-label="Choose assistant"]');
+    await adminPage.waitForSelector('[role=listbox][aria-label="Assistants"]');
+    const menu = await adminPage.$eval('[role=listbox][aria-label="Assistants"]', (node) => node.innerText);
     await adminPage.keyboard.press("Escape");
     check(!menu.includes("OpenAI") && !menu.includes("gpt-test"), "chat only lists models that passed a check");
     withDb((db) => {
@@ -479,7 +479,7 @@ try {
         messages: [{ id: crypto.randomUUID(), role: "user", parts: [{ type: "text", text: "hi" }] }],
       }),
     });
-    check(blocked.status === 403 && String(blocked.body?.error ?? "").includes("Allow cloud models"), "a cloud model is refused until the user allows it");
+    check(blocked.status === 403 && String(blocked.body?.error ?? "").includes("Allow external assistants"), "a cloud model is refused until the user allows it");
   } finally {
     resetOpenAi();
   }
@@ -525,6 +525,8 @@ try {
 
   await userRowAction(adminPage, extras[0].email, "Edit profile");
   await adminPage.waitForSelector(`[data-edit-user="${extras[0].id}"]`);
+  // The dialog focuses and selects its first field once it opens; typing before that loses keys.
+  await adminPage.waitForFunction((id) => document.activeElement?.id === `name-${id}`, {}, extras[0].id);
   await adminPage.$eval(`#name-${extras[0].id}`, (input) => input.select());
   await adminPage.type(`#name-${extras[0].id}`, "Renamed Extra");
   await adminPage.click(`[data-edit-user="${extras[0].id}"] button[type=submit]`);

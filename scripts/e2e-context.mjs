@@ -196,7 +196,7 @@ try {
   check(visible.includes(NO_BROWSING), "the fixed message is shown with the reply");
   const limitations = async () => {
     await page.goto(`${base}/chat`, { waitUntil: "networkidle0" });
-    await page.click('button[aria-label="Choose model"]');
+    await page.click('button[aria-label="Choose assistant"]');
     await page.waitForSelector(`[data-model-option="${MODEL}"]`);
     const text = await page.$eval(`[data-model-option="${MODEL}"]`, (node) => node.dataset.limitations);
     await page.keyboard.press("Escape");

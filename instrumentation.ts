@@ -1,7 +1,13 @@
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
   const { sweepAttachments } = await import("@/lib/attachments/store");
+  const { applyRetention } = await import("@/lib/admin/conversations");
   const run = () => {
+    try {
+      applyRetention();
+    } catch (error) {
+      console.error("Conversation retention failed", error);
+    }
     try {
       sweepAttachments();
     } catch (error) {

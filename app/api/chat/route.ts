@@ -223,7 +223,7 @@ export async function POST(request: Request) {
   if (latestImages.length > 0 && !chosen.vision) {
     return Response.json(
       {
-        error: `${modelName} cannot read images. Pick a model that accepts images (marked in the model list), or remove the image.`,
+        error: `${chosen.name} cannot read images. Pick an assistant marked "Image understanding", or remove the image.`,
       },
       { status: 400 },
     );

@@ -77,7 +77,7 @@ export function WorkspaceList({
     <div className="flex h-full flex-col">
       <ChatTopBar title="IDE" />
       <main className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-4xl px-4 pt-2 pb-12 sm:px-6">
+        <div className="mx-auto w-full max-w-6xl px-4 pt-2 pb-12 sm:px-6">
           <h1 className="font-heading text-3xl">Workspaces</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             {root ? (
@@ -108,7 +108,7 @@ export function WorkspaceList({
             {!admin ? (
               <span className="flex items-center gap-2 text-muted-foreground" data-ide-terminal-note>
                 <Terminal className="size-4 shrink-0" />
-                The terminal is limited to admins because it runs commands on the server.
+                The terminal is available to administrators only.
               </span>
             ) : null}
           </div>
