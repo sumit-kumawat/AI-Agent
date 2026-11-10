@@ -242,7 +242,7 @@ export async function POST(request: Request) {
       status: "blocked",
     });
     return Response.json(
-      { error: "This message contains content that is not allowed on this server." },
+      { error: "This message contains content that is not allowed." },
       { status: 400 },
     );
   }
@@ -550,7 +550,7 @@ export async function POST(request: Request) {
         const detail = safeProviderError(chosen.providerId, error);
         console.error("Chat stream failed", chosen.providerId, modelName, detail);
         return chosen.local
-          ? `${modelName} stopped responding. Check that Ollama is running, or pick a smaller model.`
+          ? `${modelName} stopped responding. Try again, or pick a lighter assistant.`
           : `${chosen.providerName} did not respond. ${detail}`;
       },
       onFinish: async ({ responseMessage, isAborted }) => {

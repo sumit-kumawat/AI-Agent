@@ -11,7 +11,7 @@ const HOUR = 60 * 60 * 1000;
 export async function POST(request: Request) {
   if (!getSettings().registrationEnabled) {
     return Response.json(
-      { error: "Registration is closed on this server. Ask an admin for an account." },
+      { error: "Registration is closed right now. Ask an administrator for an account." },
       { status: 403 },
     );
   }

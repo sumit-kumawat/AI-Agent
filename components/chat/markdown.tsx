@@ -38,7 +38,7 @@ function MarkdownImpl({ text, streaming = false }: { text: string; streaming?: b
         lineNumbers={false}
         isAnimating={streaming && thinkingDone}
         caret="block"
-        className={streaming ? "harbor-streaming" : undefined}
+        className={streaming ? "xai-streaming" : undefined}
       >
         {answer}
       </Streamdown>

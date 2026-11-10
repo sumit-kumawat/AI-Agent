@@ -152,6 +152,12 @@ try {
   await page.evaluate((name) => localStorage.setItem("harbor-model", name), model);
   await page.goto(`${base}/chat`, { waitUntil: "networkidle0" });
 
+  const defaults = JSON.parse((await api("/api/preferences")).text).preferences;
+  check(defaults.accent === "slate", `a new account defaults to the Slate accent (${defaults.accent})`);
+  const primary = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--primary").trim().toLowerCase());
+  check(primary === "#334155", `Slate is the primary colour (${primary})`);
+  check(Boolean(await page.$("[data-log-out][aria-label='Log out']")), "a logout icon sits beside the sidebar profile");
+
   // Settings opens from the profile menu.
   await page.click("[data-profile-menu]");
   await menuItem("Settings");
@@ -179,7 +185,7 @@ try {
   const stored = JSON.parse((await api("/api/preferences")).text).preferences;
   check(stored.theme === "dark" && stored.accent === "blue" && stored.fontSize === "large", "appearance is saved to the account");
   await page.click('[role=radiogroup][aria-label="Theme"] [data-value="system"]');
-  await page.click('[data-accent-option="teal"]');
+  await page.click('[data-accent-option="slate"]');
   await page.click('[role=radiogroup][aria-label="Text size"] [data-value="medium"]');
   await page.waitForFunction(() => !document.documentElement.classList.contains("dark"));
 

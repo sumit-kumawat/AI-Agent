@@ -117,14 +117,14 @@ const HIDDEN_IN_PICKER = new Set(["text", "documents", "long-context"]);
 
 function contextTitle(context: ModelOption["context"]) {
   if (context.tokens === null) {
-    return context.max ? `The model supports up to ${context.max.toLocaleString("en-US")} tokens; the window on this server is not known yet.` : "Not reported by the provider.";
+    return context.max ? `Supports up to ${context.max.toLocaleString("en-US")} tokens; the window in use is not known yet.` : "Not reported.";
   }
   const how =
     context.source === "running"
-      ? "as loaded in Ollama now"
+      ? "in use right now"
       : context.source === "model"
-        ? "from the model's settings"
-        : "this server's default, used when the model loads";
+        ? "from the assistant's settings"
+        : "by default, used when the assistant loads";
   const max = context.max && context.max > context.tokens ? ` The model itself supports up to ${context.max.toLocaleString("en-US")}.` : "";
   return `${context.tokens.toLocaleString("en-US")} tokens ${how}.${max}`;
 }
@@ -198,8 +198,8 @@ export function ModelPicker({
       if (!option.local && !prefs.cloudModels) {
         setOpen(false);
         const ok = await confirm({
-          title: `Send chats to ${option.providerName}?`,
-          description: `Messages in this chat, your custom instructions and your saved memories will be sent to ${option.providerName}. They leave this server.`,
+          title: "Use an external AI provider?",
+          description: `This assistant is run by ${option.providerName}, an external provider. Messages in this chat, your custom instructions and your saved memories will be sent to ${option.providerName} to answer.`,
           confirmLabel: "Allow",
         });
         if (!ok) return;

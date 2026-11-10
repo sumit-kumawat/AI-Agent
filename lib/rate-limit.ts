@@ -10,10 +10,10 @@ export type LimitContext = {
 };
 
 const store = globalThis as typeof globalThis & {
-  harborRateLimits?: Map<string, Bucket>;
+  xaiRateLimits?: Map<string, Bucket>;
 };
 
-const buckets = (store.harborRateLimits ??= new Map<string, Bucket>());
+const buckets = (store.xaiRateLimits ??= new Map<string, Bucket>());
 
 function sweep(now: number) {
   if (buckets.size < 5000) return;

@@ -15,8 +15,8 @@
 }
 
 /*
- * Dark theme. #10A37F carries dark text on filled buttons: white on it is
- * only 3.2:1, below WCAG AA.
+ * Dark theme, Slate accent by default. Filled buttons are light slate with
+ * dark text (about 13:1).
  */
 :root.dark {
   color-scheme: dark;
@@ -26,9 +26,8 @@
   --card-foreground: #ececec;
   --popover: #2f2f2f;
   --popover-foreground: #ececec;
-  --brand: #10a37f;
-  --primary: #10a37f;
-  --primary-foreground: #0d0d0d;
+  --primary: #cbd5e1;
+  --primary-foreground: #0f172a;
   --secondary: #2f2f2f;
   --secondary-foreground: #ececec;
   --muted: #2f2f2f;
@@ -39,30 +38,34 @@
   --destructive: #f87171;
   --border: rgb(255 255 255 / 10%);
   --input: rgb(255 255 255 / 16%);
-  --ring: #10a37f;
+  --ring: #94a3b8;
   --sidebar: #171717;
   --sidebar-foreground: #ececec;
-  --sidebar-primary: #10a37f;
-  --sidebar-primary-foreground: #0d0d0d;
   --sidebar-accent: #262626;
   --sidebar-accent-foreground: #ececec;
   --sidebar-border: rgb(255 255 255 / 8%);
-  --sidebar-ring: #10a37f;
   --shadow-color: rgb(0 0 0 / 40%);
 }
 
-/* Optional accents chosen in Settings. Green is the brand default and needs no override. */
+/* Brand marks, sidebar highlights and rings follow whichever accent is active. */
+:root {
+  --brand: var(--ring);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-ring: var(--ring);
+}
+
+/* Optional accents chosen in Settings. Slate is the default and needs no override. */
+:root[data-accent="teal"] { --primary: #0b7a5f; --ring: #10a37f; --accent: #ececf1; --accent-foreground: #202123; }
+:root.dark[data-accent="teal"] { --primary: #10a37f; --primary-foreground: #0d0d0d; --ring: #10a37f; --accent: #2f2f2f; --accent-foreground: #ececec; }
 :root[data-accent="blue"] { --primary: oklch(0.48 0.15 255); --ring: oklch(0.58 0.14 255); --accent: oklch(0.94 0.025 255); --accent-foreground: oklch(0.32 0.1 255); }
 :root[data-accent="violet"] { --primary: oklch(0.47 0.17 295); --ring: oklch(0.58 0.15 295); --accent: oklch(0.94 0.03 295); --accent-foreground: oklch(0.32 0.12 295); }
 :root[data-accent="rose"] { --primary: oklch(0.52 0.17 10); --ring: oklch(0.62 0.15 10); --accent: oklch(0.94 0.03 10); --accent-foreground: oklch(0.35 0.12 10); }
 :root[data-accent="amber"] { --primary: oklch(0.55 0.13 60); --ring: oklch(0.65 0.13 60); --accent: oklch(0.94 0.04 75); --accent-foreground: oklch(0.36 0.08 60); }
-:root[data-accent="slate"] { --primary: oklch(0.32 0.02 250); --ring: oklch(0.5 0.02 250); --accent: oklch(0.93 0.008 250); --accent-foreground: oklch(0.28 0.02 250); }
 :root.dark[data-accent="blue"] { --primary: oklch(0.72 0.13 255); --primary-foreground: oklch(0.18 0.03 255); --accent: oklch(0.32 0.05 255); --accent-foreground: oklch(0.95 0.01 255); }
 :root.dark[data-accent="violet"] { --primary: oklch(0.72 0.14 295); --primary-foreground: oklch(0.18 0.03 295); --accent: oklch(0.32 0.06 295); --accent-foreground: oklch(0.95 0.01 295); }
 :root.dark[data-accent="rose"] { --primary: oklch(0.72 0.14 10); --primary-foreground: oklch(0.18 0.03 10); --accent: oklch(0.32 0.06 10); --accent-foreground: oklch(0.95 0.01 10); }
 :root.dark[data-accent="amber"] { --primary: oklch(0.78 0.12 70); --primary-foreground: oklch(0.2 0.03 70); --accent: oklch(0.33 0.05 70); --accent-foreground: oklch(0.95 0.01 70); }
-:root.dark[data-accent="slate"] { --primary: oklch(0.85 0.01 250); --primary-foreground: oklch(0.2 0.01 250); --accent: oklch(0.3 0.01 250); --accent-foreground: oklch(0.95 0 0); }
-
 /* Text scale; every rem-based size follows. */
 :root[data-font="small"] { font-size: 15px; }
 :root[data-font="large"] { font-size: 17.5px; }
@@ -148,10 +151,10 @@
 }
 
 /*
- * Light theme. #10A37F is the brand accent (marks, rings, switches). Filled
- * buttons and link text use a deeper shade, and muted text uses #6E6E80,
- * because #10A37F and #8E8EA0 are about 3.2:1 on white, below WCAG AA for
- * text. #8E8EA0 stays for placeholders and icons.
+ * Light theme, Slate accent by default. Filled buttons and links use slate-700
+ * (#334155, about 10:1 on white), rings slate-500. Muted text uses #6E6E80
+ * because #8E8EA0 is about 3.2:1 on white, below WCAG AA for text; #8E8EA0
+ * stays for placeholders and icons.
  */
 :root,
 [data-ide]:not(.dark) {
@@ -162,20 +165,19 @@
   --card-foreground: #202123;
   --popover: #ffffff;
   --popover-foreground: #202123;
-  --brand: #10a37f;
-  --primary: #0b7a5f;
+  --primary: #334155;
   --primary-foreground: #ffffff;
   --secondary: #f7f7f8;
   --secondary-foreground: #202123;
   --muted: #f7f7f8;
   --muted-foreground: #6e6e80;
   --subtle: #8e8ea0;
-  --accent: #ececf1;
-  --accent-foreground: #202123;
+  --accent: #f1f5f9;
+  --accent-foreground: #1e293b;
   --destructive: #d92d20;
   --border: #e5e5e5;
   --input: #d9d9e3;
-  --ring: #10a37f;
+  --ring: #64748b;
   --shadow-color: rgb(0 0 0 / 8%);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
@@ -185,12 +187,9 @@
   --radius: 0.75rem;
   --sidebar: #f7f7f8;
   --sidebar-foreground: #202123;
-  --sidebar-primary: #0b7a5f;
-  --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: #ececf1;
   --sidebar-accent-foreground: #202123;
   --sidebar-border: #e5e5e5;
-  --sidebar-ring: #10a37f;
 }
 
 @layer base {
@@ -217,13 +216,13 @@
 }
 
 /* Streaming caret: streamdown draws it after the last block; this makes it blink. */
-@keyframes harbor-caret {
+@keyframes xai-caret {
   50% {
     opacity: 0;
   }
 }
 
-.harbor-streaming > :last-child::after,
-.harbor-caret {
-  animation: harbor-caret 1s steps(1) infinite;
+.xai-streaming > :last-child::after,
+.xai-caret {
+  animation: xai-caret 1s steps(1) infinite;
 }

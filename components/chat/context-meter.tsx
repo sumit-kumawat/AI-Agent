@@ -68,17 +68,20 @@ export function ContextMeter({
           type="button"
           data-context-meter
           data-context-percent={percent}
-          aria-label={`Context ${percent}% used of ${tokens(window)} tokens. Show breakdown.`}
+          aria-label={`Context: about ${tokens(used)} of ${tokens(window)} tokens used (${shown}%), estimated. Show breakdown.`}
+          title="Estimated from the text sent to the assistant; open for the breakdown and the last exact count"
           onMouseEnter={() => setOpen(true)}
-          className="flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2 text-xs hover:bg-muted"
+          className="flex h-7 min-w-0 shrink items-center gap-2 rounded-full px-2 text-xs whitespace-nowrap hover:bg-muted"
         >
-          <span className="flex h-1.5 w-12 overflow-hidden rounded-full bg-muted sm:w-16" aria-hidden>
+          <span className={`tabular-nums ${tone}`} data-context-label>
+            Context: ~{tokens(used)} of {tokens(window)} tokens ({shown}%)
+          </span>
+          <span className="hidden h-1.5 w-14 shrink-0 overflow-hidden rounded-full bg-muted sm:flex" aria-hidden>
             {segments.map((segment) => (
               <span key={segment.category} style={{ width: width(segment.value), background: segment.color }} />
             ))}
             {draftTokens > 0 ? <span style={{ width: width(draftTokens), background: DRAFT_COLOR, opacity: 0.5 }} /> : null}
           </span>
-          <span className={`tabular-nums ${tone}`}>{shown}%</span>
         </button>
       </PopoverTrigger>
       <PopoverContent
@@ -95,10 +98,10 @@ export function ContextMeter({
           </p>
           <p className="text-muted-foreground" data-context-window-source={snapshot.window.source ?? ""}>
             {snapshot.window.source === "running"
-              ? "Window as loaded in Ollama now."
+              ? "Window in use right now, as reported by the runtime."
               : snapshot.window.source === "assumed"
-                ? "The provider does not report this model's window; a conservative size is assumed."
-                : "Window this model gets on this server when it loads."}
+                ? "This assistant's window is not reported; a conservative size is assumed."
+                : "Window this assistant gets when it loads."}
             {snapshot.window.max && snapshot.window.max > window ? ` The model itself supports up to ${tokens(snapshot.window.max)}.` : ""}
           </p>
         </div>

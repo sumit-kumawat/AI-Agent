@@ -4,8 +4,8 @@ import { checkSource } from "@/lib/research/sources";
 export type SourceStatus = { id: SourceId; name: string; ok: boolean; error: string | null; ms: number; checkedAt: number };
 
 const TTL_MS = 5 * 60 * 1000;
-const store = globalThis as typeof globalThis & { harborResearchHealth?: Map<string, SourceStatus> };
-const cache = (store.harborResearchHealth ??= new Map<string, SourceStatus>());
+const store = globalThis as typeof globalThis & { xaiResearchHealth?: Map<string, SourceStatus> };
+const cache = (store.xaiResearchHealth ??= new Map<string, SourceStatus>());
 
 function cacheKey(source: ReturnType<typeof activeSources>[number]) {
   return source.id === "searxng" ? `searxng|${source.baseUrl}` : source.id === "wikipedia" ? `wikipedia|${source.language}` : source.id;

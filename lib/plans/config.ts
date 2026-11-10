@@ -46,7 +46,7 @@ const MID = ["deepseek-r1:1.5b", "gemma3:4b", "qwen2.5-coder:1.5b"].map(ollama);
 export const DEFAULT_PLANS: Record<PlanId, Omit<PlanConfig, "id">> = {
   free: {
     name: "Free",
-    tagline: "Everyday chat with fast local models.",
+    tagline: "Everyday chat with fast assistants.",
     price: null,
     allModels: false,
     models: SMALL,

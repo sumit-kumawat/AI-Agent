@@ -125,7 +125,7 @@ try {
   await page.waitForFunction(() => location.pathname.startsWith("/chat/") && location.pathname !== "/chat/");
   await page.waitForSelector('button[aria-label="Stop generating"]');
   check(true, "Enter sends and Stop appears while streaming");
-  await page.waitForSelector(".harbor-streaming, .harbor-caret");
+  await page.waitForSelector(".xai-streaming, .xai-caret");
   check(true, "blinking caret shows while streaming");
   await shot("desktop_streaming");
   await waitIdle();

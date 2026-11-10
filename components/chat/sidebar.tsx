@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { signOut } from "next-auth/react";
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import {
   Archive,
@@ -27,6 +26,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { AdminNav } from "@/components/admin/admin-nav";
+import { LogOutButton, useLogOut } from "@/components/auth/log-out";
 import { useChatChrome } from "@/components/chat/chat-shell";
 import { Kbd } from "@/components/shortcut";
 import { useConversationActions } from "@/components/chat/conversation-actions";
@@ -234,6 +234,7 @@ function RailTip({ label, show, children }: { label: string; show: boolean; chil
 
 function ProfileMenu({ onNavigate, collapsed }: { onNavigate?: () => void; collapsed: boolean }) {
   const { user, admin, openSettings } = useChatChrome();
+  const logOut = useLogOut();
   const initial = (user.name || user.email || "?").trim().charAt(0).toUpperCase();
   return (
     <DropdownMenu>
@@ -288,7 +289,7 @@ function ProfileMenu({ onNavigate, collapsed }: { onNavigate?: () => void; colla
           </>
         ) : null}
         <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={() => void signOut({ callbackUrl: "/login" })}>
+        <DropdownMenuItem onSelect={() => void logOut()}>
           <LogOut />
           Log out
         </DropdownMenuItem>
@@ -415,7 +416,12 @@ export function SidebarBody({
         {inAdmin ? <AdminNav onNavigate={onNavigate} /> : <ConversationList conversations={conversations} onNavigate={onNavigate} />}
       </nav>
       <div className="shrink-0 border-t px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
-        <ProfileMenu onNavigate={onNavigate} collapsed={collapsed} />
+        <div className="flex items-center gap-1">
+          <div className="min-w-0 flex-1">
+            <ProfileMenu onNavigate={onNavigate} collapsed={collapsed} />
+          </div>
+          {collapsed ? null : <LogOutButton className="shrink-0 text-muted-foreground" />}
+        </div>
       </div>
     </div>
   );

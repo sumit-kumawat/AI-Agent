@@ -31,8 +31,12 @@ const TOPICS = [
     body: "In Settings → Personalization, tell the assistant what to call you, what you do, and how to respond, and pick a personality and answer length. These apply to every new reply while custom instructions are on.",
   },
   {
-    title: "Models",
-    body: "The model menu in the message box lists Auto and the models your plan includes. Auto picks a model for each message using the optimisation chosen at the top right: Intelligence, Balance (the default) or Cost. Local models run on this server. Cloud models (marked Cloud) appear only after an admin has connected that provider and checked it, and only once you allow them. Allowing cloud models sends the conversation, your custom instructions and your saved memories to that provider.",
+    title: "Assistants",
+    body: "The assistant menu in the message box lists Auto and the assistants your plan includes, each with what it is good at. Auto picks one for each message using the optimisation chosen at the top right: Intelligence, Balance (the default) or Cost. Assistants run by an external provider are marked External and are used only once you allow them; allowing them sends the conversation, your custom instructions and your saved memories to that provider.",
+  },
+  {
+    title: "Deep Research and context",
+    body: "Turn on Deep Research below the message box to have the assistant search the web, read sources and write a cited report. Next to it, Context shows roughly how much of the assistant's context window the conversation uses; open it for a breakdown. Long chats are summarised automatically so they keep fitting.",
   },
   {
     title: "Your data",
@@ -86,6 +90,12 @@ function HelpContent() {
         <h2 className="font-medium">Contact</h2>
         <p className="mt-1.5 text-sm text-muted-foreground">For account or access problems, contact your administrator.</p>
       </section>
+
+      <p className="mt-6 text-sm text-muted-foreground">
+        <Link href="/legal" className="underline underline-offset-4 hover:text-foreground">
+          Legal and acknowledgements
+        </Link>
+      </p>
     </>
   );
 }

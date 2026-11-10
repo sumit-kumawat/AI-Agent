@@ -85,7 +85,7 @@ export function writeFile(root: string, relative: string, content: string, expec
     throw new PathError("The file changed on disk since you opened it.", 409);
   }
   fs.mkdirSync(path.dirname(absolute), { recursive: true });
-  const temp = `${absolute}.conzex-${process.pid}-${Date.now()}.tmp`;
+  const temp = `${absolute}.xai-${process.pid}-${Date.now()}.tmp`;
   fs.writeFileSync(temp, content, { mode: stat?.mode ?? 0o644 });
   fs.renameSync(temp, absolute);
   return { path: clean, mtime: fs.statSync(absolute).mtimeMs };

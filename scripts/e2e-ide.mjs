@@ -266,7 +266,7 @@ try {
   await adminPage.waitForSelector(".monaco-editor .view-lines");
   check(true, "a new file opens in the editor");
   await adminPage.click(".monaco-editor .view-lines");
-  await adminPage.keyboard.type("export const greeting = 'hello from conzex';\n");
+  await adminPage.keyboard.type("export const greeting = 'hello from xai';\n");
   await adminPage.waitForSelector('[aria-label="Close greeting.ts (unsaved)"]');
   check(true, "typing marks the tab as unsaved");
   await adminPage.keyboard.down(mod);
@@ -274,7 +274,7 @@ try {
   await adminPage.keyboard.up(mod);
   await adminPage.waitForSelector('[aria-label="Close greeting.ts"]');
   const saved = await api(adminPage, `/api/ide/workspaces/${workspaceId}/files?file=src/greeting.ts`);
-  check(saved.body?.content?.includes("hello from conzex"), "save writes the file to disk");
+  check(saved.body?.content?.includes("hello from xai"), "save writes the file to disk");
   await adminPage.screenshot({ path: `${shots}/ide_editor.png` });
 
   // Syntax errors appear in Problems.
@@ -331,9 +331,9 @@ try {
   await adminPage.waitForSelector("[data-terminal] .xterm-rows");
   await new Promise((resolve) => setTimeout(resolve, 1200));
   await adminPage.click("[data-terminal]");
-  await adminPage.keyboard.type('echo conzex-$((40+2)) && pwd && echo "secret=<${AUTH_SECRET:-none}>"\n');
+  await adminPage.keyboard.type('echo xai-$((40+2)) && pwd && echo "secret=<${AUTH_SECRET:-none}>"\n');
   await adminPage.waitForFunction(
-    () => [...document.querySelectorAll("[data-terminal] .xterm-rows > div")].some((row) => row.textContent.includes("conzex-42")),
+    () => [...document.querySelectorAll("[data-terminal] .xterm-rows > div")].some((row) => row.textContent.includes("xai-42")),
     { timeout: 15_000 },
   );
   const termOut = await terminalText(adminPage);

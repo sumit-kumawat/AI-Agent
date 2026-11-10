@@ -1,7 +1,8 @@
 import { z } from "zod";
 
 export const THEMES = ["system", "light", "dark"] as const;
-export const ACCENTS = ["teal", "blue", "violet", "rose", "amber", "slate"] as const;
+export const ACCENTS = ["slate", "teal", "blue", "violet", "rose", "amber"] as const;
+export const DEFAULT_ACCENT = "slate";
 export const FONT_SIZES = ["small", "medium", "large"] as const;
 export const DENSITIES = ["comfortable", "compact"] as const;
 export const PERSONALITIES = [
@@ -31,7 +32,7 @@ const text = (max: number) => z.string().trim().max(max).catch("");
  */
 export const preferencesSchema = z.object({
   theme: z.enum(THEMES).catch("system"),
-  accent: z.enum(ACCENTS).catch("teal"),
+  accent: z.enum(ACCENTS).catch(DEFAULT_ACCENT),
   fontSize: z.enum(FONT_SIZES).catch("medium"),
   density: z.enum(DENSITIES).catch("comfortable"),
   language: text(40),
@@ -84,7 +85,7 @@ export function parseAppearanceCookie(value: string | undefined) {
   const [theme, accent, fontSize, density] = (value ?? "").split(".");
   return {
     theme: (THEMES as readonly string[]).includes(theme ?? "") ? (theme as Preferences["theme"]) : "system",
-    accent: (ACCENTS as readonly string[]).includes(accent ?? "") ? (accent as Preferences["accent"]) : "teal",
+    accent: (ACCENTS as readonly string[]).includes(accent ?? "") ? (accent as Preferences["accent"]) : DEFAULT_ACCENT,
     fontSize: (FONT_SIZES as readonly string[]).includes(fontSize ?? "")
       ? (fontSize as Preferences["fontSize"])
       : "medium",

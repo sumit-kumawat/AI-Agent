@@ -1,6 +1,6 @@
-# Conzex AI IDE: architecture and implementation plan
+# xAI IDE: architecture and implementation plan
 
-The IDE turns Conzex AI into a Cursor-style development environment inside the
+The IDE turns xAI into a Cursor-style development environment inside the
 existing app. It reuses the existing stack and only adds what an editor and a
 terminal genuinely need.
 

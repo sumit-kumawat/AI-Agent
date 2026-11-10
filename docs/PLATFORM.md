@@ -1,6 +1,6 @@
-# Conzex AI platform: audit and rebuild roadmap
+# xAI platform: audit and rebuild roadmap
 
-This is the working record for turning Conzex AI into a complete
+This is the working record for turning xAI into a complete
 ChatGPT-style platform. It lists what exists, what is being replaced, and
 what is done, in progress, or still to do. Each phase is only marked done
 after it is tested (typecheck, lint, build, smoke, and the e2e suites).

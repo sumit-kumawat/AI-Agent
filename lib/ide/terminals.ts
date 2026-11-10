@@ -23,10 +23,10 @@ export type TerminalSession = {
   lastSeen: number;
 };
 
-const store = globalThis as unknown as { conzexTerminals?: Map<string, TerminalSession>; conzexTerminalSweep?: NodeJS.Timeout };
-const sessions = (store.conzexTerminals ??= new Map());
+const store = globalThis as unknown as { xaiTerminals?: Map<string, TerminalSession>; xaiTerminalSweep?: NodeJS.Timeout };
+const sessions = (store.xaiTerminals ??= new Map());
 
-store.conzexTerminalSweep ??= setInterval(() => {
+store.xaiTerminalSweep ??= setInterval(() => {
   const now = Date.now();
   for (const session of sessions.values()) {
     if (session.listeners.size === 0 && now - session.lastSeen > IDLE_MS) closeTerminal(session.id);
@@ -69,7 +69,7 @@ function shellEnv(root: string) {
     if (key.startsWith("AUTH_") || key.startsWith("ADMIN_") || key === "NODE_ENV" || key.startsWith("__NEXT")) continue;
     env[key] = value;
   }
-  return { ...env, TERM: "xterm-256color", COLORTERM: "truecolor", CONZEX_WORKSPACE: root };
+  return { ...env, TERM: "xterm-256color", COLORTERM: "truecolor", XAI_WORKSPACE: root };
 }
 
 function defaultShell() {

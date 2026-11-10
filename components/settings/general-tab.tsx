@@ -7,12 +7,12 @@ import { ACCENTS, type Preferences } from "@/lib/preferences-schema";
 import { useShortcut } from "@/lib/shortcuts";
 
 const SWATCH: Record<Preferences["accent"], string> = {
+  slate: "#475569",
   teal: "#10a37f",
   blue: "oklch(0.55 0.15 255)",
   violet: "oklch(0.55 0.17 295)",
   rose: "oklch(0.6 0.17 10)",
   amber: "oklch(0.7 0.14 70)",
-  slate: "oklch(0.4 0.02 250)",
 };
 
 const LANGUAGES = [

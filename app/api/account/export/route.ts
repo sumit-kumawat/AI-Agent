@@ -33,7 +33,7 @@ export const GET = handler(async (request) => {
   return new Response(JSON.stringify(data, null, 2), {
     headers: {
       "Content-Type": "application/json; charset=utf-8",
-      "Content-Disposition": `attachment; filename="conzex-ai-export-${stamp}.json"`,
+      "Content-Disposition": `attachment; filename="xai-export-${stamp}.json"`,
       "Cache-Control": "no-store",
     },
   });

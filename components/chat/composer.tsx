@@ -53,7 +53,7 @@ export function Composer({
   research?: { on: boolean; onChange: (on: boolean) => void; status: ResearchStatus | null };
   /** Capabilities the plan does not include; their controls become upgrade links. */
   locked?: UsageSummary["locked"];
-  /** The context meter, shown beside the send button. */
+  /** The context meter, shown below the message box on the right. */
   meter?: ReactNode;
   /** The optimisation mode Auto uses. */
   mode?: AutoMode;
@@ -202,49 +202,8 @@ export function Composer({
                 </Link>
               </Button>
             ) : null}
-            {research && locked?.research ? (
-              <Button
-                asChild
-                variant="ghost"
-                size="sm"
-                className="h-9 shrink-0 rounded-full text-muted-foreground"
-                data-research-locked={locked.research.requiredPlan?.id ?? ""}
-                title={locked.research.message}
-              >
-                <Link href={`/plans?highlight=${locked.research.requiredPlan?.id ?? ""}`}>
-                  <Lock />
-                  <span className="hidden sm:inline">Deep Research</span>
-                  {locked.research.requiredPlan ? (
-                    <span className="rounded bg-muted px-1 text-[10px] font-medium uppercase">{locked.research.requiredPlan.name}</span>
-                  ) : null}
-                </Link>
-              </Button>
-            ) : research ? (
-              <Button
-                type="button"
-                variant={researching ? "secondary" : "ghost"}
-                size="sm"
-                className={`h-9 shrink-0 rounded-full ${researching ? "text-primary" : "text-muted-foreground"}`}
-                aria-pressed={researching}
-                data-research-toggle
-                disabled={busy || pending || (!researching && research.status?.available !== true)}
-                title={
-                  research.status === null
-                    ? "Checking research sources…"
-                    : research.status.available
-                      ? "Deep Research: searches the web, reads sources and writes a cited report"
-                      : (research.status.reason ?? "Deep Research is unavailable")
-                }
-                onClick={() => research.onChange(!researching)}
-              >
-                <Telescope />
-                <span className="hidden sm:inline">Deep Research</span>
-                {researching ? <X className="size-3.5" aria-hidden /> : null}
-              </Button>
-            ) : null}
             <ModelPicker models={models} value={model} onChange={onModelChange} disabled={busy} compact mode={mode} />
           </div>
-          {meter}
           {busy ? (
             <Button
               type="button"
@@ -268,6 +227,55 @@ export function Composer({
           )}
         </div>
       </div>
+      {research || meter ? (
+        <div className="mt-1.5 flex min-h-8 items-center justify-between gap-2 px-1" data-composer-footer>
+          <div className="flex min-w-0 items-center">
+            {research && locked?.research ? (
+              <Button
+                asChild
+                variant="ghost"
+                size="sm"
+                className="h-7 shrink-0 rounded-full px-2.5 text-xs text-muted-foreground"
+                data-research-locked={locked.research.requiredPlan?.id ?? ""}
+                title={locked.research.message}
+              >
+                <Link href={`/plans?highlight=${locked.research.requiredPlan?.id ?? ""}`}>
+                  <Lock />
+                  Deep Research
+                  {locked.research.requiredPlan ? (
+                    <span className="rounded bg-muted px-1 text-[10px] font-medium uppercase">{locked.research.requiredPlan.name}</span>
+                  ) : null}
+                </Link>
+              </Button>
+            ) : research ? (
+              <Button
+                type="button"
+                variant={researching ? "secondary" : "ghost"}
+                size="sm"
+                className={`h-7 shrink-0 rounded-full px-2.5 text-xs ${researching ? "text-primary ring-1 ring-primary/30" : "text-muted-foreground"}`}
+                aria-pressed={researching}
+                data-research-toggle
+                disabled={busy || pending || (!researching && research.status?.available !== true)}
+                title={
+                  research.status === null
+                    ? "Checking research sources…"
+                    : research.status.available
+                      ? researching
+                        ? "Deep Research is on: your next message starts a cited web report. Click to turn it off."
+                        : "Deep Research: searches the web, reads sources and writes a cited report"
+                      : (research.status.reason ?? "Deep Research is unavailable")
+                }
+                onClick={() => research.onChange(!researching)}
+              >
+                <Telescope />
+                Deep Research
+                {researching ? <X className="size-3.5" aria-hidden /> : null}
+              </Button>
+            ) : null}
+          </div>
+          {meter}
+        </div>
+      ) : null}
       {error || fileProblem ? (
         <p className="mt-2 text-center text-sm text-destructive" role="alert">
           {error ?? fileProblem}

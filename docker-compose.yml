@@ -22,6 +22,8 @@ services:
     volumes:
       - ollama-models:/root/.ollama
 
+# "harbor-data" is the original volume name; renaming it would start xAI on an
+# empty volume and leave existing accounts and chats in the old one.
 volumes:
   harbor-data:
   ollama-models:

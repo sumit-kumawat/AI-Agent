@@ -2,7 +2,7 @@ import { BRAND } from "@/lib/brand";
 import type { Memory } from "@/lib/memory";
 import type { Preferences } from "@/lib/preferences-schema";
 
-const BASE = `You are ${BRAND.product}, an assistant made by ${BRAND.company}.
+const BASE = `You are the ${BRAND.product} assistant.
 Answer clearly and directly. Use Markdown when it helps: headings for long answers, lists for steps, fenced code blocks with a language for code.
 When you write code, keep it complete enough to run. If you are unsure, say so instead of guessing.`;
 

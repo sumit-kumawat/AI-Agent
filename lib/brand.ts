@@ -1,8 +1,8 @@
 export const BRAND = {
-  product: "Conzex AI",
-  company: "Conzex Global",
-  companyUrl: "https://www.conzex.com",
+  product: "xAI",
+  company: "xAI",
+  tagline: "AI chat, research and coding",
   appUrl: "https://chat.conzex.com",
   description:
-    "Conzex AI is a private AI chat workspace at chat.conzex.com. Chat with open models, keep your conversation history, and manage your team's access. A product of Conzex Global.",
+    "xAI is an AI workspace for chat, deep research and coding. Attach documents, keep your conversation history and pick the assistant that fits each task.",
 } as const;

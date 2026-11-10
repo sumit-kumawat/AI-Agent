@@ -21,9 +21,9 @@ type Entry = RunningSession & { controller: AbortController };
 
 // Sessions are held in memory, so they are visible and killable only within this process.
 const store = globalThis as typeof globalThis & {
-  harborSessions?: Map<string, Entry>;
+  xaiSessions?: Map<string, Entry>;
 };
-const sessions = (store.harborSessions ??= new Map<string, Entry>());
+const sessions = (store.xaiSessions ??= new Map<string, Entry>());
 
 // A stream cannot outlive the chat route's maxDuration, so older entries are stale.
 const MAX_SESSION_MS = 6 * 60 * 1000;
@@ -88,7 +88,7 @@ export function startSession(
   sweep();
   const agent = getAgent(input.agentId);
   if (!agent || !CONNECTED_AGENTS.has(agent.id)) {
-    return { ok: false, status: 503, error: "That agent is not available on this server." };
+    return { ok: false, status: 503, error: "That agent is not available." };
   }
   if (!agent.enabled) {
     return { ok: false, status: 503, error: `${agent.name} is turned off by an administrator.` };

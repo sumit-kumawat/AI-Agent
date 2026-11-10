@@ -12,16 +12,17 @@ const dataDir = path.resolve(
 );
 fs.mkdirSync(dataDir, { recursive: true });
 
+// The original file name, kept so existing installs open their data.
 const filename = path.join(dataDir, "harbor.db");
 
 type SqliteDatabase = InstanceType<typeof Database>;
 
 const globalForDb = globalThis as unknown as {
-  harborDb?: ReturnType<typeof drizzle<typeof schema>>;
+  xaiDb?: ReturnType<typeof drizzle<typeof schema>>;
 };
 
 function openDatabase() {
-  if (globalForDb.harborDb) return globalForDb.harborDb;
+  if (globalForDb.xaiDb) return globalForDb.xaiDb;
 
   const sqlite: SqliteDatabase = new Database(filename);
   sqlite.pragma("journal_mode = WAL");
@@ -39,7 +40,7 @@ function openDatabase() {
   assignMissingIds(sqlite);
 
   const database = drizzle(sqlite, { schema });
-  globalForDb.harborDb = database;
+  globalForDb.xaiDb = database;
   return database;
 }
 

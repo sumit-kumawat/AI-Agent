@@ -401,6 +401,16 @@ const MIGRATIONS: ((sqlite: Sqlite) => void)[] = [
       CREATE INDEX IF NOT EXISTS security_events_created_idx ON security_events (created_at);
     `);
   },
+  // 15: Slate becomes the default accent. Teal was the old default and is
+  // stored with every saved preference, so it is switched; Teal stays selectable.
+  (sqlite) => {
+    sqlite.exec(`
+      UPDATE user_preferences SET data = json_set(data, '$.accent', 'slate')
+      WHERE json_valid(data) AND json_extract(data, '$.accent') = 'teal';
+      UPDATE settings SET value = replace(value, 'Everyday chat with fast local models.', 'Everyday chat with fast assistants.')
+      WHERE key = 'plans.config';
+    `);
+  },
 ];
 
 // No 0/O or 1/I, so IDs survive being read aloud or retyped.

@@ -18,19 +18,18 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.AUTH_URL ?? BRAND.appUrl),
   title: {
-    default: `${BRAND.product} · Private AI chat`,
+    default: `${BRAND.product} · ${BRAND.tagline}`,
     template: `%s · ${BRAND.product}`,
   },
   description: BRAND.description,
   applicationName: BRAND.product,
   publisher: BRAND.company,
-  authors: [{ name: BRAND.company, url: BRAND.companyUrl }],
   alternates: { canonical: "/" },
   openGraph: {
     type: "website",
     url: "/",
     siteName: BRAND.product,
-    title: `${BRAND.product} · Private AI chat`,
+    title: `${BRAND.product} · ${BRAND.tagline}`,
     description: BRAND.description,
   },
   twitter: { card: "summary", title: BRAND.product, description: BRAND.description },

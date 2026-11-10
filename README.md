@@ -1,17 +1,10 @@
-# Harbor
+# xAI
 
-Self-hosted agent platform, phase 1. Next.js App Router, Auth.js credentials, SQLite, and a streaming chat against a local Ollama model.
+The xAI application: AI chat, Deep Research, attachments and an in-browser IDE, with plans, usage metering and an admin panel. Built with Next.js App Router, Auth.js, SQLite and the AI SDK; assistants run on Ollama models and, optionally, connected cloud providers.
 
-This phase includes:
+This document is for operators. Customers see xAI-branded assistant names; the underlying models, Ollama and the hosting setup are visible only to administrators. See `docs/PLATFORM.md` for what each release changed.
 
-- A landing page with placeholder pricing
-- Email and password registration and sign-in
-- Streaming chat with Ollama, rendered as Markdown
-- A model picker per chat, plus a Models page to download any open model from 1B to 70B parameters
-- Conversation history stored in SQLite, including which model each chat uses
-- Layouts that work on phones, tablets, and desktops, reachable from any device on your network
-
-Image generation, video, and deep research are not part of this build.
+Some internal names keep the project's original "harbor" name for compatibility: the database file `data/harbor.db`, the Docker volume `harbor-data`, the container user, and browser storage keys such as `harbor-model`. Renaming them would orphan existing data or reset users' saved choices.
 
 ## 1. Install Ollama and a model
 

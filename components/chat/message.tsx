@@ -306,7 +306,7 @@ export function AssistantMessage({
       {text ? (
         <Markdown text={research ? linkCitations(text, research) : text} streaming={streaming} />
       ) : streaming ? (
-        <span className="harbor-caret text-[15px] leading-7" aria-label="Generating">▋</span>
+        <span className="xai-caret text-[15px] leading-7" aria-label="Generating">▋</span>
       ) : null}
       {!streaming && text ? (
         <div className={`-ml-2 flex flex-wrap items-center gap-0.5 ${last ? "opacity-100" : hoverReveal}`}>

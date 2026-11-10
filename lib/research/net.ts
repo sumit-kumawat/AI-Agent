@@ -3,7 +3,7 @@ import net from "node:net";
 import { Agent, fetch as undiciFetch } from "undici";
 
 // Wikimedia asks API clients to identify themselves with a way to reach the operator.
-export const USER_AGENT = "ConzexResearch/1.0 (https://github.com/sumit-kumawat/AI-Agent; self-hosted research assistant)";
+export const USER_AGENT = "xAI-Research/1.0 (research assistant; fetches pages the user asked about)";
 
 /** Loopback, private, link-local, carrier-grade NAT, multicast and reserved ranges. */
 export function isPrivateAddress(address: string) {

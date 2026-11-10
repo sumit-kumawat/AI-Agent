@@ -385,7 +385,7 @@ try {
 
   // Providers: a saved key is encrypted, a failed check stays failed, and a
   // cloud model is refused until the user allows it.
-  const secret = "sk-test-conzex-phase5-key";
+  const secret = "sk-test-xai-phase5-key";
   const dbFile = path.join(process.env.DATA_DIR ?? "data", "harbor.db");
     const withDb = (fn) => {
     const db = new Database(dbFile);
