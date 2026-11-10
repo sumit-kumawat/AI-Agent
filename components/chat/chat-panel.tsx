@@ -392,6 +392,14 @@ export function ChatPanel({
                     persisted={!(last && busy)}
                     onRegenerate={last && !busy ? retry : undefined}
                     onContinue={last && !busy && continuable ? () => send("Continue from where you stopped.") : undefined}
+                    followUp={
+                      last && !busy && report
+                        ? {
+                            onAsk: (prompt, deep) => send(prompt, { research: deep }),
+                            canResearch: !usage.locked.research && researchStatus?.available === true,
+                          }
+                        : undefined
+                    }
                   />
                 );
               })

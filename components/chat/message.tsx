@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { MessageAttachments } from "@/components/chat/attachments";
-import { exportReport, linkCitations, ResearchPanel } from "@/components/chat/research";
+import { exportReport, linkCitations, ResearchFollowUps, ResearchPanel } from "@/components/chat/research";
 import { useChatChrome } from "@/components/chat/chat-shell";
 import { Markdown } from "@/components/chat/markdown";
 import { useFeedback } from "@/components/feedback";
@@ -251,6 +251,7 @@ export function AssistantMessage({
   research,
   question,
   web,
+  followUp,
 }: {
   id?: string;
   text: string;
@@ -272,6 +273,8 @@ export function AssistantMessage({
   persisted?: boolean;
   onRegenerate?: () => void;
   onContinue?: () => void;
+  /** Offered under a finished research report. */
+  followUp?: { onAsk: (prompt: string, research: boolean) => void; canResearch: boolean };
 }) {
   const { openSettings } = useChatChrome();
   return (
@@ -337,6 +340,7 @@ export function AssistantMessage({
           <Timestamp at={createdAt} />
         </div>
       ) : null}
+      {followUp && research?.status === "done" && !streaming ? <ResearchFollowUps {...followUp} /> : null}
     </div>
   );
 }

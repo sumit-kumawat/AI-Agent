@@ -162,6 +162,19 @@ try {
       : "the model gave no citations and the report says nothing is verified",
   );
 
+  await page.click('[data-research="done"] button[aria-expanded]');
+  await page.waitForSelector("[data-research-sources] [data-source]");
+  const listed = await page.$$eval("[data-research-sources] [data-source]", (nodes) =>
+    nodes.map((node) => ({ cited: node.dataset.cited, text: node.innerText })),
+  );
+  check(
+    listed.length > 0 && listed.every((source) => /Read in full|Snippet only/.test(source.text)),
+    `the panel lists each source with how it was used (${listed.length}, ${listed.filter((source) => source.cited === "yes").length} cited)`,
+  );
+  await page.click('[data-research="done"] button[aria-expanded]');
+  const followUps = await page.$$eval("[data-follow-up]", (nodes) => nodes.map((node) => node.innerText.trim()));
+  check(followUps.length >= 3, `follow-up actions are offered under the report (${followUps.join(", ")})`);
+
   // 2. Export.
   await page.click('button[aria-label="Export report as Markdown"]');
   await page.waitForFunction(() => true);
@@ -175,11 +188,10 @@ try {
 
   // 3. Follow-up in normal chat mode.
   check(!(await page.$eval("[data-research-toggle]", (node) => node.getAttribute("aria-pressed") === "true")), "Deep Research turns off after each run");
-  await page.click('textarea[aria-label="Message"]');
-  await page.keyboard.type("In one sentence, what is the main advantage of that lens?");
-  await page.keyboard.press("Enter");
+  await page.click('[data-follow-up="chat"]');
   await waitIdle(180_000);
-  check((await page.$$('[data-role="assistant"]')).length === 2 && (await lastReply()).length > 20, "follow-up questions are answered in the same chat");
+  check((await page.$$('[data-role="assistant"]')).length === 2 && (await lastReply()).length > 20, "a follow-up action is answered in the same chat");
+  check(!(await page.$("[data-follow-up]")), "follow-up actions only show under the latest report");
 
   // 4. Reload keeps the report, its progress record and sources.
   await page.reload({ waitUntil: "networkidle0" });
