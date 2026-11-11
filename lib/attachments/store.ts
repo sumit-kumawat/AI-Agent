@@ -12,7 +12,7 @@ import {
   type AttachmentInfo,
 } from "@/lib/attachments/types";
 import { db } from "@/lib/db";
-import { attachmentChunks, attachments } from "@/lib/db/schema";
+import { attachmentChunks, attachments, messages } from "@/lib/db/schema";
 import { env } from "@/lib/env";
 import { formatBytes } from "@/lib/format";
 
@@ -197,6 +197,38 @@ export function bindAttachments(userId: string, conversationId: string, byMessag
       tx.update(attachments)
         .set({ conversationId, messageId })
         .where(and(eq(attachments.userId, userId), inArray(attachments.id, ids)))
+        .run();
+      // Persist file chips on the message itself so reloads and client refreshes still show them
+      // even if the attachments table join is briefly out of date.
+      const infos = ids
+        .map((id) => {
+          const row = tx
+            .select()
+            .from(attachments)
+            .where(and(eq(attachments.id, id), eq(attachments.userId, userId)))
+            .get();
+          return row ? toInfo(row) : null;
+        })
+        .filter((row): row is AttachmentInfo => Boolean(row));
+      if (infos.length === 0) continue;
+      const existing = tx
+        .select({ meta: messages.meta })
+        .from(messages)
+        .where(and(eq(messages.id, messageId), eq(messages.conversationId, conversationId)))
+        .get();
+      let meta: Record<string, unknown> = {};
+      if (existing?.meta) {
+        try {
+          const parsed = JSON.parse(existing.meta) as unknown;
+          if (parsed && typeof parsed === "object") meta = parsed as Record<string, unknown>;
+        } catch {
+          meta = {};
+        }
+      }
+      meta.attachments = infos;
+      tx.update(messages)
+        .set({ meta: JSON.stringify(meta) })
+        .where(and(eq(messages.id, messageId), eq(messages.conversationId, conversationId)))
         .run();
     }
   });

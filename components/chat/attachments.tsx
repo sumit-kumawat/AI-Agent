@@ -335,9 +335,9 @@ export function AttachmentTray({ files, disabled }: { files: Attachments; disabl
 
 /** Files shown above a sent message. */
 export function MessageAttachments({ files }: { files: AttachmentInfo[] }) {
-  if (files.length === 0) return null;
+  if (!files?.length) return null;
   return (
-    <div className="flex max-w-[85%] flex-wrap justify-end gap-2 sm:max-w-[75%]" data-message-attachments>
+    <div className="flex w-full max-w-[85%] flex-wrap justify-end gap-2 sm:max-w-[75%]" data-message-attachments>
       {files.map((file) =>
         file.kind === "image" ? (
           <a key={file.id} href={`/api/attachments/${file.id}`} target="_blank" rel="noreferrer" title={file.name}>
@@ -353,11 +353,11 @@ export function MessageAttachments({ files }: { files: AttachmentInfo[] }) {
           <a
             key={file.id}
             href={`/api/attachments/${file.id}?download=1`}
-            className="flex w-56 items-center gap-2.5 rounded-2xl border bg-background p-2 hover:bg-muted"
+            className="flex min-w-44 max-w-56 items-center gap-2.5 rounded-2xl border bg-card p-2 shadow-sm hover:bg-muted"
             title={file.warning ? `${file.name}\n${file.warning}` : file.name}
           >
             <KindTile kind={file.kind} filename={file.name} />
-            <span className="min-w-0 text-left">
+            <span className="min-w-0 flex-1 text-left">
               <FileName name={file.name} />
               <span className="flex items-center gap-1 text-xs text-muted-foreground">
                 {file.warning ? <TriangleAlert className="size-3 shrink-0 text-amber-600" aria-label="Note" /> : null}

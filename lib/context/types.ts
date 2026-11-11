@@ -23,9 +23,6 @@ export const CATEGORY_INFO: Record<ContextCategory, { label: string; description
   current: { label: "Your message", description: "The message being answered", color: "#0f766e" },
 };
 
-/** Features this app does not send to models, listed so the meter is complete. */
-export const NOT_USED = ["Tools", "Skills", "MCP servers", "Sub-agents"] as const;
-
 export type ContextSnapshot = {
   /** Tokens per category, estimated from text length (about 4 characters a token). */
   categories: Partial<Record<ContextCategory, number>>;

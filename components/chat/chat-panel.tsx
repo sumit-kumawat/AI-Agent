@@ -250,6 +250,35 @@ export function ChatPanel({
       router.refresh();
     },
   });
+
+  // router.refresh() updates RSC props but useChat keeps its own list. Re-apply
+  // attachment chips (and other server meta) onto matching messages after refresh.
+  useEffect(() => {
+    setMessages((current) => {
+      if (current.length === 0 && initialMessages.length === 0) return current;
+      const server = new Map(initialMessages.map((message) => [message.id, message]));
+      let changed = false;
+      const next = current.map((message) => {
+        const fresh = server.get(message.id);
+        if (!fresh) return message;
+        const serverFiles = fresh.metadata?.attachments;
+        const localFiles = message.metadata?.attachments;
+        if (!serverFiles?.length) return message;
+        if (localFiles?.length === serverFiles.length && localFiles.every((file, index) => file.id === serverFiles[index]?.id)) {
+          return message;
+        }
+        changed = true;
+        return {
+          ...message,
+          metadata: { ...message.metadata, ...fresh.metadata, attachments: serverFiles },
+        };
+      });
+      // First load / remount: prefer the full server transcript when the client list is empty.
+      if (current.length === 0 && initialMessages.length > 0) return initialMessages;
+      return changed ? next : current;
+    });
+  }, [initialMessages, setMessages]);
+
   const [input, setInput] = useState("");
   const files = useAttachments();
   const [research, setResearch] = useState(false);
@@ -331,8 +360,10 @@ export function ChatPanel({
     scrollToBottom();
     const useResearch = options.research === true;
     const useSearch = !useResearch && (options.search ?? searchOn);
+    const attached = options.attachments ?? [];
+    const metadata = sentNow(attached);
     void sendMessage(
-      { text, metadata: sentNow(options.attachments) },
+      { text, metadata },
       {
         body: {
           ...requestBody,
@@ -342,7 +373,21 @@ export function ChatPanel({
           ...((options.deepThink ?? deepThinkOn) ? { deepThink: true } : {}),
         },
       },
-    );
+    ).then(() => {
+      // Some transports drop custom metadata while streaming; put the chips back.
+      if (!attached.length) return;
+      setMessages((current) => {
+        for (let index = current.length - 1; index >= 0; index -= 1) {
+          const message = current[index]!;
+          if (message.role !== "user") continue;
+          if (message.metadata?.attachments?.length) return current;
+          const copy = [...current];
+          copy[index] = { ...message, metadata: { ...message.metadata, ...metadata } };
+          return copy;
+        }
+        return current;
+      });
+    });
   }
 
   function submit(text: string) {

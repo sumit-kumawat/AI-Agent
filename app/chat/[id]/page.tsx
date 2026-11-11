@@ -16,17 +16,22 @@ export default async function ConversationPage({ params }: PageProps<"/chat/[id]
   if (!conversation) notFound();
 
   const files = attachmentsByMessage(conversation.id);
-  const initialMessages: ChatMessage[] = listMessages(conversation.id).map((message) => ({
-    id: message.id,
-    role: message.role,
-    parts: [{ type: "text" as const, text: message.content }],
-    metadata: {
-      ...parseMeta(message.meta),
-      createdAt: message.createdAt,
-      feedback: message.feedback as 1 | -1 | null,
-      ...(files.has(message.id) ? { attachments: files.get(message.id) } : {}),
-    },
-  }));
+  const initialMessages: ChatMessage[] = listMessages(conversation.id).map((message) => {
+    const meta = parseMeta(message.meta);
+    // Prefer the attachments table (source of truth); fall back to meta saved on the message.
+    const attached = files.get(message.id) ?? meta.attachments ?? [];
+    return {
+      id: message.id,
+      role: message.role,
+      parts: [{ type: "text" as const, text: message.content }],
+      metadata: {
+        ...meta,
+        createdAt: message.createdAt,
+        feedback: message.feedback as 1 | -1 | null,
+        ...(attached.length ? { attachments: attached } : {}),
+      },
+    };
+  });
 
   return (
     <ChatPanel

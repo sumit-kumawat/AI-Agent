@@ -72,6 +72,8 @@ export const chatRequestSchema = z.object({
         id: z.string().min(1).max(100),
         role: z.enum(["user", "assistant", "system"]),
         parts: z.array(messagePartSchema).max(50),
+        /** Client-sent details such as attached file ids. Kept so chat can bind uploads. */
+        metadata: z.unknown().optional(),
       }),
     )
     .min(1)

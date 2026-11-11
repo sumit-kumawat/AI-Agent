@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CATEGORY_INFO, CONTEXT_CATEGORIES, NOT_USED, type ContextSnapshot } from "@/lib/context/types";
+import { CATEGORY_INFO, CONTEXT_CATEGORIES, type ContextSnapshot } from "@/lib/context/types";
 
 const DRAFT_COLOR = "#0f766e";
 const tokens = (value: number) => value.toLocaleString("en-US");
@@ -28,11 +28,36 @@ export function useContextSnapshot(input: { conversationId: string | null; model
   return state?.snapshot ?? null;
 }
 
+function windowNote(snapshot: ContextSnapshot, window: number) {
+  const max = snapshot.window.max;
+  if (snapshot.window.source === "running") {
+    return max && max > window
+      ? `This chat is loaded with ${tokens(window)} tokens. The model can go up to ${tokens(max)} when reloaded with a larger window.`
+      : `Context window in use: ${tokens(window)} tokens (reported by the runtime).`;
+  }
+  if (snapshot.window.source === "assumed") {
+    return max
+      ? `Window not reported for this load; using ${tokens(window)} as a safe estimate (model maximum ${tokens(max)}).`
+      : `Window not reported; using ${tokens(window)} as a safe estimate.`;
+  }
+  if (snapshot.window.source === "model") {
+    return `Window from this model's settings: ${tokens(window)} tokens.`;
+  }
+  if (snapshot.window.source === "server") {
+    return max && max > window
+      ? `Server default window ${tokens(window)} tokens (model maximum ${tokens(max)}).`
+      : `Server default window: ${tokens(window)} tokens.`;
+  }
+  if (snapshot.window.source === "maximum" && max) {
+    return `Using the model maximum of ${tokens(max)} tokens.`;
+  }
+  return `Context window: ${tokens(window)} tokens.`;
+}
+
 /**
- * Cursor-style context bar: one colour per kind of content, the share of the
- * model's window each takes, the space kept for the reply, and what is left.
- * Counts are estimates from text length; the model's own count for the last
- * reply is shown separately and marked exact.
+ * Context bar: how much of the model's window the next turn would use.
+ * Category counts are length-based estimates; the last reply's exact count
+ * (when the model reported one) is listed separately.
  */
 export function ContextMeter({
   snapshot,
@@ -69,12 +94,12 @@ export function ContextMeter({
           data-context-meter
           data-context-percent={percent}
           aria-label={`Context: about ${tokens(used)} of ${tokens(window)} tokens used (${shown}%), estimated. Show breakdown.`}
-          title="Estimated from the text sent to the assistant; open for the breakdown and the last exact count"
+          title="Estimated from the text that would be sent; open for the breakdown"
           onMouseEnter={() => setOpen(true)}
           className="flex h-7 min-w-0 shrink items-center gap-2 rounded-full px-2 text-xs whitespace-nowrap hover:bg-muted"
         >
           <span className={`tabular-nums ${tone}`} data-context-label>
-            Context: ~{tokens(used)} of {tokens(window)} tokens ({shown}%)
+            Context: ~{tokens(used)} of {tokens(window)} ({shown}%)
           </span>
           <span className="hidden h-1.5 w-14 shrink-0 overflow-hidden rounded-full bg-muted sm:flex" aria-hidden>
             {segments.map((segment) => (
@@ -97,12 +122,7 @@ export function ContextMeter({
             Context: ~{tokens(used)} of {tokens(window)} tokens ({shown}%)
           </p>
           <p className="text-muted-foreground" data-context-window-source={snapshot.window.source ?? ""}>
-            {snapshot.window.source === "running"
-              ? "Window in use right now, as reported by the runtime."
-              : snapshot.window.source === "assumed"
-                ? "This assistant's window is not reported; a conservative size is assumed."
-                : "Window this assistant gets when it loads."}
-            {snapshot.window.max && snapshot.window.max > window ? ` The model itself supports up to ${tokens(snapshot.window.max)}.` : ""}
+            {windowNote(snapshot, window)}
           </p>
         </div>
         <div className="flex h-2.5 overflow-hidden rounded-full bg-muted" aria-hidden>
@@ -134,7 +154,7 @@ export function ContextMeter({
           ) : null}
           <li className="flex items-center gap-2">
             <span className="size-2 shrink-0 rounded-sm bg-slate-400/50" />
-            <span className="flex-1">Kept free for the reply</span>
+            <span className="flex-1">Reserved for reply</span>
             <span className="tabular-nums text-muted-foreground">{tokens(snapshot.reservedForReply)}</span>
           </li>
           <li className="flex items-center gap-2 font-medium">
@@ -153,13 +173,14 @@ export function ContextMeter({
         ) : null}
         {reported ? (
           <p data-context-reported={reported.input}>
-            Last reply, as counted by the model (exact): {tokens(reported.input)} prompt + {tokens(reported.output)} reply tokens.
+            Last reply (exact, from the model): {tokens(reported.input)} prompt + {tokens(reported.output)} reply tokens.
           </p>
-        ) : null}
-        <p className="text-muted-foreground">
-          Category counts are estimates (about 4 characters per token, {tokens(600)} per image); each piece is counted once.
-          Not used in this app: {NOT_USED.join(", ")}.
-        </p>
+        ) : (
+          <p className="text-muted-foreground">
+            Breakdowns are estimated from text length (~4 characters per token
+            {segments.some((segment) => segment.category === "attachments") ? `, ~${tokens(600)} per image` : ""}).
+          </p>
+        )}
       </PopoverContent>
     </Popover>
   );
