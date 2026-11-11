@@ -423,6 +423,13 @@ const MIGRATIONS: ((sqlite: Sqlite) => void)[] = [
       );
     `);
   },
+  // 17: per-conversation Search and DeepThink toggles.
+  (sqlite) => {
+    sqlite.exec(`
+      ALTER TABLE conversations ADD COLUMN search_enabled INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE conversations ADD COLUMN deep_think INTEGER NOT NULL DEFAULT 0;
+    `);
+  },
 ];
 
 // No 0/O or 1/I, so IDs survive being read aloud or retyped.

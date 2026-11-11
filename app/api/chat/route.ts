@@ -1,8 +1,11 @@
 import type { LanguageModelUsage, ModelMessage, UIMessage } from "ai";
 import {
+  createUIMessageStream,
   createUIMessageStreamResponse,
+  extractReasoningMiddleware,
   streamText,
   toUIMessageStream,
+  wrapLanguageModel,
 } from "ai";
 import { z } from "zod";
 import { startSession } from "@/lib/agents";
@@ -19,6 +22,7 @@ import {
   saveAssistantMessage,
   recordModelSelection,
   setConversationModel,
+  setConversationModes,
   syncTranscript,
 } from "@/lib/db/queries";
 import { analyzeTask } from "@/lib/models/router";
@@ -42,13 +46,14 @@ import type { ContextCategory } from "@/lib/context/types";
 import { instructionParts } from "@/lib/prompt";
 import { linkReadingEnabled } from "@/lib/research/config";
 import { extractLinks, NO_BROWSING_MESSAGE, readLinks, webAccessNote, webBlock } from "@/lib/web/links";
-import type { WebSource } from "@/lib/web/types";
+import type { SearchSource, WebSource } from "@/lib/web/types";
 import { listSelectableModels, noteProviderFailure, resolveChatTarget } from "@/lib/providers/catalog";
 import { costMicro, languageModel, safeProviderError } from "@/lib/providers/engine";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
 import { researchStream } from "@/lib/research/run";
+import { gatherSearchContext, markCitedSources } from "@/lib/search/run";
 import { getSettings } from "@/lib/settings";
-import { textFromParts } from "@/lib/text";
+import { reasoningFromParts, textFromParts } from "@/lib/text";
 import { chatRequestSchema } from "@/lib/validators";
 
 export const runtime = "nodejs";
@@ -186,6 +191,8 @@ export async function POST(request: Request) {
       })
     : undefined;
   const research = parsed.data.research === true;
+  const search = !research && parsed.data.search === true;
+  const deepThink = parsed.data.deepThink === true;
   const feature = research ? "research" : "chat";
   const capability = research
     ? capabilityBlock(user, "research")
@@ -193,6 +200,10 @@ export async function POST(request: Request) {
       ? capabilityBlock(user, "attachments")
       : null;
   if (capability) return planBlocked(capability);
+  setConversationModes(conversation.id, user.id, {
+    ...(parsed.data.search !== undefined ? { searchEnabled: search } : {}),
+    ...(parsed.data.deepThink !== undefined ? { deepThink } : {}),
+  });
 
   const entitled = await modelsForUser(user);
   const resolved = await resolveChatTarget({
@@ -401,13 +412,45 @@ export async function POST(request: Request) {
   const browsing = linkReadingEnabled();
   promptParts.push({ category: "system", text: webAccessNote(browsing) });
   const pasted = extractLinks(latestUser.content);
-  const links = browsing ? pasted : [];
+  const links = !search && browsing ? pasted : [];
   const webNotice = !browsing && pasted.length ? NO_BROWSING_MESSAGE : undefined;
   let webSources: WebSource[] = [];
-  if (links.length) {
+  let searchSources: SearchSource[] = [];
+  let searchNotice: string | undefined;
+  if (search) {
+    if (!browsing) {
+      searchNotice = NO_BROWSING_MESSAGE;
+      promptParts.push({ category: "system", text: `Search was requested but web access is turned off. Begin with: "${NO_BROWSING_MESSAGE}"` });
+    } else {
+      const gathered = await gatherSearchContext({
+        userId: user.id,
+        question: latestUser.content,
+        budget: Math.min(8_000, contextBudget(chosen.local, window.tokens)),
+        signal: agent.signal,
+      });
+      searchSources = gathered.sources;
+      searchNotice = gathered.notice;
+      if (gathered.promptBlock) promptParts.push({ category: "web", text: gathered.promptBlock });
+      else if (gathered.notice) promptParts.push({ category: "system", text: gathered.notice });
+    }
+  } else if (links.length) {
     const pages = await readLinks(user.id, links, contextBudget(chosen.local, window.tokens), agent.signal);
     promptParts.push({ category: "web", text: webBlock(pages) });
     webSources = pages.map((page) => ({ url: page.url, title: page.title, ok: page.ok, error: page.error, chars: page.chars }));
+  }
+  if (deepThink) {
+    const canThink = chosen.skills.includes("reasoning") || chosen.capabilities.some((capability) => capability.id === "reasoning");
+    if (canThink) {
+      promptParts.push({
+        category: "system",
+        text: "DeepThink is on. Work through the problem step by step inside <think>...</think> before your final answer. Keep the final answer clear and separate from the reasoning.",
+      });
+    } else {
+      promptParts.push({
+        category: "system",
+        text: "DeepThink was requested but this assistant does not report reasoning support. Answer carefully and say so briefly if step-by-step hidden reasoning is unavailable.",
+      });
+    }
   }
 
   const cleanMessages: UIMessage[] = transcript.map((message) => ({
@@ -512,12 +555,23 @@ export async function POST(request: Request) {
     ...(savedMemory ? { memory: savedMemory } : {}),
     ...(documents.notes.length ? { fileNotes: documents.notes } : {}),
     ...(webSources.length ? { web: webSources } : {}),
+    ...(searchSources.length ? { searchSources } : {}),
+    ...(searchNotice ? { searchNotice } : {}),
     ...(webNotice ? { webNotice } : {}),
     context: contextSnapshot,
   };
 
+  const wantsReasoning =
+    deepThink || chosen.skills.includes("reasoning") || chosen.capabilities.some((capability) => capability.id === "reasoning");
+  const modelForStream = wantsReasoning
+    ? wrapLanguageModel({
+        model: chatModel as Parameters<typeof wrapLanguageModel>[0]["model"],
+        middleware: extractReasoningMiddleware({ tagName: "think" }),
+      })
+    : chatModel;
+
   const result = streamText({
-    model: chatModel,
+    model: modelForStream,
     instructions,
     messages: modelMessages,
     maxOutputTokens: outputCap(allowance.remaining),
@@ -527,86 +581,100 @@ export async function POST(request: Request) {
     },
   });
 
+  const thinkingStarted = Date.now();
+
   return createUIMessageStreamResponse({
-    stream: toUIMessageStream({
-      stream: result.stream,
-      originalMessages: cleanMessages,
-      messageMetadata: ({ part }) => {
-        if (part.type === "start") return meta;
-        if (part.type === "finish" && part.totalUsage.inputTokens !== undefined) {
-          meta.context = {
-            ...contextSnapshot,
-            reported: { input: part.totalUsage.inputTokens, output: part.totalUsage.outputTokens ?? 0 },
-          };
-          return { context: meta.context };
+    stream: createUIMessageStream({
+      execute: ({ writer }) => {
+        if (searchSources.length) {
+          writer.write({ type: "data-sources", data: searchSources });
         }
-        return undefined;
-      },
-      generateMessageId: () => crypto.randomUUID(),
-      onError: (error) => {
-        failed = true;
-        agent.end();
-        noteProviderFailure(chosen.providerId);
-        const detail = safeProviderError(chosen.providerId, error);
-        console.error("Chat stream failed", chosen.providerId, modelName, detail);
-        return chosen.local
-          ? `${modelName} stopped responding. Try again, or pick a lighter assistant.`
-          : `${chosen.providerName} did not respond. ${detail}`;
-      },
-      onFinish: async ({ responseMessage, isAborted }) => {
-        agent.end();
-        const content = textFromParts(
-          responseMessage.parts.map((part) => ({
-            type: part.type,
-            text:
-              "text" in part && typeof part.text === "string"
-                ? part.text
-                : undefined,
-          })),
-        );
-        try {
-          saveAssistantMessage(conversation.id, {
-            id: responseMessage.id || crypto.randomUUID(),
-            content,
-            meta: {
-              model: meta.model,
-              provider: meta.provider,
-              fallbackFrom: meta.fallbackFrom,
-              auto: meta.auto,
-              memory: meta.memory,
-              fileNotes: meta.fileNotes,
-              web: meta.web,
-              webNotice: meta.webNotice,
-              context: meta.context,
+        writer.merge(
+          toUIMessageStream({
+            stream: result.stream,
+            sendReasoning: true,
+            originalMessages: cleanMessages,
+            messageMetadata: ({ part }) => {
+              if (part.type === "start") return meta;
+              if (part.type === "finish" && part.totalUsage.inputTokens !== undefined) {
+                meta.context = {
+                  ...contextSnapshot,
+                  reported: { input: part.totalUsage.inputTokens, output: part.totalUsage.outputTokens ?? 0 },
+                };
+                return { context: meta.context };
+              }
+              return undefined;
             },
-          });
-        } catch (error) {
-          console.error("Failed to save the assistant reply", error);
-        }
-        try {
-          const promptChars = instructions.length + context.reduce((sum, m) => sum + m.content.length, 0);
-          recordUsage({
-            userId: user.id,
-            conversationId: conversation.id,
-            agentId: AGENT_ID,
-            model: modelName,
-            providerId: chosen.providerId,
-            feature: "chat",
-            estimated: usage?.inputTokens === undefined || usage?.outputTokens === undefined,
-            inputTokens: usage?.inputTokens ?? estimateTokens(promptChars),
-            outputTokens: usage?.outputTokens ?? estimateTokens(content.length),
-            costMicro: costMicro(
-              chosen.providerId,
-              modelName,
-              usage?.inputTokens ?? estimateTokens(promptChars),
-              usage?.outputTokens ?? estimateTokens(content.length),
-            ),
-            durationMs: Date.now() - startedAt,
-            status: failed ? "error" : isAborted ? "aborted" : "ok",
-          });
-        } catch (error) {
-          console.error("Failed to record usage", error);
-        }
+            generateMessageId: () => crypto.randomUUID(),
+            onError: (error) => {
+              failed = true;
+              agent.end();
+              noteProviderFailure(chosen.providerId);
+              const detail = safeProviderError(chosen.providerId, error);
+              console.error("Chat stream failed", chosen.providerId, modelName, detail);
+              return chosen.local
+                ? `${modelName} stopped responding. Try again, or pick a lighter assistant.`
+                : `${chosen.providerName} did not respond. ${detail}`;
+            },
+            onFinish: async ({ responseMessage, isAborted }) => {
+              agent.end();
+              const parts = responseMessage.parts.map((part) => ({
+                type: part.type,
+                text: "text" in part && typeof part.text === "string" ? part.text : undefined,
+              }));
+              const content = textFromParts(parts);
+              const thinking = reasoningFromParts(parts) || undefined;
+              const cited = searchSources.length ? markCitedSources(searchSources, content) : searchSources;
+              try {
+                saveAssistantMessage(conversation.id, {
+                  id: responseMessage.id || crypto.randomUUID(),
+                  content,
+                  meta: {
+                    model: meta.model,
+                    provider: meta.provider,
+                    fallbackFrom: meta.fallbackFrom,
+                    auto: meta.auto,
+                    memory: meta.memory,
+                    fileNotes: meta.fileNotes,
+                    web: meta.web,
+                    searchSources: cited.length ? cited : undefined,
+                    searchNotice: meta.searchNotice,
+                    webNotice: meta.webNotice,
+                    thinking,
+                    thinkingMs: thinking ? Date.now() - thinkingStarted : undefined,
+                    context: meta.context,
+                  },
+                });
+              } catch (error) {
+                console.error("Failed to save the assistant reply", error);
+              }
+              try {
+                const promptChars = instructions.length + context.reduce((sum, m) => sum + m.content.length, 0);
+                recordUsage({
+                  userId: user.id,
+                  conversationId: conversation.id,
+                  agentId: AGENT_ID,
+                  model: modelName,
+                  providerId: chosen.providerId,
+                  feature: "chat",
+                  estimated: usage?.inputTokens === undefined || usage?.outputTokens === undefined,
+                  inputTokens: usage?.inputTokens ?? estimateTokens(promptChars),
+                  outputTokens: usage?.outputTokens ?? estimateTokens(content.length),
+                  costMicro: costMicro(
+                    chosen.providerId,
+                    modelName,
+                    usage?.inputTokens ?? estimateTokens(promptChars),
+                    usage?.outputTokens ?? estimateTokens(content.length),
+                  ),
+                  durationMs: Date.now() - startedAt,
+                  status: failed ? "error" : isAborted ? "aborted" : "ok",
+                });
+              } catch (error) {
+                console.error("Failed to record usage", error);
+              }
+            },
+          }),
+        );
       },
     }),
   });

@@ -13,7 +13,7 @@ import { ContextMeter, useContextSnapshot } from "@/components/chat/context-mete
 import { useConversationActions } from "@/components/chat/conversation-actions";
 import { AssistantMessage, UserMessage } from "@/components/chat/message";
 import { pickModel, selectionBody, usePreferredModel, useWarmModel } from "@/components/chat/model-picker";
-import { autoKey, modelKey, type AutoMode } from "@/lib/model-ref";
+import { autoKey, autoModeOf, modelKey, type AutoMode } from "@/lib/model-ref";
 import { Greeting, readDraft } from "@/components/chat/start-chat";
 import { useResearchStatus } from "@/components/chat/research";
 import { UpgradePrompt, UsageWarning } from "@/components/plans/upgrade-prompt";
@@ -30,7 +30,8 @@ import type { ChatMessage } from "@/lib/chat-types";
 import { assistantLabel } from "@/lib/models/branding";
 import type { PlanBlock } from "@/lib/plans/types";
 import type { ResearchData } from "@/lib/research/types";
-import { textFromParts } from "@/lib/text";
+import type { SearchSource } from "@/lib/web/types";
+import { reasoningFromParts, textFromParts } from "@/lib/text";
 
 function sentNow(attachments: AttachmentInfo[] = []) {
   return attachments.length ? { createdAt: Date.now(), attachments } : { createdAt: Date.now() };
@@ -52,6 +53,32 @@ function messageText(message: ChatMessage) {
       text: "text" in part && typeof part.text === "string" ? part.text : undefined,
     })),
   );
+}
+
+function messageThinking(message: ChatMessage) {
+  const live = reasoningFromParts(
+    message.parts.map((part) => ({
+      type: part.type,
+      text: "text" in part && typeof part.text === "string" ? part.text : undefined,
+    })),
+  );
+  return live || message.metadata?.thinking || null;
+}
+
+function searchSourcesOf(message: ChatMessage): SearchSource[] | undefined {
+  for (let index = message.parts.length - 1; index >= 0; index -= 1) {
+    const part = message.parts[index]!;
+    if (part.type === "data-sources") return part.data as SearchSource[];
+  }
+  return message.metadata?.searchSources;
+}
+
+function persistModes(conversationId: string, modes: { searchEnabled?: boolean; deepThink?: boolean }) {
+  void fetch(`/api/conversations/${conversationId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(modes),
+  }).catch(() => undefined);
 }
 
 /**
@@ -146,6 +173,8 @@ export function ChatPanel({
   conversationModel,
   conversationProvider,
   conversationMode,
+  conversationSearch = false,
+  conversationDeepThink = false,
   pinned,
   archived,
   temporary,
@@ -156,6 +185,8 @@ export function ChatPanel({
   conversationModel: string | null;
   conversationProvider: string | null;
   conversationMode: AutoMode | null;
+  conversationSearch?: boolean;
+  conversationDeepThink?: boolean;
   pinned: boolean;
   archived: boolean;
   temporary: boolean;
@@ -214,8 +245,51 @@ export function ChatPanel({
   const [input, setInput] = useState("");
   const files = useAttachments();
   const [research, setResearch] = useState(false);
+  const [searchOn, setSearchOn] = useState(conversationSearch);
+  const [deepThinkOn, setDeepThinkOn] = useState(conversationDeepThink);
+  const [searchStatus, setSearchStatus] = useState<{ available: boolean | null; reason: string | null }>({
+    available: null,
+    reason: null,
+  });
   const { status: researchStatus } = useResearchStatus();
   const sentDraft = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/search/status")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((value: { available?: boolean; reason?: string | null } | null) => {
+        if (cancelled) return;
+        setSearchStatus({
+          available: value?.available === true,
+          reason: value?.reason ?? (value?.available ? null : "Search is unavailable."),
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setSearchStatus({ available: false, reason: "Could not check Search." });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const reasoningModels = useMemo(
+    () => models.filter((option) => option.skills.includes("reasoning")),
+    [models],
+  );
+  const selectedSupportsThinking =
+    selected?.skills.includes("reasoning") === true ||
+    selected?.capabilities.some((capability) => capability.id === "reasoning") === true;
+
+  function setSearch(next: boolean) {
+    setSearchOn(next);
+    if (next) setResearch(false);
+    persistModes(conversationId, { searchEnabled: next });
+  }
+  function setDeepThink(next: boolean) {
+    setDeepThinkOn(next);
+    persistModes(conversationId, { deepThink: next });
+  }
   const { scroller, content, atBottom, scrollToBottom } = useStickToBottom();
   const busy = status === "submitted" || status === "streaming";
   const requestBody = useMemo(() => selectionBody(model, models), [model, models]);
@@ -241,16 +315,23 @@ export function ChatPanel({
     return () => window.clearTimeout(timer);
   }, [conversationId, sendMessage, requestBody]);
 
-  function send(text: string, options: { edit?: boolean; attachments?: AttachmentInfo[]; research?: boolean } = {}) {
+  function send(
+    text: string,
+    options: { edit?: boolean; attachments?: AttachmentInfo[]; research?: boolean; search?: boolean; deepThink?: boolean } = {},
+  ) {
     setContinuable(false);
     scrollToBottom();
+    const useResearch = options.research === true;
+    const useSearch = !useResearch && (options.search ?? searchOn);
     void sendMessage(
       { text, metadata: sentNow(options.attachments) },
       {
         body: {
           ...requestBody,
           ...(options.edit ? { edit: true } : {}),
-          ...(options.research ? { research: true } : {}),
+          ...(useResearch ? { research: true } : {}),
+          ...(useSearch ? { search: true } : {}),
+          ...((options.deepThink ?? deepThinkOn) ? { deepThink: true } : {}),
         },
       },
     );
@@ -259,7 +340,7 @@ export function ChatPanel({
   function submit(text: string) {
     const trimmed = text.trim();
     if ((!trimmed && files.ready.length === 0) || (research && !trimmed) || busy) return;
-    send(trimmed, { attachments: files.ready, research });
+    send(trimmed, { attachments: files.ready, research, search: searchOn, deepThink: deepThinkOn });
     files.clear();
     setResearch(false);
     setInput("");
@@ -355,13 +436,14 @@ export function ChatPanel({
                       key={message.id}
                       text={text}
                       createdAt={meta.createdAt}
-                      attachments={meta.attachments}
+                      attachments={meta.attachments ?? []}
                       onEdit={busy ? undefined : (next) => editAt(index, next)}
                     />
                   );
                 }
                 const last = index === lastIndex;
                 const report = researchOf(message);
+                const thinking = messageThinking(message);
                 const assistant = meta.model ? assistantLabel(models, meta.model, meta.provider) : undefined;
                 return (
                   <AssistantMessage
@@ -370,6 +452,11 @@ export function ChatPanel({
                     text={text}
                     research={report}
                     web={meta.web}
+                    searchSources={searchSourcesOf(message)}
+                    searchNotice={meta.searchNotice}
+                    thinking={thinking}
+                    thinkingDone={!(last && status === "streaming") || Boolean(text)}
+                    thinkingMs={meta.thinkingMs}
                     question={report ? messageText(messages[index - 1] ?? message) : undefined}
                     streaming={last && status === "streaming"}
                     last={last && !busy}
@@ -444,7 +531,26 @@ export function ChatPanel({
         sendWithEnter={prefs.sendWithEnter}
         note={temporary ? "Temporary chat: not saved to history or memory." : undefined}
         files={files}
-        research={{ on: research, onChange: setResearch, status: researchStatus }}
+        research={{
+          on: research,
+          onChange: (on) => {
+            setResearch(on);
+            if (on) setSearch(false);
+          },
+          status: researchStatus,
+        }}
+        search={{
+          on: searchOn,
+          onChange: setSearch,
+          available: searchStatus.available,
+          reason: searchStatus.reason,
+        }}
+        deepThink={{
+          on: deepThinkOn,
+          onChange: setDeepThink,
+          supported: selectedSupportsThinking || autoModeOf(model) !== null,
+          alternatives: reasoningModels,
+        }}
         locked={usage.locked}
         meter={<ContextMeter snapshot={busy ? (lastContext ?? fetchedContext) : fetchedContext} draft={input.length} reported={busy ? null : lastContext?.reported} />}
       />

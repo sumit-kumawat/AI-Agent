@@ -3,7 +3,7 @@ import type { AttachmentInfo } from "@/lib/attachments/types";
 import type { ContextSnapshot } from "@/lib/context/types";
 import type { AutoMode } from "@/lib/model-ref";
 import type { ResearchData } from "@/lib/research/types";
-import type { WebSource } from "@/lib/web/types";
+import type { SearchSource, WebSource } from "@/lib/web/types";
 
 /** Per-message details sent with the stream and stored in `messages.meta`. */
 export type ChatMessageMeta = {
@@ -25,13 +25,25 @@ export type ChatMessageMeta = {
   research?: ResearchData;
   /** Links from the user's message that the server opened for this reply. */
   web?: WebSource[];
+  /** Search mode sources with citation status. */
+  searchSources?: SearchSource[];
+  /** Set when Search was on but could not run. */
+  searchNotice?: string;
   /** Set when the message had links but link reading is turned off. */
   webNotice?: string;
+  /** Reasoning text when DeepThink / a thinking model produced it. */
+  thinking?: string;
+  /** Milliseconds spent producing `thinking`, when known. */
+  thinkingMs?: number;
   /** What filled the context window for this reply. */
   context?: ContextSnapshot;
 };
 
-export type ChatDataParts = { research: ResearchData };
+export type ChatDataParts = {
+  research: ResearchData;
+  /** Emitted before answer tokens when Search mode gathers sources. */
+  sources: SearchSource[];
+};
 
 export type ChatMessage = UIMessage<ChatMessageMeta, ChatDataParts>;
 

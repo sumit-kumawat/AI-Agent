@@ -22,7 +22,7 @@ import { useFeedback } from "@/components/feedback";
 import { Button } from "@/components/ui/button";
 import type { AttachmentInfo } from "@/lib/attachments/types";
 import type { ResearchData } from "@/lib/research/types";
-import type { WebSource } from "@/lib/web/types";
+import type { SearchSource, WebSource } from "@/lib/web/types";
 
 async function copyText(text: string) {
   if (navigator.clipboard && window.isSecureContext) {
@@ -251,6 +251,11 @@ export function AssistantMessage({
   research,
   question,
   web,
+  searchSources,
+  searchNotice,
+  thinking,
+  thinkingDone,
+  thinkingMs,
   followUp,
 }: {
   id?: string;
@@ -258,6 +263,13 @@ export function AssistantMessage({
   research?: ResearchData;
   /** Links the server opened for this reply. */
   web?: WebSource[];
+  /** Search mode sources with citation status. */
+  searchSources?: SearchSource[];
+  searchNotice?: string;
+  /** Reasoning text from DeepThink / thinking models. */
+  thinking?: string | null;
+  thinkingDone?: boolean;
+  thinkingMs?: number;
   /** The request a research report answers; used as the export title. */
   question?: string;
   streaming: boolean;
@@ -293,6 +305,29 @@ export function AssistantMessage({
         </button>
       ) : null}
       {research ? <ResearchPanel data={research} /> : null}
+      {searchNotice ? (
+        <p className="mb-1 text-xs text-muted-foreground" data-search-notice>
+          {searchNotice}
+        </p>
+      ) : null}
+      {searchSources?.length ? (
+        <ol className="mb-1 flex flex-col gap-1 text-xs" data-search-sources aria-label="Search sources">
+          {searchSources.map((source) => (
+            <li key={source.id} className="flex min-w-0 items-start gap-2" data-source={source.id} data-cited={source.cited ? "yes" : "no"}>
+              <span className="w-4 shrink-0 text-right tabular-nums text-muted-foreground">{source.id}.</span>
+              <span className="min-w-0 flex-1">
+                <a href={source.url} target="_blank" rel="noopener noreferrer nofollow" className="truncate text-muted-foreground hover:text-foreground hover:underline">
+                  {source.title || source.url}
+                </a>
+                <span className="ml-1.5 text-muted-foreground">
+                  {source.read ? "Read" : "Snippet"}
+                  {source.cited ? " · Cited" : ""}
+                </span>
+              </span>
+            </li>
+          ))}
+        </ol>
+      ) : null}
       {web?.length ? (
         <ul className="mb-1 flex flex-col gap-1 text-xs" data-web-sources aria-label="Pages read for this reply">
           {web.map((page) => (
@@ -306,8 +341,14 @@ export function AssistantMessage({
           ))}
         </ul>
       ) : null}
-      {text ? (
-        <Markdown text={research ? linkCitations(text, research) : text} streaming={streaming} />
+      {text || thinking ? (
+        <Markdown
+          text={research ? linkCitations(text, research) : text}
+          streaming={streaming}
+          thinking={thinking}
+          thinkingDone={thinkingDone}
+          thinkingMs={thinkingMs}
+        />
       ) : streaming ? (
         <span className="xai-caret text-[15px] leading-7" aria-label="Generating">▋</span>
       ) : null}

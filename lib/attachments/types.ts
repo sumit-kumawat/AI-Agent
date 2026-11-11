@@ -64,6 +64,11 @@ export const EXTENSION_KIND: Record<string, AttachmentKind> = {
 /** Shown in the attach button's tooltip. */
 export const SUPPORTED_SUMMARY = "PDF, Word, Excel, PowerPoint, CSV, text, Markdown, JSON, XML, code, images and ZIP";
 
+/** `accept` value for file inputs: every extension this app can read. */
+export const ACCEPT_FILES = Object.keys(EXTENSION_KIND)
+  .map((ext) => `.${ext}`)
+  .join(",");
+
 export const KIND_LABEL: Record<AttachmentKind, string> = {
   image: "Image",
   pdf: "PDF",

@@ -457,6 +457,20 @@ updated in that many days, once on save after a warning with the count, then
 hourly. `npm run e2e:conversations` covers export, bulk delete, retention and
 assistant names.
 
+### Search and DeepThink
+
+Chat Search (Globe next to the model picker) is separate from Deep Research.
+It reads `SEARCH_PROVIDER` (`searxng` or `tavily`) plus `SEARXNG_URL` or
+`TAVILY_API_KEY` from the environment. When unset, the toggle explains that
+no provider is configured; there is no silent fallback. Admin → Research
+"Read links in chat" still gates fetching. Sources are streamed as
+`data-sources` before the answer, then marked cited from `[n]` markers.
+
+DeepThink (Brain) asks reasoning-capable models to think in `<think>` blocks.
+The stream extracts reasoning via AI SDK middleware, shows "Thought for Xs",
+and stores `thinking` / `thinkingMs` in message meta. Both toggles persist per
+conversation (migration 17: `search_enabled`, `deep_think`).
+
 ## 7. Needs a provider before it can work
 
 | Capability | What is missing |

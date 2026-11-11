@@ -1,10 +1,10 @@
 "use client";
 
-import { ArrowUp, Lock, Paperclip, Square, Telescope, X } from "lucide-react";
+import { ArrowUp, Brain, Globe, Lock, Paperclip, Square, Telescope, X } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { AttachmentTray, type Attachments } from "@/components/chat/attachments";
-import { SUPPORTED_SUMMARY } from "@/lib/attachments/types";
+import { ACCEPT_FILES, SUPPORTED_SUMMARY } from "@/lib/attachments/types";
 import { ModelPicker, type ModelOption } from "@/components/chat/model-picker";
 import { autoModeOf, type AutoMode } from "@/lib/model-ref";
 import type { UsageSummary } from "@/lib/plans/types";
@@ -12,6 +12,22 @@ import type { ResearchStatus } from "@/components/chat/research";
 import { Button } from "@/components/ui/button";
 
 const MAX_HEIGHT = 208;
+
+export type SearchToggle = {
+  on: boolean;
+  onChange: (on: boolean) => void;
+  available: boolean | null;
+  reason: string | null;
+};
+
+export type DeepThinkToggle = {
+  on: boolean;
+  onChange: (on: boolean) => void;
+  /** True when the selected model reports reasoning support. */
+  supported: boolean;
+  /** Installed reasoning models the user can switch to. */
+  alternatives: ModelOption[];
+};
 
 export function Composer({
   value,
@@ -28,6 +44,8 @@ export function Composer({
   note,
   files: attachments,
   research,
+  search,
+  deepThink,
   locked,
   meter,
   mode,
@@ -51,6 +69,10 @@ export function Composer({
   files?: Attachments;
   /** Enables the Deep Research toggle. */
   research?: { on: boolean; onChange: (on: boolean) => void; status: ResearchStatus | null };
+  /** DeepSeek-style web Search, next to the model selector. */
+  search?: SearchToggle;
+  /** DeepSeek-style DeepThink, next to Search. */
+  deepThink?: DeepThinkToggle;
   /** Capabilities the plan does not include; their controls become upgrade links. */
   locked?: UsageSummary["locked"];
   /** The context meter, shown below the message box on the right. */
@@ -168,6 +190,7 @@ export function Composer({
                   ref={picker}
                   type="file"
                   multiple
+                  accept={ACCEPT_FILES}
                   className="hidden"
                   data-file-input
                   onChange={(event) => {
@@ -203,6 +226,52 @@ export function Composer({
               </Button>
             ) : null}
             <ModelPicker models={models} value={model} onChange={onModelChange} disabled={busy} compact mode={mode} />
+            {search ? (
+              <Button
+                type="button"
+                variant={search.on ? "secondary" : "ghost"}
+                size="icon"
+                className={`size-8 shrink-0 rounded-full ${search.on ? "text-primary ring-1 ring-primary/30" : "text-muted-foreground"}`}
+                aria-pressed={search.on}
+                aria-label="Search"
+                data-search-toggle
+                disabled={busy || pending || (!search.on && search.available === false)}
+                title={
+                  search.available === null
+                    ? "Checking search…"
+                    : search.available === false
+                      ? (search.reason ?? "Search is unavailable")
+                      : search.on
+                        ? "Search is on for this chat"
+                        : "Search the web for this chat"
+                }
+                onClick={() => search.onChange(!search.on)}
+              >
+                <Globe className="size-4" />
+              </Button>
+            ) : null}
+            {deepThink ? (
+              <Button
+                type="button"
+                variant={deepThink.on ? "secondary" : "ghost"}
+                size="icon"
+                className={`size-8 shrink-0 rounded-full ${deepThink.on ? "text-primary ring-1 ring-primary/30" : "text-muted-foreground"}`}
+                aria-pressed={deepThink.on}
+                aria-label="DeepThink"
+                data-deepthink-toggle
+                disabled={busy || pending}
+                title={
+                  deepThink.on
+                    ? deepThink.supported
+                      ? "DeepThink is on for this chat"
+                      : "DeepThink is on, but this assistant may not support reasoning"
+                    : "DeepThink: show step-by-step reasoning before the answer"
+                }
+                onClick={() => deepThink.onChange(!deepThink.on)}
+              >
+                <Brain className="size-4" />
+              </Button>
+            ) : null}
           </div>
           {busy ? (
             <Button
@@ -275,6 +344,25 @@ export function Composer({
           </div>
           {meter}
         </div>
+      ) : null}
+      {deepThink?.on && !deepThink.supported ? (
+        <p className="mt-1.5 px-1 text-xs text-amber-700 dark:text-amber-400" data-deepthink-warning role="status">
+          This assistant does not report reasoning support.
+          {deepThink.alternatives[0] ? (
+            <>
+              {" "}
+              <button
+                type="button"
+                className="underline underline-offset-2"
+                onClick={() => onModelChange(deepThink.alternatives[0]!.key)}
+              >
+                Switch to {deepThink.alternatives[0]!.name}
+              </button>
+            </>
+          ) : (
+            " Install a reasoning model such as deepseek-r1 to use DeepThink."
+          )}
+        </p>
       ) : null}
       {error || fileProblem ? (
         <p className="mt-2 text-center text-sm text-destructive" role="alert">

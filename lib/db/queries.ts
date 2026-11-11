@@ -466,6 +466,17 @@ export function setConversationModel(id: string, model: string, providerId: stri
     .run();
 }
 
+export function setConversationModes(id: string, userId: string, modes: { searchEnabled?: boolean; deepThink?: boolean }) {
+  const patch: { searchEnabled?: boolean; deepThink?: boolean } = {};
+  if (modes.searchEnabled !== undefined) patch.searchEnabled = modes.searchEnabled;
+  if (modes.deepThink !== undefined) patch.deepThink = modes.deepThink;
+  if (Object.keys(patch).length === 0) return;
+  db.update(conversations)
+    .set(patch)
+    .where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
+    .run();
+}
+
 export function recordModelSelection(input: Omit<typeof modelSelections.$inferInsert, "id" | "createdAt">) {
   db.insert(modelSelections)
     .values({ ...input, createdAt: Date.now() })

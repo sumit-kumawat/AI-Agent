@@ -62,6 +62,10 @@ export const chatRequestSchema = z.object({
   edit: z.boolean().optional(),
   /** Run Deep Research for the latest message instead of a normal reply. */
   research: z.boolean().optional(),
+  /** DeepSeek-style web Search for this turn (lighter than Deep Research). */
+  search: z.boolean().optional(),
+  /** Ask a reasoning-capable model to think before answering. */
+  deepThink: z.boolean().optional(),
   messages: z
     .array(
       z.looseObject({

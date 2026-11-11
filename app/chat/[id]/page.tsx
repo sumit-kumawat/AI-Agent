@@ -36,6 +36,8 @@ export default async function ConversationPage({ params }: PageProps<"/chat/[id]
       conversationModel={conversation.model}
       conversationProvider={conversation.providerId}
       conversationMode={autoModeOf(`auto:${conversation.modelMode ?? ""}`)}
+      conversationSearch={conversation.searchEnabled}
+      conversationDeepThink={conversation.deepThink}
       pinned={conversation.pinnedAt !== null}
       archived={conversation.archivedAt !== null}
       temporary={conversation.temporary}

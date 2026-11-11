@@ -7,6 +7,7 @@ import {
   getConversationForUser,
   listMessages,
   renameConversation,
+  setConversationModes,
   updateConversationFlags,
 } from "@/lib/db/queries";
 
@@ -45,6 +46,8 @@ const patchSchema = z
       .pipe(z.string().min(1, "Title must be 1 to 120 characters.").max(120, "Title must be 1 to 120 characters.")),
     pinned: z.boolean(),
     archived: z.boolean(),
+    searchEnabled: z.boolean(),
+    deepThink: z.boolean(),
   })
   .partial()
   .strict();
@@ -60,12 +63,20 @@ export const PATCH = handler<Context>(async (request, context) => {
       throw new ApiError("Temporary chats cannot be pinned or archived.", 400);
     }
   }
+  if (body.searchEnabled !== undefined || body.deepThink !== undefined) {
+    setConversationModes(id, user.id, {
+      searchEnabled: body.searchEnabled,
+      deepThink: body.deepThink,
+    });
+  }
   const conversation = getConversationForUser(id, user.id)!;
   return Response.json({
     id,
     title: conversation.title,
     pinned: conversation.pinnedAt !== null,
     archived: conversation.archivedAt !== null,
+    searchEnabled: conversation.searchEnabled,
+    deepThink: conversation.deepThink,
   });
 });
 

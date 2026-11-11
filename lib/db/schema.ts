@@ -45,6 +45,10 @@ export const conversations = sqliteTable(
     providerId: text("provider_id"),
     /** Auto mode ("intelligence", "balance", "cost"), or null when the user picked a model. */
     modelMode: text("model_mode"),
+    /** Web Search mode for this chat (DeepSeek-style). */
+    searchEnabled: integer("search_enabled", { mode: "boolean" }).notNull().default(false),
+    /** DeepThink / reasoning mode for this chat. */
+    deepThink: integer("deep_think", { mode: "boolean" }).notNull().default(false),
     /** Summary standing in for the first summaryCount messages, which end at message summaryThrough. */
     summary: text("summary"),
     summaryCount: integer("summary_count"),

@@ -1,22 +1,10 @@
 "use client";
 
-import {
-  AlertCircle,
-  File,
-  FileArchive,
-  FileCode,
-  FileImage,
-  FileSpreadsheet,
-  FileText,
-  Loader2,
-  Presentation,
-  RefreshCw,
-  TriangleAlert,
-  X,
-} from "lucide-react";
+import { AlertCircle, Loader2, RefreshCw, TriangleAlert, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
+  ACCEPT_FILES,
   displayExtension,
   KIND_LABEL,
   kindForName,
@@ -26,6 +14,7 @@ import {
   type AttachmentInfo,
   type AttachmentKind,
 } from "@/lib/attachments/types";
+import { FileTypeIcon } from "@/lib/file-icons";
 import { formatBytes } from "@/lib/format";
 
 export type PendingFile = {
@@ -196,29 +185,36 @@ export function useAttachments(initial: AttachmentInfo[] = []) {
 
 export type Attachments = ReturnType<typeof useAttachments>;
 
-const KIND_STYLE: Record<AttachmentKind, { icon: typeof File; tone: string }> = {
-  image: { icon: FileImage, tone: "bg-violet-500/10 text-violet-600" },
-  pdf: { icon: FileText, tone: "bg-red-500/10 text-red-600" },
-  docx: { icon: FileText, tone: "bg-blue-500/10 text-blue-600" },
-  rtf: { icon: FileText, tone: "bg-blue-500/10 text-blue-600" },
-  xlsx: { icon: FileSpreadsheet, tone: "bg-emerald-500/10 text-emerald-600" },
-  csv: { icon: FileSpreadsheet, tone: "bg-emerald-500/10 text-emerald-600" },
-  pptx: { icon: Presentation, tone: "bg-orange-500/10 text-orange-600" },
-  text: { icon: FileText, tone: "bg-slate-500/10 text-slate-600" },
-  code: { icon: FileCode, tone: "bg-amber-500/10 text-amber-700" },
-  zip: { icon: FileArchive, tone: "bg-yellow-500/10 text-yellow-700" },
+const KIND_SAMPLE: Record<AttachmentKind, string> = {
+  image: "photo.png",
+  pdf: "doc.pdf",
+  docx: "doc.docx",
+  rtf: "doc.rtf",
+  xlsx: "sheet.xlsx",
+  csv: "data.csv",
+  pptx: "deck.pptx",
+  text: "notes.txt",
+  code: "main.js",
+  zip: "archive.zip",
 };
 
-export function KindIcon({ kind, className }: { kind: AttachmentKind | null; className?: string }) {
-  const Icon = kind ? KIND_STYLE[kind].icon : File;
-  return <Icon className={className} />;
+export function KindIcon({
+  kind,
+  filename,
+  className = "size-4 text-muted-foreground",
+}: {
+  kind?: AttachmentKind | null;
+  filename?: string;
+  className?: string;
+}) {
+  return <FileTypeIcon filename={filename ?? (kind ? KIND_SAMPLE[kind] : "file")} className={className} />;
 }
 
-/** A coloured tile with the file-type icon. */
-export function KindTile({ kind }: { kind: AttachmentKind | null }) {
+/** A muted tile with the file-type icon. */
+export function KindTile({ kind, filename }: { kind?: AttachmentKind | null; filename?: string }) {
   return (
-    <span className={`flex size-10 shrink-0 items-center justify-center rounded-lg ${kind ? KIND_STYLE[kind].tone : "bg-muted text-muted-foreground"}`}>
-      <KindIcon kind={kind} className="size-5" />
+    <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+      <KindIcon kind={kind} filename={filename} className="size-4" />
     </span>
   );
 }
@@ -258,6 +254,7 @@ export function AttachmentTray({ files, disabled }: { files: Attachments; disabl
       <input
         ref={replaceInput}
         type="file"
+        accept={ACCEPT_FILES}
         className="hidden"
         onChange={(event) => {
           const file = event.target.files?.[0];
@@ -277,7 +274,7 @@ export function AttachmentTray({ files, disabled }: { files: Attachments; disabl
             // eslint-disable-next-line @next/next/no-img-element -- local blob or same-origin preview
             <img src={item.preview} alt="" className="size-10 shrink-0 rounded-lg object-cover" />
           ) : (
-            <KindTile kind={item.kind} />
+            <KindTile kind={item.kind} filename={item.name} />
           )}
           <div className="min-w-0 flex-1">
             <FileName name={item.name} />
@@ -359,7 +356,7 @@ export function MessageAttachments({ files }: { files: AttachmentInfo[] }) {
             className="flex w-56 items-center gap-2.5 rounded-2xl border bg-background p-2 hover:bg-muted"
             title={file.warning ? `${file.name}\n${file.warning}` : file.name}
           >
-            <KindTile kind={file.kind} />
+            <KindTile kind={file.kind} filename={file.name} />
             <span className="min-w-0 text-left">
               <FileName name={file.name} />
               <span className="flex items-center gap-1 text-xs text-muted-foreground">
