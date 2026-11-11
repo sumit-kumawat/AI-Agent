@@ -57,13 +57,6 @@ export default async function PlansPage({ searchParams }: { searchParams: Promis
   const { highlight } = await searchParams;
   const staff = isStaff(user.role);
   const checkout = checkoutAvailability();
-  const providerLabel = checkout.available
-    ? checkout.provider === "razorpay"
-      ? "Razorpay"
-      : checkout.provider === "stripe"
-        ? "Stripe"
-        : "checkout"
-    : null;
   const baseCurrency = plans.find((plan) => plan.price)?.price?.currency ?? "INR";
   const guess = guessCurrency(await headers(), (await cookies()).get(CURRENCY_COOKIE)?.value, baseCurrency);
   const prices = await Promise.all(plans.map((plan) => (plan.price ? convertPrice(plan.price, guess.currency) : null)));
@@ -162,13 +155,18 @@ export default async function PlansPage({ searchParams }: { searchParams: Promis
                   </p>
                 ) : staff ? (
                   <p className="text-sm text-muted-foreground">Administrators are not limited by plans.</p>
-                ) : checkout.available && plan.price && plan.price.amount > 0 && providerLabel ? (
-                  <div className="space-y-2" data-upgrade-path="checkout">
-                    <PlanCheckoutButton planId={plan.id} planName={plan.name} providerLabel={providerLabel} />
-                    <p className="text-xs text-muted-foreground">
-                      Pay with {providerLabel}. Your plan updates as soon as payment succeeds.
-                    </p>
-                  </div>
+                ) : checkout.available && plan.price && plan.price.amount > 0 ? (
+                  <PlanCheckoutButton
+                    planId={plan.id}
+                    planName={plan.name}
+                    priceLabel={
+                      price?.local
+                        ? `≈ ${formatMoney(price.local.amount, price.local.currency)} / ${interval}`
+                        : price
+                          ? `${formatMoney(price.base.amount, price.base.currency)} / ${interval}`
+                          : undefined
+                    }
+                  />
                 ) : checkout.available && !plan.price ? (
                   <p className="text-sm text-muted-foreground" data-upgrade-path="no-price">
                     No price is set for {plan.name} yet. Ask your administrator to set one, or to switch you manually.

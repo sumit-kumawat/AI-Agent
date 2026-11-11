@@ -2,13 +2,23 @@ import type { NextConfig } from "next";
 
 const isDev = process.env.NODE_ENV !== "production";
 
+// Payment widgets (Razorpay checkout / Stripe) load their own scripts and frames.
+const paymentScript = "https://checkout.razorpay.com https://js.stripe.com";
+const paymentFrame =
+  "https://api.razorpay.com https://checkout.razorpay.com https://js.stripe.com https://hooks.stripe.com https://checkout.stripe.com";
+const paymentConnect =
+  "https://api.razorpay.com https://lumberjack.razorpay.com https://checkout.razorpay.com https://api.stripe.com";
+const paymentImg = "https://*.razorpay.com https://*.stripe.com";
+
 const contentSecurityPolicy = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
+  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""} ${paymentScript}`,
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob:",
+  `img-src 'self' data: blob: ${paymentImg}`,
   "font-src 'self' data:",
-  `connect-src 'self'${isDev ? " ws: wss:" : ""}`,
+  `connect-src 'self'${isDev ? " ws: wss:" : ""} ${paymentConnect}`,
+  `frame-src 'self' ${paymentFrame}`,
+  "child-src 'self' blob: " + paymentFrame,
   // The IDE's Monaco editor runs language services in same-origin and blob workers.
   "worker-src 'self' blob:",
   "frame-ancestors 'none'",

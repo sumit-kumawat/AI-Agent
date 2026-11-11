@@ -289,13 +289,12 @@ export function paymentGatewayStatus() {
       reason: "No payment gateway is connected, so there are no payments, subscriptions billed or revenue to report.",
     };
   }
-  const name = value.provider === "razorpay" ? "Razorpay" : value.provider === "stripe" ? "Stripe" : "Payment gateway";
   return {
     connected: true as const,
     provider: value.provider,
     currency: value.currency,
     keyId: value.keyId,
-    reason: `Online checkout runs through ${name} (${value.currency}). Plan changes after a successful payment are applied immediately.`,
+    reason: `Online checkout is enabled (${value.currency}). Plan changes apply as soon as payment succeeds.`,
   };
 }
 

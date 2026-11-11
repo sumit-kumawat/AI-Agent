@@ -1,6 +1,7 @@
 import { createHmac } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { audit } from "@/lib/audit";
+import { BRAND } from "@/lib/brand";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { paymentCredentials, paymentGatewayStatus } from "@/lib/integrations/config";
@@ -65,7 +66,7 @@ export async function createRazorpayOrder(input: {
   planId: PlanId;
 }) {
   const creds = paymentCredentials();
-  if (!creds || creds.provider !== "razorpay") throw new Error("Razorpay is not configured.");
+  if (!creds || creds.provider !== "razorpay") throw new Error("Payment gateway is not configured.");
   const plan = planForCheckout(input.planId);
   const currency = (plan.price!.currency || creds.currency).toUpperCase();
   const amount = amountToMinorUnits(plan.price!.amount, currency);
@@ -84,24 +85,26 @@ export async function createRazorpayOrder(input: {
   });
   const body = (await response.json().catch(() => ({}))) as { id?: string; error?: { description?: string } };
   if (!response.ok || !body.id) {
-    throw new Error(body.error?.description ?? "Could not start Razorpay checkout.");
+    throw new Error(body.error?.description ?? "Could not start checkout.");
   }
   return {
-    provider: "razorpay" as const,
+    mode: "widget" as const,
     orderId: body.id,
     keyId: creds.keyId,
     amount,
     currency,
     planId: input.planId,
+    merchantName: BRAND.product,
     planName: plan.name,
-    description: `${plan.name} plan (${plan.price!.interval}ly)`,
+    description: `Upgrade to ${plan.name} · billed ${plan.price!.interval}ly`,
     prefill: { email: input.email, name: input.name },
+    themeColor: "#334155",
   };
 }
 
 export function verifyRazorpayPayment(orderId: string, paymentId: string, signature: string) {
   const creds = paymentCredentials();
-  if (!creds || creds.provider !== "razorpay") throw new Error("Razorpay is not configured.");
+  if (!creds || creds.provider !== "razorpay") throw new Error("Payment gateway is not configured.");
   const expected = createHmac("sha256", creds.keySecret).update(`${orderId}|${paymentId}`).digest("hex");
   if (expected !== signature) throw new Error("Payment signature did not match.");
 }
@@ -114,7 +117,7 @@ export async function createStripeCheckout(input: {
   cancelUrl: string;
 }) {
   const creds = paymentCredentials();
-  if (!creds || creds.provider !== "stripe") throw new Error("Stripe is not configured.");
+  if (!creds || creds.provider !== "stripe") throw new Error("Payment gateway is not configured.");
   const plan = planForCheckout(input.planId);
   const currency = (plan.price!.currency || creds.currency).toLowerCase();
   const unitAmount = amountToMinorUnits(plan.price!.amount, currency);
@@ -129,7 +132,7 @@ export async function createStripeCheckout(input: {
   params.set("line_items[0][quantity]", "1");
   params.set("line_items[0][price_data][currency]", currency);
   params.set("line_items[0][price_data][unit_amount]", String(unitAmount));
-  params.set("line_items[0][price_data][product_data][name]", `${plan.name} plan`);
+  params.set("line_items[0][price_data][product_data][name]", `${BRAND.product} · ${plan.name}`);
   params.set(
     "line_items[0][price_data][product_data][description]",
     `${plan.tagline || plan.name} · billed ${plan.price!.interval}ly`,
@@ -144,14 +147,14 @@ export async function createStripeCheckout(input: {
   });
   const body = (await response.json().catch(() => ({}))) as { id?: string; url?: string; error?: { message?: string } };
   if (!response.ok || !body.url || !body.id) {
-    throw new Error(body.error?.message ?? "Could not start Stripe checkout.");
+    throw new Error(body.error?.message ?? "Could not start checkout.");
   }
-  return { provider: "stripe" as const, sessionId: body.id, url: body.url, planId: input.planId };
+  return { mode: "redirect" as const, sessionId: body.id, url: body.url, planId: input.planId };
 }
 
 export async function confirmStripeSession(sessionId: string, userId: string) {
   const creds = paymentCredentials();
-  if (!creds || creds.provider !== "stripe") throw new Error("Stripe is not configured.");
+  if (!creds || creds.provider !== "stripe") throw new Error("Payment gateway is not configured.");
   const response = await fetch(`https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(sessionId)}`, {
     headers: { authorization: `Bearer ${creds.keySecret}` },
   });

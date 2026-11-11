@@ -1,29 +1,34 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
+import { Lock } from "lucide-react";
 import { useFeedback } from "@/components/feedback";
 import { Button } from "@/components/ui/button";
 import type { PlanId } from "@/lib/plans/types";
 
-type RazorpayCheckout = {
-  provider: "razorpay";
+type WidgetCheckout = {
+  mode: "widget";
   orderId: string;
   keyId: string;
   amount: number;
   currency: string;
   planId: PlanId;
+  merchantName: string;
   planName: string;
   description: string;
   prefill: { email: string; name: string };
+  themeColor: string;
 };
 
-type StripeCheckout = {
-  provider: "stripe";
+type RedirectCheckout = {
+  mode: "redirect";
   sessionId: string;
   url: string;
   planId: PlanId;
 };
+
+type CheckoutPayload = (WidgetCheckout | RedirectCheckout) & { error?: string };
 
 declare global {
   interface Window {
@@ -31,30 +36,48 @@ declare global {
   }
 }
 
-async function loadRazorpay() {
+const SCRIPT_ID = "payment-checkout-sdk";
+const SCRIPT_SRC = "https://checkout.razorpay.com/v1/checkout.js";
+
+async function loadCheckoutSdk() {
   if (window.Razorpay) return;
+  const existing = document.getElementById(SCRIPT_ID) as HTMLScriptElement | null;
+  if (existing) {
+    await new Promise<void>((resolve, reject) => {
+      if (window.Razorpay) {
+        resolve();
+        return;
+      }
+      existing.addEventListener("load", () => resolve(), { once: true });
+      existing.addEventListener("error", () => reject(new Error("Could not load payment checkout.")), { once: true });
+    });
+    return;
+  }
   await new Promise<void>((resolve, reject) => {
     const script = document.createElement("script");
-    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.id = SCRIPT_ID;
+    script.src = SCRIPT_SRC;
     script.async = true;
     script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Could not load Razorpay checkout."));
-    document.body.appendChild(script);
+    script.onerror = () => reject(new Error("Could not load payment checkout."));
+    document.head.appendChild(script);
   });
+  if (!window.Razorpay) throw new Error("Could not load payment checkout.");
 }
 
 export function PlanCheckoutButton({
   planId,
   planName,
-  providerLabel,
+  priceLabel,
 }: {
   planId: PlanId;
   planName: string;
-  providerLabel: string;
+  priceLabel?: string;
 }) {
   const router = useRouter();
   const { notify } = useFeedback();
   const [pending, start] = useTransition();
+  const [open, setOpen] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -68,7 +91,7 @@ export function PlanCheckoutButton({
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ provider: "stripe", sessionId }),
         });
-        const body = (await response.json().catch(() => ({}))) as { error?: string; planId?: string };
+        const body = (await response.json().catch(() => ({}))) as { error?: string };
         if (!response.ok) throw new Error(body.error ?? "Payment confirmation failed.");
         window.history.replaceState({}, "", "/plans");
         void notify({ tone: "success", title: "Plan updated", description: "Your payment went through." });
@@ -83,7 +106,7 @@ export function PlanCheckoutButton({
     });
   }, [notify, router]);
 
-  function checkout() {
+  function pay() {
     start(async () => {
       try {
         const response = await fetch("/api/billing/checkout", {
@@ -91,29 +114,31 @@ export function PlanCheckoutButton({
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ planId }),
         });
-        const body = (await response.json().catch(() => ({}))) as (RazorpayCheckout | StripeCheckout) & {
-          error?: string;
-        };
+        const body = (await response.json().catch(() => ({}))) as CheckoutPayload;
         if (!response.ok) throw new Error(body.error ?? "Could not start checkout.");
 
-        if (body.provider === "stripe") {
+        if (body.mode === "redirect") {
           window.location.href = body.url;
           return;
         }
 
-        await loadRazorpay();
-        if (!window.Razorpay) throw new Error("Razorpay checkout did not load.");
+        await loadCheckoutSdk();
         const order = body;
         await new Promise<void>((resolve, reject) => {
           const popup = new window.Razorpay!({
             key: order.keyId,
             amount: order.amount,
             currency: order.currency,
-            name: order.planName,
+            name: order.merchantName,
             description: order.description,
             order_id: order.orderId,
             prefill: order.prefill,
-            handler: async (result: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => {
+            theme: { color: order.themeColor },
+            handler: async (result: {
+              razorpay_order_id: string;
+              razorpay_payment_id: string;
+              razorpay_signature: string;
+            }) => {
               try {
                 const confirm = await fetch("/api/billing/confirm", {
                   method: "POST",
@@ -128,6 +153,7 @@ export function PlanCheckoutButton({
                 });
                 const confirmed = (await confirm.json().catch(() => ({}))) as { error?: string };
                 if (!confirm.ok) throw new Error(confirmed.error ?? "Payment confirmation failed.");
+                setOpen(false);
                 void notify({ tone: "success", title: "Plan updated", description: `You are now on ${planName}.` });
                 router.refresh();
                 resolve();
@@ -152,8 +178,29 @@ export function PlanCheckoutButton({
   }
 
   return (
-    <Button type="button" className="w-full" disabled={pending} onClick={checkout} data-checkout={planId}>
-      {pending ? "Starting checkout…" : `Upgrade with ${providerLabel}`}
-    </Button>
+    <div className="space-y-2" data-upgrade-path="checkout">
+      {!open ? (
+        <Button type="button" className="w-full" onClick={() => setOpen(true)} data-checkout={planId}>
+          Upgrade to {planName}
+        </Button>
+      ) : (
+        <div className="rounded-xl border bg-muted/40 p-3" data-checkout-panel={planId}>
+          <p className="text-sm font-medium">Confirm upgrade</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {priceLabel ? `${priceLabel} · ` : ""}
+            Secure payment. Your plan updates as soon as payment succeeds.
+          </p>
+          <div className="mt-3 flex gap-2">
+            <Button type="button" className="min-w-0 flex-1" disabled={pending} onClick={pay}>
+              <Lock className="size-3.5" />
+              {pending ? "Opening checkout…" : "Pay now"}
+            </Button>
+            <Button type="button" variant="ghost" disabled={pending} onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
