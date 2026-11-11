@@ -66,11 +66,19 @@ function messageThinking(message: ChatMessage) {
 }
 
 function searchSourcesOf(message: ChatMessage): SearchSource[] | undefined {
+  let fromParts: SearchSource[] | undefined;
   for (let index = message.parts.length - 1; index >= 0; index -= 1) {
     const part = message.parts[index]!;
-    if (part.type === "data-sources") return part.data as SearchSource[];
+    if (part.type === "data-sources") {
+      fromParts = part.data as SearchSource[];
+      break;
+    }
   }
-  return message.metadata?.searchSources;
+  const fromMeta = message.metadata?.searchSources;
+  // Prefer the list that already has citation marks (final SSE rewrite or saved meta).
+  if (fromParts?.some((source) => source.cited)) return fromParts;
+  if (fromMeta?.some((source) => source.cited)) return fromMeta;
+  return fromMeta ?? fromParts;
 }
 
 function persistModes(conversationId: string, modes: { searchEnabled?: boolean; deepThink?: boolean }) {
@@ -357,7 +365,13 @@ export function ChatPanel({
     const attachments = messages[index]?.metadata?.attachments ?? [];
     const again = wasResearch(index);
     setMessages(messages.slice(0, index));
-    send(text, { edit: true, attachments, research: again });
+    send(text, {
+      edit: true,
+      attachments,
+      research: again,
+      search: !again && searchOn,
+      deepThink: deepThinkOn,
+    });
   }
 
   function retry() {
@@ -365,7 +379,15 @@ export function ChatPanel({
     scrollToBottom();
     const last = messages.at(-1);
     const again = last?.role === "assistant" ? Boolean(researchOf(last)) : false;
-    void regenerate({ body: again ? { ...requestBody, research: true } : requestBody });
+    const priorSearch = last?.role === "assistant" ? Boolean(searchSourcesOf(last)?.length || last.metadata?.searchNotice) : false;
+    void regenerate({
+      body: {
+        ...requestBody,
+        ...(again ? { research: true } : {}),
+        ...(!again && (priorSearch || searchOn) ? { search: true } : {}),
+        ...(deepThinkOn ? { deepThink: true } : {}),
+      },
+    });
   }
 
   const fetchedContext = useContextSnapshot({
@@ -548,7 +570,7 @@ export function ChatPanel({
         deepThink={{
           on: deepThinkOn,
           onChange: setDeepThink,
-          supported: selectedSupportsThinking || autoModeOf(model) !== null,
+          supported: selectedSupportsThinking || (autoModeOf(model) !== null && reasoningModels.length > 0),
           alternatives: reasoningModels,
         }}
         locked={usage.locked}

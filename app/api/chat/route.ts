@@ -596,12 +596,18 @@ export async function POST(request: Request) {
             originalMessages: cleanMessages,
             messageMetadata: ({ part }) => {
               if (part.type === "start") return meta;
-              if (part.type === "finish" && part.totalUsage.inputTokens !== undefined) {
-                meta.context = {
-                  ...contextSnapshot,
-                  reported: { input: part.totalUsage.inputTokens, output: part.totalUsage.outputTokens ?? 0 },
+              if (part.type === "finish") {
+                if (part.totalUsage.inputTokens !== undefined) {
+                  meta.context = {
+                    ...contextSnapshot,
+                    reported: { input: part.totalUsage.inputTokens, output: part.totalUsage.outputTokens ?? 0 },
+                  };
+                }
+                return {
+                  context: meta.context,
+                  ...(meta.searchSources?.length ? { searchSources: meta.searchSources } : {}),
+                  ...(meta.thinking ? { thinking: meta.thinking, thinkingMs: meta.thinkingMs } : {}),
                 };
-                return { context: meta.context };
               }
               return undefined;
             },
@@ -625,6 +631,14 @@ export async function POST(request: Request) {
               const content = textFromParts(parts);
               const thinking = reasoningFromParts(parts) || undefined;
               const cited = searchSources.length ? markCitedSources(searchSources, content) : searchSources;
+              if (cited.length) {
+                meta.searchSources = cited;
+                writer.write({ type: "data-sources", data: cited });
+              }
+              if (thinking) {
+                meta.thinking = thinking;
+                meta.thinkingMs = Date.now() - thinkingStarted;
+              }
               try {
                 saveAssistantMessage(conversation.id, {
                   id: responseMessage.id || crypto.randomUUID(),
@@ -641,7 +655,7 @@ export async function POST(request: Request) {
                     searchNotice: meta.searchNotice,
                     webNotice: meta.webNotice,
                     thinking,
-                    thinkingMs: thinking ? Date.now() - thinkingStarted : undefined,
+                    thinkingMs: thinking ? meta.thinkingMs : undefined,
                     context: meta.context,
                   },
                 });

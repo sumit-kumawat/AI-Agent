@@ -82,7 +82,15 @@ async function tavilySearch(query: string, limit: number, signal?: AbortSignal):
 export function configuredSearchProvider(): SearchProvider | null {
   const id = providerId();
   if (!id) return null;
-  if (id === "searxng") return { id, search: searxngSearch };
+  if (id === "searxng") {
+    if (!(process.env.SEARXNG_URL ?? "").trim()) {
+      throw new SearchConfigError("Search is unavailable: SEARXNG_URL is not set.");
+    }
+    return { id, search: searxngSearch };
+  }
+  if (!(process.env.TAVILY_API_KEY ?? "").trim()) {
+    throw new SearchConfigError("Search is unavailable: TAVILY_API_KEY is not set.");
+  }
   return { id, search: tavilySearch };
 }
 

@@ -425,10 +425,8 @@ const MIGRATIONS: ((sqlite: Sqlite) => void)[] = [
   },
   // 17: per-conversation Search and DeepThink toggles.
   (sqlite) => {
-    sqlite.exec(`
-      ALTER TABLE conversations ADD COLUMN search_enabled INTEGER NOT NULL DEFAULT 0;
-      ALTER TABLE conversations ADD COLUMN deep_think INTEGER NOT NULL DEFAULT 0;
-    `);
+    addColumn(sqlite, "conversations", "search_enabled", "INTEGER NOT NULL DEFAULT 0");
+    addColumn(sqlite, "conversations", "deep_think", "INTEGER NOT NULL DEFAULT 0");
   },
 ];
 

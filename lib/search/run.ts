@@ -43,8 +43,17 @@ export async function gatherSearchContext(input: {
   signal?: AbortSignal;
 }): Promise<SearchOutcome> {
   const budget = input.budget ?? DEFAULT_CONTEXT_CHARS;
+  const question = input.question.trim();
   const urls = extractLinks(input.question);
   const sources: SearchSource[] = [];
+
+  if (!question && urls.length === 0) {
+    return {
+      sources: [],
+      promptBlock: "",
+      notice: "Search needs a question or a web link. Attachments alone are not searched.",
+    };
+  }
 
   if (urls.length) {
     const pages = await readLinks(input.userId, urls.slice(0, MAX_SOURCES), budget, input.signal);
@@ -88,7 +97,7 @@ export async function gatherSearchContext(input: {
     }
     let hits;
     try {
-      hits = await provider.search(input.question, MAX_SOURCES, input.signal);
+      hits = await provider.search(question, MAX_SOURCES, input.signal);
     } catch (error) {
       return {
         sources: [],
