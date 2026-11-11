@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   createContext,
   useCallback,
@@ -107,6 +107,7 @@ export function ChatShell({
   initialCollapsed: boolean;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const { notify, toast } = useFeedback();
   const [open, setOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -167,7 +168,9 @@ export function ChatShell({
       const mod = event.metaKey || event.ctrlKey;
       if (!mod) return;
       const key = event.key.toLowerCase();
+      const onAdmin = pathname.startsWith("/admin");
       if (key === "k" && !event.shiftKey && !event.altKey) {
+        if (onAdmin) return;
         // The IDE editor has its own Cmd/Ctrl+K chords.
         if ((event.target as HTMLElement | null)?.closest?.(".monaco-editor")) return;
         event.preventDefault();
@@ -177,6 +180,7 @@ export function ChatShell({
         event.preventDefault();
         toggleCollapsed();
       } else if (key === "o" && event.shiftKey) {
+        if (onAdmin) return;
         event.preventDefault();
         router.push("/chat");
       } else if (key === ",") {
@@ -186,7 +190,7 @@ export function ChatShell({
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [router, openSettings, toggleCollapsed]);
+  }, [router, pathname, openSettings, toggleCollapsed]);
 
   const chrome = useMemo<Chrome>(
     () => ({

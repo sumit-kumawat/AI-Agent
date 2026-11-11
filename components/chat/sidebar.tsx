@@ -327,20 +327,23 @@ export function SidebarBody({
   const pathname = usePathname();
   const inAdmin = admin && pathname.startsWith("/admin");
   const ideLocked = !admin && usage.locked.ide !== undefined;
-  const entries: NavEntry[] = [
-    { label: "New chat", icon: SquarePen, shortcut: "mod+shift+o", href: "/chat", active: pathname === "/chat" },
-    { label: "Search chats", icon: Search, shortcut: "mod+k", onSelect: openSearch },
-    {
-      label: "IDE",
-      icon: Code,
-      href: ideLocked ? `/plans?highlight=${usage.locked.ide?.requiredPlan?.id ?? ""}` : "/ide",
-      active: pathname.startsWith("/ide"),
-      locked: ideLocked,
-    },
-    { label: "Usage", icon: Gauge, href: "/usage", active: pathname === "/usage" },
-    { label: "Plans", icon: Sparkles, href: "/plans", active: pathname === "/plans" },
-    ...(admin ? [{ label: "Admin", icon: Shield, href: "/admin", active: inAdmin }] : []),
-  ];
+  // Admin pages keep a dedicated section list only — no chat/IDE/usage chrome.
+  const entries: NavEntry[] = inAdmin
+    ? [{ label: "Back to chat", icon: SquarePen, href: "/chat", active: false }]
+    : [
+        { label: "New chat", icon: SquarePen, shortcut: "mod+shift+o", href: "/chat", active: pathname === "/chat" },
+        { label: "Search chats", icon: Search, shortcut: "mod+k", onSelect: openSearch },
+        {
+          label: "IDE",
+          icon: Code,
+          href: ideLocked ? `/plans?highlight=${usage.locked.ide?.requiredPlan?.id ?? ""}` : "/ide",
+          active: pathname.startsWith("/ide"),
+          locked: ideLocked,
+        },
+        { label: "Usage", icon: Gauge, href: "/usage", active: pathname === "/usage" },
+        { label: "Plans", icon: Sparkles, href: "/plans", active: pathname === "/plans" },
+        ...(admin ? [{ label: "Admin", icon: Shield, href: "/admin", active: false }] : []),
+      ];
   const item = (active = false) =>
     `flex h-9 w-full items-center gap-3 rounded-lg px-3 text-sm whitespace-nowrap ${
       active ? "bg-sidebar-accent text-sidebar-accent-foreground" : "hover:bg-sidebar-accent/70"
@@ -406,7 +409,7 @@ export function SidebarBody({
         })}
       </div>
       <nav
-        aria-label="Conversations"
+        aria-label={inAdmin ? "Admin sections" : "Conversations"}
         aria-hidden={collapsed}
         inert={collapsed}
         className={`mt-4 min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-3 transition-opacity duration-150 ${

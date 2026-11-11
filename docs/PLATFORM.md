@@ -476,8 +476,9 @@ conversation (migration 17: `search_enabled`, `deep_think`).
 | Capability | What is missing |
 | --- | --- |
 | Broader web research | SearXNG, Tavily or Brave Search under Admin → Research (Wikipedia works without setup) |
-| Email verification and password reset | SMTP settings (not built yet) |
-| Google sign-in | Google OAuth client (not built yet) |
+| Email verification and password reset | SMTP keys under Admin → Integrations (sending not wired yet) |
+| Google / phone sign-in | Firebase config under Admin → Integrations (auth flow not wired yet) |
+| Paid checkout | Razorpay / Stripe keys under Admin → Integrations (checkout not wired yet) |
 | Image, GIF and video generation, voice | Provider integrations (not built yet; not shown in the UI) |
 
 ## 8. Next up

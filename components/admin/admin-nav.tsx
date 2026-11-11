@@ -9,6 +9,7 @@ import {
   Cloud,
   LayoutDashboard,
   MessagesSquare,
+  Plug,
   Settings,
   Sparkles,
   Telescope,
@@ -26,6 +27,7 @@ export const ADMIN_LINKS: { href: string; label: string; icon: LucideIcon }[] = 
   { href: "/admin/agents", label: "Agents & routing", icon: Bot },
   { href: "/admin/providers", label: "Providers", icon: Cloud },
   { href: "/admin/research", label: "Research", icon: Telescope },
+  { href: "/admin/integrations", label: "Integrations", icon: Plug },
   { href: "/admin/settings", label: "Settings", icon: Settings },
 ];
 

@@ -7,6 +7,7 @@ import { db, databaseFile, dataDirectory } from "@/lib/db";
 import { workspacesRoot } from "@/lib/ide/paths";
 import { folderBytes } from "@/lib/ide/workspaces";
 import { getInventory, runningModels } from "@/lib/ollama";
+import { paymentGatewayStatus } from "@/lib/integrations/config";
 import { listProviders } from "@/lib/providers/store";
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -242,7 +243,7 @@ export function businessMetrics(range: RangeDays) {
     plans,
     payments: {
       available: false as const,
-      reason: "No payment gateway is connected, so there are no payments, subscriptions billed or revenue to report.",
+      reason: paymentGatewayStatus().reason,
     },
     requests: {
       ...requests,
