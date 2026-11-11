@@ -478,7 +478,7 @@ conversation (migration 17: `search_enabled`, `deep_think`).
 | Broader web research | SearXNG, Tavily or Brave Search under Admin → Research (Wikipedia works without setup) |
 | Email verification and password reset | SMTP keys under Admin → Integrations (sending not wired yet) |
 | Google / phone sign-in | Firebase config under Admin → Integrations (auth flow not wired yet) |
-| Paid checkout | Razorpay / Stripe keys under Admin → Integrations (checkout not wired yet) |
+| Paid checkout | Razorpay / Stripe under Admin → Integrations; /plans opens checkout when enabled |
 | Image, GIF and video generation, voice | Provider integrations (not built yet; not shown in the UI) |
 
 ## 8. Next up

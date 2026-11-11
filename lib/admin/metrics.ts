@@ -241,10 +241,12 @@ export function businessMetrics(range: RangeDays) {
     since,
     users: { ...users, registrations: series(range, registrations, (row) => row.count) },
     plans,
-    payments: {
-      available: false as const,
-      reason: paymentGatewayStatus().reason,
-    },
+    payments: (() => {
+      const status = paymentGatewayStatus();
+      return status.connected
+        ? { available: true as const, provider: status.provider, reason: status.reason }
+        : { available: false as const, reason: status.reason };
+    })(),
     requests: {
       ...requests,
       daily: series(range, daily, (row) => row.calls),

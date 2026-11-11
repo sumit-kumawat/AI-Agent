@@ -261,7 +261,15 @@ export function Dashboard({ initial }: { initial: Data }) {
           <CreditCard className="size-3.5" /> Payments
         </p>
         <p className="mt-2">
-          <Unavailable>Not available.</Unavailable> {business.payments.reason} Plan assignments above are set by admins.
+          {business.payments.available ? null : <Unavailable>Not available.</Unavailable>}{" "}
+          {business.payments.reason}{" "}
+          {business.payments.available ? (
+            <Link href="/admin/integrations" className="underline">
+              Manage gateway
+            </Link>
+          ) : (
+            "Plan assignments above are set by admins."
+          )}
         </p>
       </div>
 

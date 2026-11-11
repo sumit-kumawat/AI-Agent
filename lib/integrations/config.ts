@@ -281,12 +281,37 @@ export function smtpCredentials() {
 export function paymentGatewayStatus() {
   const value = paymentPublic(loadJson(PAYMENT_KEY, PAYMENT_DEFAULTS));
   if (!value.enabled || !value.configured) {
-    return { connected: false as const, provider: value.provider, reason: "No payment gateway is connected, so there are no payments, subscriptions billed or revenue to report." };
+    return {
+      connected: false as const,
+      provider: value.provider,
+      currency: value.currency,
+      keyId: null as string | null,
+      reason: "No payment gateway is connected, so there are no payments, subscriptions billed or revenue to report.",
+    };
   }
   const name = value.provider === "razorpay" ? "Razorpay" : value.provider === "stripe" ? "Stripe" : "Payment gateway";
   return {
     connected: true as const,
     provider: value.provider,
-    reason: `${name} keys are saved, but checkout and webhooks are not wired yet — revenue still cannot be reported.`,
+    currency: value.currency,
+    keyId: value.keyId,
+    reason: `Online checkout runs through ${name} (${value.currency}). Plan changes after a successful payment are applied immediately.`,
   };
+}
+
+/** Server-only credentials for creating and verifying checkouts. Never send to the browser. */
+export function paymentCredentials() {
+  const value = loadJson(PAYMENT_KEY, PAYMENT_DEFAULTS);
+  if (!value.enabled || value.provider === "none" || !value.keyId || !value.keySecret.enc) return null;
+  try {
+    return {
+      provider: value.provider as "razorpay" | "stripe",
+      keyId: value.keyId,
+      keySecret: decryptSecret(value.keySecret.enc),
+      webhookSecret: value.webhookSecret.enc ? decryptSecret(value.webhookSecret.enc) : null,
+      currency: value.currency || "INR",
+    };
+  } catch {
+    return null;
+  }
 }

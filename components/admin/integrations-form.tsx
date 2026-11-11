@@ -188,7 +188,7 @@ export function IntegrationsForm({
 
       <Panel
         title="Payment gateway"
-        description="Keys for checkout. Secrets stay encrypted. Plan prices are still assigned by admins until checkout and webhooks are connected."
+        description="Keys for online plan checkout on /plans. Secrets stay encrypted. Admins can still change plans manually."
         status={<Status configured={payment.configured} enabled={payment.enabled} />}
         enabled={payment.enabled}
         onEnabled={(enabled) => setPayment({ ...payment, enabled })}

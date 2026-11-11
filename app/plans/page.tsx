@@ -3,9 +3,11 @@ import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { Check, Minus } from "lucide-react";
 import { PageFrame } from "@/components/page-frame";
+import { PlanCheckoutButton } from "@/components/plans/checkout-button";
 import { CurrencyPicker } from "@/components/plans/currency-picker";
 import { Badge } from "@/components/ui/badge";
 import { findUserById } from "@/lib/db/queries";
+import { checkoutAvailability } from "@/lib/integrations/checkout";
 import { planComparison } from "@/lib/plans/entitlements";
 import { FEATURE_LABEL, FEATURES, formatTokens, WINDOWS, type Limits } from "@/lib/plans/types";
 import { convertPrice, FX_SOURCE_NAME } from "@/lib/pricing/fx";
@@ -54,6 +56,14 @@ export default async function PlansPage({ searchParams }: { searchParams: Promis
   const plans = await planComparison(user);
   const { highlight } = await searchParams;
   const staff = isStaff(user.role);
+  const checkout = checkoutAvailability();
+  const providerLabel = checkout.available
+    ? checkout.provider === "razorpay"
+      ? "Razorpay"
+      : checkout.provider === "stripe"
+        ? "Stripe"
+        : "checkout"
+    : null;
   const baseCurrency = plans.find((plan) => plan.price)?.price?.currency ?? "INR";
   const guess = guessCurrency(await headers(), (await cookies()).get(CURRENCY_COOKIE)?.value, baseCurrency);
   const prices = await Promise.all(plans.map((plan) => (plan.price ? convertPrice(plan.price, guess.currency) : null)));
@@ -150,8 +160,21 @@ export default async function PlansPage({ searchParams }: { searchParams: Promis
                   <p className="text-sm text-muted-foreground">
                     {staff ? "Administrators are not limited by plans." : "You are on this plan."}
                   </p>
+                ) : staff ? (
+                  <p className="text-sm text-muted-foreground">Administrators are not limited by plans.</p>
+                ) : checkout.available && plan.price && plan.price.amount > 0 && providerLabel ? (
+                  <div className="space-y-2" data-upgrade-path="checkout">
+                    <PlanCheckoutButton planId={plan.id} planName={plan.name} providerLabel={providerLabel} />
+                    <p className="text-xs text-muted-foreground">
+                      Pay with {providerLabel}. Your plan updates as soon as payment succeeds.
+                    </p>
+                  </div>
+                ) : checkout.available && !plan.price ? (
+                  <p className="text-sm text-muted-foreground" data-upgrade-path="no-price">
+                    No price is set for {plan.name} yet. Ask your administrator to set one, or to switch you manually.
+                  </p>
                 ) : (
-                  <p className="text-sm text-muted-foreground" data-upgrade-path>
+                  <p className="text-sm text-muted-foreground" data-upgrade-path="manual">
                     Online checkout is not available yet. To switch to {plan.name}, contact your administrator; they can
                     change your plan right away.
                   </p>
