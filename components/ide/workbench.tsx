@@ -16,11 +16,9 @@ import {
   Code,
   Loader2,
   Menu,
-  Moon,
   PanelBottom,
   Search,
   Sparkles,
-  Sun,
   X,
 } from "lucide-react";
 import { IdeRequestError, errorMessage, ideFetch } from "@/components/ide/api";
@@ -64,7 +62,7 @@ export function Workbench({
   const { confirm, notify } = useFeedback();
   const { openMenu } = useChatChrome();
   const router = useRouter();
-  const [theme, setTheme] = useIdeTheme();
+  const [theme] = useIdeTheme();
   const [root, setRoot] = useState<HTMLDivElement | null>(null);
 
   const [view, setView] = useState<"explorer" | "search">("explorer");
@@ -416,15 +414,10 @@ export function Workbench({
       { id: "editor.unfoldAll", label: "Unfold All", run: () => runEditorAction("editor.unfoldAll") },
       { id: "editor.minimap", label: "View: Toggle Minimap", run: () => setMinimap((on) => !on) },
       { id: "editor.wordWrap", label: "View: Toggle Word Wrap", shortcut: k("alt+z"), run: () => setWordWrap((on) => !on) },
-      {
-        id: "theme.toggle",
-        label: `Preferences: Switch to ${theme === "dark" ? "Light" : "Dark"} Theme`,
-        run: () => setTheme(theme === "dark" ? "light" : "dark"),
-      },
       { id: "nav.workspaces", label: "Go to Workspaces", run: () => router.push("/ide") },
       { id: "nav.chat", label: "Go to Chat", run: () => router.push("/chat") },
     ],
-    [admin, closeTabs, k, newTerminal, platform, router, runEditorAction, save, saveAll, setTheme, showView, theme, togglePanel],
+    [admin, closeTabs, k, newTerminal, platform, router, runEditorAction, save, saveAll, showView, togglePanel],
   );
 
   // Workbench keyboard shortcuts. Ctrl-only chords are left to the shell when a terminal has focus.
@@ -518,15 +511,6 @@ export function Workbench({
             title={`Command palette (${k("mod+shift+p")})`}
           >
             <CommandIcon className="size-4" />
-          </button>
-          <button
-            type="button"
-            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-            aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-            title={theme === "dark" ? "Light theme" : "Dark theme"}
-          >
-            {theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
           </button>
           <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild>
@@ -821,7 +805,7 @@ export function Workbench({
               <span>{cursor.language}</span>
             </>
           ) : null}
-          <span>{theme === "dark" ? "Dark" : "Light"}</span>
+          <span>Light</span>
         </footer>
 
         <Palette

@@ -39,17 +39,8 @@ export function GeneralTab() {
   const sendKey = useShortcut("mod+enter");
   return (
     <div>
-      <Row label="Theme" description="System follows your device setting.">
-        <Segmented
-          label="Theme"
-          value={prefs.theme}
-          onChange={(theme) => void updatePrefs({ theme })}
-          options={[
-            { value: "system", label: "System" },
-            { value: "light", label: "Light" },
-            { value: "dark", label: "Dark" },
-          ]}
-        />
+      <Row label="Theme" description="This product uses a light interface for clarity and consistency.">
+        <p className="text-sm text-muted-foreground">Light</p>
       </Row>
       <Row label="Accent colour">
         <div role="radiogroup" aria-label="Accent colour" className="flex gap-2">

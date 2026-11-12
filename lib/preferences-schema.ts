@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+/** Legacy values still parse; the UI is light-only and always stores "light". */
 export const THEMES = ["system", "light", "dark"] as const;
 export const ACCENTS = ["slate", "teal", "blue", "violet", "rose", "amber"] as const;
 export const DEFAULT_ACCENT = "slate";
@@ -31,7 +32,7 @@ const text = (max: number) => z.string().trim().max(max).catch("");
  * row yet, always parse.
  */
 export const preferencesSchema = z.object({
-  theme: z.enum(THEMES).catch("system"),
+  theme: z.enum(THEMES).catch("light"),
   accent: z.enum(ACCENTS).catch(DEFAULT_ACCENT),
   fontSize: z.enum(FONT_SIZES).catch("medium"),
   density: z.enum(DENSITIES).catch("comfortable"),
@@ -82,9 +83,9 @@ export function appearanceCookie(prefs: Pick<Preferences, "theme" | "accent" | "
 }
 
 export function parseAppearanceCookie(value: string | undefined) {
-  const [theme, accent, fontSize, density] = (value ?? "").split(".");
+  const [, accent, fontSize, density] = (value ?? "").split(".");
   return {
-    theme: (THEMES as readonly string[]).includes(theme ?? "") ? (theme as Preferences["theme"]) : "system",
+    theme: "light" as Preferences["theme"],
     accent: (ACCENTS as readonly string[]).includes(accent ?? "") ? (accent as Preferences["accent"]) : DEFAULT_ACCENT,
     fontSize: (FONT_SIZES as readonly string[]).includes(fontSize ?? "")
       ? (fontSize as Preferences["fontSize"])

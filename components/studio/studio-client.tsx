@@ -220,35 +220,3 @@ export function CreateScheduleForm() {
     </form>
   );
 }
-
-export function CreateWorkflowForm() {
-  const router = useRouter();
-  const [name, setName] = useState("");
-  const [busy, setBusy] = useState(false);
-  return (
-    <form
-      className="flex flex-wrap items-end gap-2"
-      onSubmit={(event) => {
-        event.preventDefault();
-        setBusy(true);
-        void jsonFetch("/api/studio/workflows", {
-          method: "POST",
-          body: JSON.stringify({ name }),
-        })
-          .then(() => {
-            setName("");
-            router.refresh();
-          })
-          .finally(() => setBusy(false));
-      }}
-    >
-      <label className="space-y-1 text-sm">
-        <span>Workflow name</span>
-        <input className="block h-9 rounded-lg border bg-background px-3" value={name} onChange={(e) => setName(e.target.value)} required />
-      </label>
-      <Button type="submit" disabled={busy || !name.trim()}>
-        Save draft
-      </Button>
-    </form>
-  );
-}

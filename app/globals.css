@@ -7,7 +7,7 @@
 @source "../node_modules/streamdown/dist/*.js";
 @source "../node_modules/@streamdown/code/dist/*.js";
 
-/* Users pick light, dark or system in Settings; the inline script in the root layout sets `.dark` on <html>. */
+/* Product is light-only. Dark variant retained so leftover class names do not break builds. */
 @custom-variant dark (&:is(.dark *));
 
 :root {

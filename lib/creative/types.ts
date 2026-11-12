@@ -1,11 +1,6 @@
 export type CreativeJobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
 
-export type CreativeJobKind =
-  | "image.generate"
-  | "video.generate"
-  | "rembg.run"
-  | "media.convert"
-  | "workflow.run";
+export type CreativeJobKind = "image.generate" | "video.generate" | "rembg.run" | "media.convert";
 
 export type EngineId = "ffmpeg" | "comfyui" | "rembg";
 
@@ -56,80 +51,74 @@ export type StudioModule = {
   slug: string;
   title: string;
   description: string;
-  group: "create" | "manage";
+  group: "studio" | "library";
   /** Engines that must be available before Generate is enabled. */
   requires: EngineId[];
 };
 
+/** All Creative Studio tools live under /studio — not duplicated in the chat sidebar. */
 export const STUDIO_MODULES: StudioModule[] = [
   {
     slug: "image",
     title: "Image Studio",
     description: "Generate still images once a ComfyUI (or Diffusers) engine is connected.",
-    group: "create",
+    group: "studio",
     requires: ["comfyui"],
   },
   {
     slug: "video",
     title: "Video Studio",
     description: "Generate short clips. Needs ComfyUI plus FFmpeg for encoding.",
-    group: "create",
+    group: "studio",
     requires: ["comfyui", "ffmpeg"],
   },
   {
     slug: "rembg",
     title: "Background Removal",
     description: "Cut subjects from photos with rembg when the CPU worker can find it.",
-    group: "create",
+    group: "studio",
     requires: ["rembg"],
   },
   {
     slug: "media",
     title: "Media Tools",
     description: "Convert, trim, and probe media files with FFmpeg.",
-    group: "create",
+    group: "studio",
     requires: ["ffmpeg"],
-  },
-  {
-    slug: "workflows",
-    title: "Workflow Builder",
-    description: "Design node graphs for later execution. Live runs ship in a later phase.",
-    group: "create",
-    requires: [],
   },
   {
     slug: "creations",
     title: "My Creations",
     description: "Browse, filter, and delete assets you own under Creative Studio.",
-    group: "manage",
+    group: "library",
     requires: [],
   },
   {
     slug: "models",
     title: "Model Library",
     description: "Catalog of permitted creative models with licence notes and download status.",
-    group: "manage",
+    group: "library",
     requires: [],
   },
   {
     slug: "queue",
     title: "Processing Queue",
     description: "Live jobs from the Creative Studio queue.",
-    group: "manage",
+    group: "library",
     requires: [],
   },
   {
     slug: "automation",
     title: "Automation & Scheduler",
     description: "Schedule creative jobs. The daemon that runs them without a browser comes later.",
-    group: "manage",
+    group: "library",
     requires: [],
   },
   {
     slug: "settings",
     title: "Creative Settings",
     description: "Engine paths and URLs discovered on this host.",
-    group: "manage",
+    group: "library",
     requires: [],
   },
 ];

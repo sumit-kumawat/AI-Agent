@@ -5,17 +5,9 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import {
   Archive,
-  ChevronDown,
   CircleHelp,
-  Clapperboard,
   Code,
-  Film,
-  FolderOpen,
   Gauge,
-  Image as ImageIcon,
-  Layers,
-  Library,
-  ListOrdered,
   Lock,
   LogOut,
   MoreHorizontal,
@@ -24,20 +16,16 @@ import {
   Pencil,
   Pin,
   PinOff,
-  Scissors,
   Search,
   Settings,
-  Settings2,
   Shield,
   SlidersHorizontal,
   Sparkles,
   SquarePen,
-  Timer,
   Trash,
   WandSparkles,
   type LucideIcon,
 } from "lucide-react";
-import { STUDIO_MODULES } from "@/lib/creative/types";
 import { AdminNav } from "@/components/admin/admin-nav";
 import { LogOutButton, useLogOut } from "@/components/auth/log-out";
 import { useChatChrome } from "@/components/chat/chat-shell";
@@ -321,51 +309,6 @@ type NavEntry = {
   locked?: boolean;
 };
 
-const STUDIO_ICONS: Record<string, LucideIcon> = {
-  image: ImageIcon,
-  video: Film,
-  rembg: Scissors,
-  media: Clapperboard,
-  workflows: Layers,
-  creations: FolderOpen,
-  models: Library,
-  queue: ListOrdered,
-  automation: Timer,
-  settings: Settings2,
-};
-
-function NavGroup({
-  id,
-  label,
-  defaultOpen,
-  forceOpen,
-  children,
-}: {
-  id: string;
-  label: string;
-  defaultOpen: boolean;
-  forceOpen?: boolean;
-  children: ReactNode;
-}) {
-  const [open, setOpen] = useState(defaultOpen);
-  const expanded = forceOpen || open;
-  return (
-    <div className="space-y-0.5" data-nav-group={id}>
-      <button
-        type="button"
-        className="flex h-8 w-full items-center gap-2 rounded-lg px-2.5 text-xs font-medium tracking-wide text-muted-foreground uppercase hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
-        aria-expanded={expanded}
-        data-nav-group-toggle={id}
-        onClick={() => setOpen((current) => !current)}
-      >
-        <span className="min-w-0 flex-1 truncate text-left">{label}</span>
-        <ChevronDown className={`size-3.5 shrink-0 transition-transform ${expanded ? "rotate-0" : "-rotate-90"}`} />
-      </button>
-      {expanded ? children : null}
-    </div>
-  );
-}
-
 export function SidebarBody({
   conversations,
   onNavigate,
@@ -381,25 +324,17 @@ export function SidebarBody({
   const pathname = usePathname();
   const inAdmin = admin && pathname.startsWith("/admin");
   const ideLocked = !admin && usage.locked.ide !== undefined;
-  const inStudio = pathname.startsWith("/studio");
-  const inCreate = STUDIO_MODULES.some((m) => m.group === "create" && pathname === `/studio/${m.slug}`);
-  const inManage = STUDIO_MODULES.some((m) => m.group === "manage" && pathname === `/studio/${m.slug}`);
 
-  const primary: NavEntry[] = inAdmin
+  const entries: NavEntry[] = inAdmin
     ? [{ label: "Back to chat", icon: SquarePen, href: "/chat", active: false }]
     : [
         { label: "New chat", icon: SquarePen, shortcut: "mod+shift+o", href: "/chat", active: pathname === "/chat" },
         { label: "Search chats", icon: Search, shortcut: "mod+k", onSelect: openSearch },
-      ];
-
-  const secondary: NavEntry[] = inAdmin
-    ? []
-    : [
         {
           label: "Studio",
           icon: WandSparkles,
           href: "/studio",
-          active: pathname === "/studio",
+          active: pathname.startsWith("/studio"),
         },
         {
           label: "IDE",
@@ -408,45 +343,18 @@ export function SidebarBody({
           active: pathname.startsWith("/ide"),
           locked: ideLocked,
         },
-      ];
-
-  const more: NavEntry[] = inAdmin
-    ? []
-    : [
         { label: "Usage", icon: Gauge, href: "/usage", active: pathname === "/usage" },
         { label: "Plans", icon: Sparkles, href: "/plans", active: pathname === "/plans" },
         ...(admin ? [{ label: "Admin", icon: Shield, href: "/admin", active: false }] : []),
       ];
 
-  const createItems: NavEntry[] = STUDIO_MODULES.filter((m) => m.group === "create").map((m) => ({
-    label: m.title,
-    icon: STUDIO_ICONS[m.slug] ?? Sparkles,
-    href: `/studio/${m.slug}`,
-    active: pathname === `/studio/${m.slug}`,
-  }));
-  const manageItems: NavEntry[] = STUDIO_MODULES.filter((m) => m.group === "manage").map((m) => ({
-    label: m.title,
-    icon: STUDIO_ICONS[m.slug] ?? Settings2,
-    href: `/studio/${m.slug}`,
-    active: pathname === `/studio/${m.slug}`,
-  }));
-
-  const rail: NavEntry[] = inAdmin
-    ? primary
-    : [
-        ...primary,
-        { label: "Studio", icon: WandSparkles, href: "/studio", active: inStudio },
-        secondary.find((entry) => entry.label === "IDE")!,
-        ...more,
-      ];
-
-  const item = (active = false, nested = false) =>
-    `flex h-9 w-full items-center gap-3 rounded-lg text-sm whitespace-nowrap ${
-      nested ? "px-3 pl-9" : "px-3"
-    } ${active ? "bg-sidebar-accent text-sidebar-accent-foreground" : "hover:bg-sidebar-accent/70"}`;
+  const item = (active = false) =>
+    `flex h-9 w-full items-center gap-3 rounded-lg px-3 text-sm whitespace-nowrap ${
+      active ? "bg-sidebar-accent text-sidebar-accent-foreground" : "hover:bg-sidebar-accent/70"
+    }`;
   const labelClass = `min-w-0 flex-1 truncate text-left transition-opacity duration-150 ${collapsed ? "opacity-0" : "opacity-100"}`;
 
-  function renderEntry(entry: NavEntry, nested = false) {
+  function renderEntry(entry: NavEntry) {
     const content = (
       <>
         <entry.icon className="size-4 shrink-0" />
@@ -465,7 +373,7 @@ export function SidebarBody({
             onClick={onNavigate}
             aria-label={collapsed ? entry.label : undefined}
             aria-current={entry.active ? "page" : undefined}
-            className={item(Boolean(entry.active), nested)}
+            className={item(Boolean(entry.active))}
           >
             {content}
           </Link>
@@ -475,7 +383,7 @@ export function SidebarBody({
             aria-label={collapsed ? entry.label : undefined}
             onClick={() => entry.onSelect?.()}
             aria-pressed={entry.active}
-            className={item(Boolean(entry.active), nested)}
+            className={item(Boolean(entry.active))}
           >
             {content}
           </button>
@@ -503,49 +411,20 @@ export function SidebarBody({
             </Button>
           </RailTip>
         ) : null}
-        {!collapsed && !onToggle ? <span className="px-2 text-sm font-medium">xAI.Studio</span> : null}
       </div>
 
-      {collapsed ? (
-        <div className="space-y-0.5 px-2" data-sidebar-rail>
-          {rail.filter(Boolean).map((entry) => renderEntry(entry))}
-        </div>
-      ) : (
-        <>
-          <div className="space-y-0.5 px-2">
-            {primary.map((entry) => renderEntry(entry))}
-            {secondary.map((entry) => renderEntry(entry))}
-          </div>
+      <div className="space-y-0.5 px-2">{entries.map(renderEntry)}</div>
 
-          {inAdmin ? (
-            <nav
-              aria-label="Admin sections"
-              className="mt-4 min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-3"
-            >
-              <AdminNav onNavigate={onNavigate} />
-            </nav>
-          ) : (
-            <nav
-              aria-label="Workspace"
-              className="mt-3 min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-2 pb-3"
-              data-sidebar-nav
-            >
-              <NavGroup id="create" label="Create" defaultOpen={false} forceOpen={inCreate}>
-                {createItems.map((entry) => renderEntry(entry, true))}
-              </NavGroup>
-              <NavGroup id="manage" label="Manage" defaultOpen={false} forceOpen={inManage}>
-                {manageItems.map((entry) => renderEntry(entry, true))}
-              </NavGroup>
-              <NavGroup id="more" label="More" defaultOpen={false}>
-                {more.map((entry) => renderEntry(entry, true))}
-              </NavGroup>
-              <div className="pt-1">
-                <ConversationList conversations={conversations} onNavigate={onNavigate} />
-              </div>
-            </nav>
-          )}
-        </>
-      )}
+      <nav
+        aria-label={inAdmin ? "Admin sections" : "Conversations"}
+        aria-hidden={collapsed}
+        inert={collapsed || undefined}
+        className={`mt-4 min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-3 transition-opacity duration-150 ${
+          collapsed ? "pointer-events-none opacity-0" : "opacity-100"
+        }`}
+      >
+        {inAdmin ? <AdminNav onNavigate={onNavigate} /> : <ConversationList conversations={conversations} onNavigate={onNavigate} />}
+      </nav>
 
       <div className="shrink-0 border-t px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
         <div className="flex items-center gap-1">

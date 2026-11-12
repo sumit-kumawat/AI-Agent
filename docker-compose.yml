@@ -1,29 +1,93 @@
+# Production stack for xAI on a dedicated host (e.g. Dell PowerEdge R610).
+# Persistent data lives under ./data on the host so backups are simple bind mounts.
+#
+#   cp .env.example .env
+#   # set AUTH_SECRET (required) and admin bootstrap as needed
+#   docker compose up -d --build
+#   docker compose exec ollama ollama pull llama3.2:3b
+#
+# Optional creative worker (CPU stub): docker compose --profile creative up -d
+
 services:
   app:
     build: .
+    image: xai-app:local
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "${APP_PORT:-3000}:3000"
+    env_file:
+      - .env
     environment:
+      NODE_ENV: production
+      DATA_DIR: /data
+      HOSTNAME: 0.0.0.0
+      PORT: "3000"
       AUTH_SECRET: ${AUTH_SECRET:?Set AUTH_SECRET in .env}
+      AUTH_URL: ${AUTH_URL:-}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:3b}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH:-}
-      OLLAMA_BASE_URL: http://ollama:11434
-      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5-coder:14b}
+      SECRETS_KEY: ${SECRETS_KEY:-}
     volumes:
-      - harbor-data:/data
+      - ./data:/data
     depends_on:
-      - ollama
+      ollama:
+        condition: service_started
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    # R610-class hosts: cap the app so Ollama still has RAM.
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 512M
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
 
   ollama:
     image: ollama/ollama:latest
     restart: unless-stopped
     volumes:
-      - ollama-models:/root/.ollama
+      - ./data/ollama:/root/.ollama
+    # No GPU assumed on R610; CPU inference with smaller models.
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 60s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 12G
+        reservations:
+          memory: 2G
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
 
-# "harbor-data" is the original volume name; renaming it would start xAI on an
-# empty volume and leave existing accounts and chats in the old one.
-volumes:
-  harbor-data:
-  ollama-models:
+  # Optional: run on the host instead with
+  #   DATA_DIR=./data node scripts/creative-worker.mjs
+  # The image entrypoint is the Next server; use a host process for the worker.
+
+volumes: {}

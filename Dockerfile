@@ -26,8 +26,9 @@ ENV NODE_ENV=production \
     HOSTNAME=0.0.0.0 \
     DATA_DIR=/data
 # git clones repositories into IDE workspaces; bash is the IDE terminal's shell.
+# ffmpeg is optional for Creative Studio media tools when the binary is present.
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends git bash ca-certificates \
+  && apt-get install -y --no-install-recommends git bash ca-certificates ffmpeg \
   && rm -rf /var/lib/apt/lists/*
 RUN groupadd --system harbor && useradd --system --gid harbor --shell /bin/bash harbor \
   && mkdir -p /data && chown harbor:harbor /data

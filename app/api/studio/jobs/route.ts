@@ -11,7 +11,6 @@ const KIND_ENGINES: Record<string, EngineId[]> = {
   "video.generate": ["comfyui", "ffmpeg"],
   "rembg.run": ["rembg"],
   "media.convert": ["ffmpeg"],
-  "workflow.run": [],
 };
 
 export const GET = handler(async (request) => {
@@ -21,7 +20,7 @@ export const GET = handler(async (request) => {
 });
 
 const postSchema = z.object({
-  kind: z.enum(["image.generate", "video.generate", "rembg.run", "media.convert", "workflow.run"]),
+  kind: z.enum(["image.generate", "video.generate", "rembg.run", "media.convert"]),
   payload: z.record(z.string(), z.unknown()).optional(),
 });
 

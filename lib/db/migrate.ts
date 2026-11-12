@@ -502,6 +502,14 @@ const MIGRATIONS: ((sqlite: Sqlite) => void)[] = [
       CREATE INDEX IF NOT EXISTS creative_schedules_user_idx ON creative_schedules (user_id, updated_at);
     `);
   },
+  // 19: product is light-only; normalise stored theme preferences.
+  (sqlite) => {
+    sqlite.exec(`
+      UPDATE user_preferences
+      SET data = json_set(data, '$.theme', 'light')
+      WHERE json_valid(data) AND json_extract(data, '$.theme') IS NOT NULL AND json_extract(data, '$.theme') != 'light';
+    `);
+  },
 ];
 
 // No 0/O or 1/I, so IDs survive being read aloud or retyped.

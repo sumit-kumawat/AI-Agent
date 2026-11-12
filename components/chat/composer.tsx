@@ -336,7 +336,7 @@ export function Composer({
         </div>
       </div>
       {deepThink?.on && !deepThink.supported ? (
-        <p className="mt-1.5 px-1 text-xs text-amber-700 dark:text-amber-400" data-deepthink-warning role="status">
+        <p className="mt-1.5 px-1 text-xs text-amber-700" data-deepthink-warning role="status">
           This assistant does not report reasoning support.
           {deepThink.alternatives[0] ? (
             <>

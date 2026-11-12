@@ -4,7 +4,7 @@ The xAI application: AI chat, Deep Research, attachments and an in-browser IDE, 
 
 This document is for operators. Customers see xAI-branded assistant names; the underlying models, Ollama and the hosting setup are visible only to administrators. See `docs/PLATFORM.md` for what each release changed.
 
-Some internal names keep the project's original "harbor" name for compatibility: the database file `data/harbor.db`, the Docker volume `harbor-data`, the container user, and browser storage keys such as `harbor-model`. Renaming them would orphan existing data or reset users' saved choices.
+Some internal names keep the project's original "harbor" name for compatibility: the database file `data/harbor.db`, the container user, and browser storage keys such as `harbor-model`. Renaming them would orphan existing data or reset users' saved choices. Docker Compose bind-mounts host `./data` for backups.
 
 ## 1. Install Ollama and a model
 
@@ -114,12 +114,16 @@ Back up `data/harbor.db` with `sqlite3 data/harbor.db ".backup backup.db"`, whic
 ## 5. Production with Docker
 
 ```bash
-echo "AUTH_SECRET=$(openssl rand -base64 32)" > .env
+cp .env.example .env
+# set AUTH_SECRET (required)
+mkdir -p data/ollama
 docker compose up -d --build
-docker compose exec ollama ollama pull qwen2.5-coder:14b
+docker compose exec ollama ollama pull llama3.2:3b
 ```
 
-The app stores its database in the `harbor-data` volume and models live in `ollama-models`. On macOS, Docker cannot use the GPU, so a native Ollama install is much faster. In that case, remove the `ollama` service and set `OLLAMA_BASE_URL=http://host.docker.internal:11434`.
+Application data and the SQLite database live in `./data` on the host. Ollama models live in `./data/ollama`. On macOS, Docker cannot use the GPU, so a native Ollama install is much faster — remove the `ollama` service and set `OLLAMA_BASE_URL=http://host.docker.internal:11434`.
+
+For a Dell PowerEdge R610 (or similar CPU-only server), see [docs/DEPLOY-R610.md](docs/DEPLOY-R610.md).
 
 ## Operations
 
