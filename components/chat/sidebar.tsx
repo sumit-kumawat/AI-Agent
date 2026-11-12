@@ -6,8 +6,15 @@ import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } fro
 import {
   Archive,
   CircleHelp,
+  Clapperboard,
   Code,
+  Film,
+  FolderOpen,
   Gauge,
+  Image as ImageIcon,
+  Layers,
+  Library,
+  ListOrdered,
   Lock,
   LogOut,
   MoreHorizontal,
@@ -16,15 +23,19 @@ import {
   Pencil,
   Pin,
   PinOff,
+  Scissors,
   Search,
   Settings,
+  Settings2,
   Shield,
   SlidersHorizontal,
   Sparkles,
   SquarePen,
+  Timer,
   Trash,
   type LucideIcon,
 } from "lucide-react";
+import { STUDIO_MODULES } from "@/lib/creative/types";
 import { AdminNav } from "@/components/admin/admin-nav";
 import { LogOutButton, useLogOut } from "@/components/auth/log-out";
 import { useChatChrome } from "@/components/chat/chat-shell";
@@ -344,11 +355,73 @@ export function SidebarBody({
         { label: "Plans", icon: Sparkles, href: "/plans", active: pathname === "/plans" },
         ...(admin ? [{ label: "Admin", icon: Shield, href: "/admin", active: false }] : []),
       ];
+  const studioIcons: Record<string, LucideIcon> = {
+    image: ImageIcon,
+    video: Film,
+    rembg: Scissors,
+    media: Clapperboard,
+    workflows: Layers,
+    creations: FolderOpen,
+    models: Library,
+    queue: ListOrdered,
+    automation: Timer,
+    settings: Settings2,
+  };
+  const studioCreate = STUDIO_MODULES.filter((module) => module.group === "create").map((module) => ({
+    label: module.title,
+    icon: studioIcons[module.slug] ?? Sparkles,
+    href: `/studio/${module.slug}`,
+    active: pathname === `/studio/${module.slug}`,
+  }));
+  const studioManage = STUDIO_MODULES.filter((module) => module.group === "manage").map((module) => ({
+    label: module.title,
+    icon: studioIcons[module.slug] ?? Settings2,
+    href: `/studio/${module.slug}`,
+    active: pathname === `/studio/${module.slug}`,
+  }));
   const item = (active = false) =>
     `flex h-9 w-full items-center gap-3 rounded-lg px-3 text-sm whitespace-nowrap ${
       active ? "bg-sidebar-accent text-sidebar-accent-foreground" : "hover:bg-sidebar-accent/70"
     }`;
   const label = `min-w-0 flex-1 truncate text-left transition-opacity duration-150 ${collapsed ? "opacity-0" : "opacity-100"}`;
+
+  function renderEntry(entry: NavEntry) {
+    const content = (
+      <>
+        <entry.icon className="size-4 shrink-0" />
+        <span className={label} aria-hidden={collapsed}>
+          {entry.label}
+        </span>
+        {entry.locked && !collapsed ? <Lock className="size-3.5 text-muted-foreground" aria-label="Not in your plan" /> : null}
+        {entry.shortcut && !collapsed ? <Kbd combo={entry.shortcut} className="hidden lg:inline" /> : null}
+      </>
+    );
+    return (
+      <RailTip key={entry.label} label={entry.label} show={collapsed}>
+        {entry.href ? (
+          <Link
+            href={entry.href}
+            onClick={onNavigate}
+            aria-label={collapsed ? entry.label : undefined}
+            aria-current={entry.active ? "page" : undefined}
+            className={item(entry.active)}
+          >
+            {content}
+          </Link>
+        ) : (
+          <button
+            type="button"
+            aria-label={collapsed ? entry.label : undefined}
+            onClick={() => entry.onSelect?.()}
+            aria-pressed={entry.active}
+            className={item(entry.active)}
+          >
+            {content}
+          </button>
+        )}
+      </RailTip>
+    );
+  }
 
   return (
     <div className="flex h-full w-full min-w-0 flex-col overflow-hidden bg-sidebar text-sidebar-foreground">
@@ -369,55 +442,38 @@ export function SidebarBody({
           </RailTip>
         ) : null}
       </div>
-      <div className="space-y-0.5 px-2">
-        {entries.map((entry) => {
-          const content = (
-            <>
-              <entry.icon className="size-4 shrink-0" />
-              <span className={label} aria-hidden={collapsed}>
-                {entry.label}
-              </span>
-              {entry.locked && !collapsed ? <Lock className="size-3.5 text-muted-foreground" aria-label="Not in your plan" /> : null}
-              {entry.shortcut && !collapsed ? <Kbd combo={entry.shortcut} className="hidden lg:inline" /> : null}
-            </>
-          );
-          return (
-            <RailTip key={entry.label} label={entry.label} show={collapsed}>
-              {entry.href ? (
-                <Link
-                  href={entry.href}
-                  onClick={onNavigate}
-                  aria-label={collapsed ? entry.label : undefined}
-                  aria-current={entry.active ? "page" : undefined}
-                  className={item(entry.active)}
-                >
-                  {content}
-                </Link>
-              ) : (
-                <button
-                  type="button"
-                  aria-label={collapsed ? entry.label : undefined}
-                  onClick={() => entry.onSelect?.()}
-                  aria-pressed={entry.active}
-                  className={item(entry.active)}
-                >
-                  {content}
-                </button>
-              )}
-            </RailTip>
-          );
-        })}
-      </div>
-      <nav
-        aria-label={inAdmin ? "Admin sections" : "Conversations"}
-        aria-hidden={collapsed}
-        inert={collapsed}
-        className={`mt-4 min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-3 transition-opacity duration-150 ${
-          collapsed ? "pointer-events-none opacity-0" : "opacity-100"
-        }`}
-      >
-        {inAdmin ? <AdminNav onNavigate={onNavigate} /> : <ConversationList conversations={conversations} onNavigate={onNavigate} />}
-      </nav>
+      <div className="space-y-0.5 px-2">{entries.map(renderEntry)}</div>
+      {inAdmin || collapsed ? null : (
+        <div className="mt-3 min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-2 pb-3" data-studio-nav>
+          <section className="space-y-0.5" aria-label="Create">
+            <h2 className="px-2.5 pb-1 text-xs font-medium text-muted-foreground">Create</h2>
+            {studioCreate.map(renderEntry)}
+          </section>
+          <section className="space-y-0.5" aria-label="Manage">
+            <h2 className="px-2.5 pb-1 text-xs font-medium text-muted-foreground">Manage</h2>
+            {studioManage.map(renderEntry)}
+          </section>
+          <section className="space-y-0.5" aria-label="Conversations">
+            <ConversationList conversations={conversations} onNavigate={onNavigate} />
+          </section>
+        </div>
+      )}
+      {inAdmin ? (
+        <nav
+          aria-label="Admin sections"
+          aria-hidden={collapsed}
+          inert={collapsed}
+          className={`mt-4 min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-3 transition-opacity duration-150 ${
+            collapsed ? "pointer-events-none opacity-0" : "opacity-100"
+          }`}
+        >
+          <AdminNav onNavigate={onNavigate} />
+        </nav>
+      ) : collapsed ? (
+        <div className="mt-3 space-y-0.5 px-2" data-studio-rail>
+          {[...studioCreate, ...studioManage].map(renderEntry)}
+        </div>
+      ) : null}
       <div className="shrink-0 border-t px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
         <div className="flex items-center gap-1">
           <div className="min-w-0 flex-1">

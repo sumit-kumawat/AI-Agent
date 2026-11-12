@@ -114,7 +114,10 @@ export default async function UsagePage() {
         </>
       ) : null}
 
-      <p className="mt-8 text-sm">
+      <p className="mt-8 text-sm text-muted-foreground">
+        Assistant context windows are tracked for replies and shown in usage math; the chat composer no longer shows a live context meter.
+      </p>
+      <p className="mt-4 text-sm">
         Need more? <Link href="/plans" className="underline underline-offset-4">Compare plans</Link>.
       </p>
     </PageFrame>

@@ -66,6 +66,8 @@ export const chatRequestSchema = z.object({
   search: z.boolean().optional(),
   /** Ask a reasoning-capable model to think before answering. */
   deepThink: z.boolean().optional(),
+  /** File ids for the latest user turn; survives transports that drop message metadata. */
+  attachmentIds: z.array(z.uuid()).max(10).optional(),
   messages: z
     .array(
       z.looseObject({

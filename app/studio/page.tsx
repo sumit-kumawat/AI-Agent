@@ -1,0 +1,40 @@
+import Link from "next/link";
+import { PageFrame } from "@/components/page-frame";
+import { STUDIO_MODULES } from "@/lib/creative/types";
+
+export const metadata = { title: "Creative Studio" };
+
+export default function StudioHomePage() {
+  const create = STUDIO_MODULES.filter((module) => module.group === "create");
+  const manage = STUDIO_MODULES.filter((module) => module.group === "manage");
+  return (
+    <PageFrame title="Creative Studio" description="Create and manage media jobs. Heavy generation waits until engines are installed.">
+      <section className="space-y-3">
+        <h2 className="text-sm font-medium text-muted-foreground">Create</h2>
+        <ul className="grid gap-3 sm:grid-cols-2">
+          {create.map((module) => (
+            <li key={module.slug}>
+              <Link href={`/studio/${module.slug}`} className="block rounded-xl border p-4 hover:bg-muted/40">
+                <span className="font-medium">{module.title}</span>
+                <p className="mt-1 text-sm text-muted-foreground">{module.description}</p>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </section>
+      <section className="mt-8 space-y-3">
+        <h2 className="text-sm font-medium text-muted-foreground">Manage</h2>
+        <ul className="grid gap-3 sm:grid-cols-2">
+          {manage.map((module) => (
+            <li key={module.slug}>
+              <Link href={`/studio/${module.slug}`} className="block rounded-xl border p-4 hover:bg-muted/40">
+                <span className="font-medium">{module.title}</span>
+                <p className="mt-1 text-sm text-muted-foreground">{module.description}</p>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </section>
+    </PageFrame>
+  );
+}

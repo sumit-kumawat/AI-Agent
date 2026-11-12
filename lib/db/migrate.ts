@@ -428,6 +428,80 @@ const MIGRATIONS: ((sqlite: Sqlite) => void)[] = [
     addColumn(sqlite, "conversations", "search_enabled", "INTEGER NOT NULL DEFAULT 0");
     addColumn(sqlite, "conversations", "deep_think", "INTEGER NOT NULL DEFAULT 0");
   },
+  // 18: Creative Studio assets, jobs, engines, workflows, schedules.
+  (sqlite) => {
+    sqlite.exec(`
+      CREATE TABLE IF NOT EXISTS creative_assets (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL,
+        name TEXT NOT NULL,
+        path TEXT NOT NULL,
+        mime TEXT NOT NULL,
+        size INTEGER NOT NULL DEFAULT 0,
+        meta TEXT NOT NULL DEFAULT '{}',
+        tags TEXT NOT NULL DEFAULT '[]',
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS creative_assets_user_idx ON creative_assets (user_id, created_at);
+
+      CREATE TABLE IF NOT EXISTS creative_jobs (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'queued',
+        progress REAL NOT NULL DEFAULT 0,
+        worker TEXT,
+        error TEXT,
+        payload TEXT NOT NULL DEFAULT '{}',
+        result TEXT NOT NULL DEFAULT '{}',
+        locked_at INTEGER,
+        heartbeat_at INTEGER,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        started_at INTEGER,
+        finished_at INTEGER
+      );
+      CREATE INDEX IF NOT EXISTS creative_jobs_user_idx ON creative_jobs (user_id, created_at);
+      CREATE INDEX IF NOT EXISTS creative_jobs_status_idx ON creative_jobs (status, created_at);
+
+      CREATE TABLE IF NOT EXISTS creative_engines (
+        id TEXT PRIMARY KEY,
+        label TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        available INTEGER NOT NULL DEFAULT 0,
+        path TEXT,
+        url TEXT,
+        detail TEXT,
+        updated_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS creative_workflows (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        graph TEXT NOT NULL DEFAULT '{}',
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS creative_workflows_user_idx ON creative_workflows (user_id, updated_at);
+
+      CREATE TABLE IF NOT EXISTS creative_schedules (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        cron TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 0,
+        payload TEXT NOT NULL DEFAULT '{}',
+        last_run_at INTEGER,
+        next_run_at INTEGER,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS creative_schedules_user_idx ON creative_schedules (user_id, updated_at);
+    `);
+  },
 ];
 
 // No 0/O or 1/I, so IDs survive being read aloud or retyped.

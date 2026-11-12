@@ -94,7 +94,20 @@ export function useAttachments(initial: AttachmentInfo[] = []) {
       upload(file, (progress) => patch(key, { progress }), controller.signal)
         .then((info) => {
           if (controller.signal.aborted) return removeOnServer(info.id);
-          patch(key, { status: "ready", progress: 1, info });
+          setItems((current) =>
+            current.map((item) => {
+              if (item.key !== key) return item;
+              if (item.preview?.startsWith("blob:")) URL.revokeObjectURL(item.preview);
+              return {
+                ...item,
+                status: "ready",
+                progress: 1,
+                info,
+                // Durable URL so chips survive after the composer clears blob previews.
+                preview: info.kind === "image" ? `/api/attachments/${info.id}` : undefined,
+              };
+            }),
+          );
         })
         .catch((error: unknown) => {
           if (controller.signal.aborted) return;
@@ -117,6 +130,18 @@ export function useAttachments(initial: AttachmentInfo[] = []) {
         const kind = kindForName(file.name);
         const key = crypto.randomUUID();
         const base = { key, name: file.name, size: file.size, kind, progress: 0 };
+        // Skip an identical file already waiting in the tray (same name and size).
+        const duplicate = latest.current.some(
+          (item) =>
+            item.key !== replaceKey &&
+            item.name === file.name &&
+            item.size === file.size &&
+            (item.status === "ready" || item.status === "uploading"),
+        );
+        if (duplicate) {
+          problems.push(`${file.name} is already attached.`);
+          continue;
+        }
         if (!kind) {
           next.push({ ...base, status: "error", error: unsupportedReason(file.name) });
         } else if (file.size === 0) {

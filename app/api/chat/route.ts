@@ -167,6 +167,18 @@ export async function POST(request: Request) {
     );
   }
 
+  // Prefer explicit body.attachmentIds when message metadata was stripped by the client transport.
+  const bodyAttachmentIds = parsed.data.attachmentIds ?? [];
+  if (bodyAttachmentIds.length) {
+    const merged = [...new Set([...(filesByMessage.get(latestUser.id) ?? []), ...bodyAttachmentIds])];
+    if (merged.length > 10) {
+      return Response.json({ error: "Attach up to 10 files per message." }, { status: 400 });
+    }
+    filesByMessage.set(latestUser.id, merged);
+    const row = transcript.find((message) => message.id === latestUser.id);
+    if (row) row.hasFiles = true;
+  }
+
   // Everything below that can reject runs before history is touched, so a
   // refused request never rewrites the stored conversation.
   let files: Map<string, Attachment>;

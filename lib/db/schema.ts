@@ -301,3 +301,95 @@ export const modelSelections = sqliteTable(
   },
   (table) => [index("model_selections_user_idx").on(table.userId, table.createdAt)],
 );
+
+export const creativeAssets = sqliteTable(
+  "creative_assets",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    name: text("name").notNull(),
+    path: text("path").notNull(),
+    mime: text("mime").notNull(),
+    size: integer("size").notNull().default(0),
+    meta: text("meta").notNull().default("{}"),
+    tags: text("tags").notNull().default("[]"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [index("creative_assets_user_idx").on(table.userId, table.createdAt)],
+);
+
+export const creativeJobs = sqliteTable(
+  "creative_jobs",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    status: text("status").notNull().default("queued"),
+    progress: real("progress").notNull().default(0),
+    worker: text("worker"),
+    error: text("error"),
+    payload: text("payload").notNull().default("{}"),
+    result: text("result").notNull().default("{}"),
+    lockedAt: integer("locked_at"),
+    heartbeatAt: integer("heartbeat_at"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+    startedAt: integer("started_at"),
+    finishedAt: integer("finished_at"),
+  },
+  (table) => [
+    index("creative_jobs_user_idx").on(table.userId, table.createdAt),
+    index("creative_jobs_status_idx").on(table.status, table.createdAt),
+  ],
+);
+
+export const creativeEngines = sqliteTable("creative_engines", {
+  id: text("id").primaryKey(),
+  label: text("label").notNull(),
+  kind: text("kind").notNull(),
+  available: integer("available", { mode: "boolean" }).notNull().default(false),
+  path: text("path"),
+  url: text("url"),
+  detail: text("detail"),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+export const creativeWorkflows = sqliteTable(
+  "creative_workflows",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    graph: text("graph").notNull().default("{}"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [index("creative_workflows_user_idx").on(table.userId, table.updatedAt)],
+);
+
+export const creativeSchedules = sqliteTable(
+  "creative_schedules",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    cron: text("cron").notNull(),
+    enabled: integer("enabled", { mode: "boolean" }).notNull().default(false),
+    payload: text("payload").notNull().default("{}"),
+    lastRunAt: integer("last_run_at"),
+    nextRunAt: integer("next_run_at"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [index("creative_schedules_user_idx").on(table.userId, table.updatedAt)],
+);

@@ -9,7 +9,6 @@ import { ChatTopBar, EditableTitle, useChatChrome } from "@/components/chat/chat
 import { useAttachments } from "@/components/chat/attachments";
 import { Composer } from "@/components/chat/composer";
 import { OptimisationSelector, useOptimisation } from "@/components/chat/optimisation";
-import { ContextMeter, useContextSnapshot } from "@/components/chat/context-meter";
 import { useConversationActions } from "@/components/chat/conversation-actions";
 import { AssistantMessage, UserMessage } from "@/components/chat/message";
 import { pickModel, selectionBody, usePreferredModel, useWarmModel } from "@/components/chat/model-picker";
@@ -251,6 +250,19 @@ export function ChatPanel({
     },
   });
 
+  const [input, setInput] = useState("");
+  const files = useAttachments();
+  /** Survives useChat dropping message.metadata.attachments during/after stream. */
+  const [attachedByMessage, setAttachedByMessage] = useState<Record<string, AttachmentInfo[]>>({});
+  const serverAttachments = useMemo(() => {
+    const map: Record<string, AttachmentInfo[]> = {};
+    for (const message of initialMessages) {
+      const listed = message.metadata?.attachments;
+      if (listed?.length) map[message.id] = listed;
+    }
+    return map;
+  }, [initialMessages]);
+
   // router.refresh() updates RSC props but useChat keeps its own list. Re-apply
   // attachment chips (and other server meta) onto matching messages after refresh.
   useEffect(() => {
@@ -279,8 +291,6 @@ export function ChatPanel({
     });
   }, [initialMessages, setMessages]);
 
-  const [input, setInput] = useState("");
-  const files = useAttachments();
   const [research, setResearch] = useState(false);
   const [searchOn, setSearchOn] = useState(conversationSearch);
   const [deepThinkOn, setDeepThinkOn] = useState(conversationDeepThink);
@@ -344,13 +354,36 @@ export function ChatPanel({
       const draft = readDraft(conversationId);
       if (!draft) return;
       sentDraft.current = true;
+      const attachmentIds = draft.attachments.map((file) => file.id);
       void sendMessage(
         { text: draft.text, metadata: sentNow(draft.attachments) },
-        { body: draft.research ? { ...requestBody, research: true } : requestBody },
-      );
+        {
+          body: {
+            ...(draft.research ? { ...requestBody, research: true } : requestBody),
+            ...(attachmentIds.length ? { attachmentIds } : {}),
+          },
+        },
+      ).then(() => {
+        if (!draft.attachments.length) return;
+        setMessages((current) => {
+          for (let index = current.length - 1; index >= 0; index -= 1) {
+            const message = current[index]!;
+            if (message.role !== "user") continue;
+            setAttachedByMessage((map) => ({ ...map, [message.id]: draft.attachments }));
+            if (message.metadata?.attachments?.length) return current;
+            const copy = [...current];
+            copy[index] = {
+              ...message,
+              metadata: { ...message.metadata, ...sentNow(draft.attachments) },
+            };
+            return copy;
+          }
+          return current;
+        });
+      });
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [conversationId, sendMessage, requestBody]);
+  }, [conversationId, sendMessage, requestBody, setMessages]);
 
   function send(
     text: string,
@@ -362,6 +395,7 @@ export function ChatPanel({
     const useSearch = !useResearch && (options.search ?? searchOn);
     const attached = options.attachments ?? [];
     const metadata = sentNow(attached);
+    const attachmentIds = attached.map((file) => file.id);
     void sendMessage(
       { text, metadata },
       {
@@ -371,6 +405,7 @@ export function ChatPanel({
           ...(useResearch ? { research: true } : {}),
           ...(useSearch ? { search: true } : {}),
           ...((options.deepThink ?? deepThinkOn) ? { deepThink: true } : {}),
+          ...(attachmentIds.length ? { attachmentIds } : {}),
         },
       },
     ).then(() => {
@@ -380,6 +415,7 @@ export function ChatPanel({
         for (let index = current.length - 1; index >= 0; index -= 1) {
           const message = current[index]!;
           if (message.role !== "user") continue;
+          setAttachedByMessage((map) => ({ ...map, [message.id]: attached }));
           if (message.metadata?.attachments?.length) return current;
           const copy = [...current];
           copy[index] = { ...message, metadata: { ...message.metadata, ...metadata } };
@@ -434,14 +470,6 @@ export function ChatPanel({
       },
     });
   }
-
-  const fetchedContext = useContextSnapshot({
-    conversationId,
-    model,
-    temporary,
-    version: `${messages.length}|${busy ? "busy" : "idle"}`,
-  });
-  const lastContext = [...messages].reverse().find((message) => message.role === "assistant")?.metadata?.context ?? null;
 
   const lastIndex = messages.length - 1;
   const waiting = busy && messages.at(-1)?.role !== "assistant";
@@ -503,7 +531,7 @@ export function ChatPanel({
                       key={message.id}
                       text={text}
                       createdAt={meta.createdAt}
-                      attachments={meta.attachments ?? []}
+                      attachments={meta.attachments ?? attachedByMessage[message.id] ?? serverAttachments[message.id] ?? []}
                       onEdit={busy ? undefined : (next) => editAt(index, next)}
                     />
                   );
@@ -619,7 +647,6 @@ export function ChatPanel({
           alternatives: reasoningModels,
         }}
         locked={usage.locked}
-        meter={<ContextMeter snapshot={busy ? (lastContext ?? fetchedContext) : fetchedContext} draft={input.length} reported={busy ? null : lastContext?.reported} />}
       />
     </div>
   );
