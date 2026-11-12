@@ -325,7 +325,7 @@ export async function POST(request: Request) {
   const window = windowOf(chosen);
   const documents = documentContext(
     transcript.flatMap((message) => filesOf(message.id)),
-    latestUser.content || "Summarize the attached files.",
+    latestUser.content.trim() || "Analyse the attached files thoroughly and summarise their contents.",
     contextBudget(chosen.local, window.tokens),
   );
   if (documents.text) promptParts.push({ category: "attachments", text: documents.text });

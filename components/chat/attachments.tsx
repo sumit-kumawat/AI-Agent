@@ -365,21 +365,35 @@ export function MessageAttachments({ files }: { files: AttachmentInfo[] }) {
     <div className="flex w-full max-w-[85%] flex-wrap justify-end gap-2 sm:max-w-[75%]" data-message-attachments>
       {files.map((file) =>
         file.kind === "image" ? (
-          <a key={file.id} href={`/api/attachments/${file.id}`} target="_blank" rel="noreferrer" title={file.name}>
+          <a
+            key={file.id}
+            href={`/api/attachments/${file.id}`}
+            target="_blank"
+            rel="noreferrer"
+            className="overflow-hidden rounded-2xl border bg-card shadow-sm"
+            title={`${file.name} · ${formatBytes(file.size)}`}
+          >
             {/* eslint-disable-next-line @next/next/no-img-element -- owner-only route, not optimisable */}
             <img
               src={`/api/attachments/${file.id}`}
               alt={file.name}
-              className="max-h-48 max-w-60 rounded-2xl border object-cover"
+              className="max-h-48 max-w-60 object-cover"
               loading="lazy"
             />
+            <span className="flex max-w-60 items-center gap-2 border-t px-2.5 py-1.5">
+              <KindIcon kind={file.kind} filename={file.name} className="size-3.5 shrink-0 text-muted-foreground" />
+              <span className="min-w-0 flex-1 text-left">
+                <FileName name={file.name} className="text-xs" />
+                <span className="block truncate text-[11px] text-muted-foreground">{formatBytes(file.size)}</span>
+              </span>
+            </span>
           </a>
         ) : (
           <a
             key={file.id}
             href={`/api/attachments/${file.id}?download=1`}
             className="flex min-w-44 max-w-56 items-center gap-2.5 rounded-2xl border bg-card p-2 shadow-sm hover:bg-muted"
-            title={file.warning ? `${file.name}\n${file.warning}` : file.name}
+            title={file.warning ? `${file.name}\n${file.warning}` : `${file.name} · ${formatBytes(file.size)}`}
           >
             <KindTile kind={file.kind} filename={file.name} />
             <span className="min-w-0 flex-1 text-left">

@@ -613,41 +613,43 @@ export function ChatPanel({
         )}
       </div>
       <UsageWarning usage={usage} />
-      <Composer
-        value={input}
-        onChange={setInput}
-        onSubmit={submit}
-        onStop={() => void stop()}
-        busy={busy}
-        models={models}
-        model={model}
-        onModelChange={setPicked}
-        mode={optimisation.mode}
-        sendWithEnter={prefs.sendWithEnter}
-        note={temporary ? "Temporary chat: not saved to history or memory." : undefined}
-        files={files}
-        research={{
-          on: research,
-          onChange: (on) => {
-            setResearch(on);
-            if (on) setSearch(false);
-          },
-          status: researchStatus,
-        }}
-        search={{
-          on: searchOn,
-          onChange: setSearch,
-          available: searchStatus.available,
-          reason: searchStatus.reason,
-        }}
-        deepThink={{
-          on: deepThinkOn,
-          onChange: setDeepThink,
-          supported: selectedSupportsThinking || (autoModeOf(model) !== null && reasoningModels.length > 0),
-          alternatives: reasoningModels,
-        }}
-        locked={usage.locked}
-      />
+      <div className="shrink-0 border-t bg-background/95 backdrop-blur-sm supports-backdrop-filter:bg-background/80">
+        <Composer
+          value={input}
+          onChange={setInput}
+          onSubmit={submit}
+          onStop={() => void stop()}
+          busy={busy}
+          models={models}
+          model={model}
+          onModelChange={setPicked}
+          mode={optimisation.mode}
+          sendWithEnter={prefs.sendWithEnter}
+          note={temporary ? "Temporary chat: not saved to history or memory." : undefined}
+          files={files}
+          research={{
+            on: research,
+            onChange: (on) => {
+              setResearch(on);
+              if (on) setSearch(false);
+            },
+            status: researchStatus,
+          }}
+          search={{
+            on: searchOn,
+            onChange: setSearch,
+            available: searchStatus.available,
+            reason: searchStatus.reason,
+          }}
+          deepThink={{
+            on: deepThinkOn,
+            onChange: setDeepThink,
+            supported: selectedSupportsThinking || (autoModeOf(model) !== null && reasoningModels.length > 0),
+            alternatives: reasoningModels,
+          }}
+          locked={usage.locked}
+        />
+      </div>
     </div>
   );
 }

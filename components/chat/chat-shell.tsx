@@ -29,6 +29,7 @@ import type { UsageSummary } from "@/lib/plans/types";
 import type { Preferences } from "@/lib/preferences-schema";
 import type { Role } from "@/lib/roles";
 import { SIDEBAR_COOKIE } from "@/lib/sidebar";
+import { useHotkeys, type HotkeyHandler } from "@/lib/shortcuts";
 
 export type ShellUser = {
   id: string;
@@ -163,34 +164,38 @@ export function ChatShell({
     setHash("");
   }, []);
 
-  useEffect(() => {
-    function onKey(event: KeyboardEvent) {
-      const mod = event.metaKey || event.ctrlKey;
-      if (!mod) return;
-      const key = event.key.toLowerCase();
-      const onAdmin = pathname.startsWith("/admin");
-      if (key === "k" && !event.shiftKey && !event.altKey) {
-        if (onAdmin) return;
-        // The IDE editor has its own Cmd/Ctrl+K chords.
-        if ((event.target as HTMLElement | null)?.closest?.(".monaco-editor")) return;
-        event.preventDefault();
-        setOpen(false);
-        setSearchOpen((current) => !current);
-      } else if (key === "s" && event.shiftKey) {
-        event.preventDefault();
-        toggleCollapsed();
-      } else if (key === "o" && event.shiftKey) {
-        if (onAdmin) return;
-        event.preventDefault();
-        router.push("/chat");
-      } else if (key === ",") {
-        event.preventDefault();
-        openSettings("general");
-      }
+  const onAdmin = pathname.startsWith("/admin");
+  const hotkeys = useMemo<HotkeyHandler[]>(() => {
+    const keys: HotkeyHandler[] = [
+      {
+        combo: "mod+shift+s",
+        run: () => toggleCollapsed(),
+      },
+      {
+        combo: "mod+comma",
+        run: () => openSettings("general"),
+      },
+    ];
+    if (!onAdmin) {
+      keys.unshift(
+        {
+          combo: "mod+k",
+          allowInInput: true,
+          ignoreSelector: ".monaco-editor, [data-terminal]",
+          run: () => {
+            setOpen(false);
+            setSearchOpen((current) => !current);
+          },
+        },
+        {
+          combo: "mod+shift+o",
+          run: () => router.push("/chat"),
+        },
+      );
     }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [router, pathname, openSettings, toggleCollapsed]);
+    return keys;
+  }, [onAdmin, openSettings, router, toggleCollapsed]);
+  useHotkeys(hotkeys);
 
   const chrome = useMemo<Chrome>(
     () => ({
