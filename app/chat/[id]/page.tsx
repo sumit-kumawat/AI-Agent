@@ -9,7 +9,7 @@ import { requireUser } from "@/lib/session";
 
 export const metadata: Metadata = { title: "Chat" };
 
-export default async function ConversationPage({ params }: PageProps<"/chat/[id]">) {
+export default async function ConversationPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await requireUser();
   const conversation = getConversationForUser(id, user.id!);
